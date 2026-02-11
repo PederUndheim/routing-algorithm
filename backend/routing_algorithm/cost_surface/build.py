@@ -125,10 +125,10 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
     validity_w = slope_w * pra_runout_w
  
     # Barrier / reduction layers
-    rivers_mask = read_mask(inputs["rivers"])
-    roads_mask = read_mask(inputs["roads"])
-    tractorroads_trails_forest_mask = read_mask(inputs["tractorroads_trails_forest"])
-    bridges_mask = read_mask(inputs["bridges"])
+    rivers_mask = read_mask(inputs["river"])
+    roads_mask = read_mask(inputs["road"])
+    tractorroads_trails_forest_mask = read_mask(inputs["tractorroad_trail_forest"])
+    bridges_mask = read_mask(inputs["bridge"])
 
     rivers_barrier = barrier_layer_from_mask(rivers_mask, barrier_value=config.RIVER_BARRIER_VALUE, min_cost=config.MIN_COST)
     roads_reduction = reduction_layer_from_mask_soft(roads_mask, validity_w, low_value=config.ROADS_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
