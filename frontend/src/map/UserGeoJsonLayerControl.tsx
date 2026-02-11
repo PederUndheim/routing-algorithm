@@ -1,0 +1,207 @@
+import type { UserGeoJsonLayer } from "../types/mapTypes";
+import type { FeatureCollection } from "geojson";
+
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import DeleteIcon from "@mui/icons-material/Delete";
+import PolylineIcon from "@mui/icons-material/Polyline";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
+
+type UserGeoJsonLayerControlProps = {
+  layers: UserGeoJsonLayer[];
+  geoJsonVisible: boolean;
+  onToggleGeoJsonVisible: () => void;
+  onAdd: (name: string, data: FeatureCollection) => void;
+  onToggle: (id: string) => void;
+  onRemove: (id: string) => void;
+};
+
+const readFileAsText = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result ?? ""));
+    r.onerror = reject;
+    r.readAsText(file);
+  });
+
+const UserGeoJsonLayerControl = ({
+  layers,
+  geoJsonVisible,
+  onToggleGeoJsonVisible,
+  onAdd,
+  onToggle,
+  onRemove,
+}: UserGeoJsonLayerControlProps) => {
+  const onPickFile = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    for (const file of Array.from(files))
+      try {
+        const txt = await readFileAsText(file);
+        const json = JSON.parse(txt) as FeatureCollection;
+        onAdd(file.name.replace(/\.geojson$/i, ""), json);
+      } catch (e) {
+        console.error(e);
+        alert("Could not read this file as GeoJSON.");
+      }
+  };
+  const hasLayers = layers.length > 0;
+  const anySelectedVisible = layers.some((l) => l.visible);
+  const effectiveVisible = geoJsonVisible && anySelectedVisible;
+
+  return (
+    <Box sx={{ mt: 2, width: "100%" }}>
+      <Typography sx={{ fontWeight: 600, fontSize: 18, color: "white", mb: 1 }}>
+        GeoJSON
+      </Typography>
+
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 3,
+          pl: 3.3,
+          pr: 2.5,
+        }}
+      >
+        {/* Global toggle on/off for GeoJSON layers */}
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <Box
+            sx={{
+              width: 75,
+              height: 75,
+              borderRadius: "50%",
+              overflow: "hidden",
+              border: "4px solid",
+              borderColor: !hasLayers
+                ? "rgba(255,255,255,0.18)"
+                : effectiveVisible
+                ? "#367E98"
+                : "rgba(255,255,255,0.18)",
+              backgroundColor: effectiveVisible
+                ? "rgba(54,126,152,0.18)"
+                : "transparent",
+              boxShadow: effectiveVisible ? "0 8px 20px rgba(0,0,0,0.2)" : "",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: hasLayers ? "pointer" : "default",
+              transition:
+                "transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease",
+              "&:hover": hasLayers ? { transform: "scale(1.05)" } : undefined,
+            }}
+            onClick={() => {
+              if (!hasLayers) return;
+              onToggleGeoJsonVisible(); // ONLY master toggle
+            }}
+          >
+            <PolylineIcon sx={{ fontSize: 45, color: "white" }} />
+          </Box>
+          <Typography
+            sx={{ mt: 1, fontSize: 12, color: "rgba(255,255,255,0.65)" }}
+          >
+            Toggle on/off
+          </Typography>
+        </Box>
+
+        <Box
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          sx={{ flex: 1 }}
+        >
+          <Button
+            variant="outlined"
+            component="label"
+            fullWidth
+            size="small"
+            sx={{
+              borderColor: "#367E98",
+              color: "white",
+              "&:hover": { backgroundColor: "rgba(54,126,152,0.10)" },
+            }}
+          >
+            Add GeoJSON layer(s)
+            <input
+              hidden
+              multiple
+              type="file"
+              accept=".geojson,application/geo+json,application/json"
+              onChange={(e) => {
+                onPickFile(e.target.files);
+                e.currentTarget.value = "";
+              }}
+            />
+          </Button>
+
+          <Box
+            sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 0.5 }}
+          >
+            {layers.length === 0 && (
+              <Typography
+                sx={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}
+              >
+                No files added yet.
+              </Typography>
+            )}
+
+            {layers.map((l) => (
+              <Box
+                key={l.id}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 1,
+                  px: 1,
+                  py: 0.6,
+                  borderRadius: 1.5,
+                  background: l.visible
+                    ? "rgba(54,126,152,0.18)"
+                    : "rgba(255,255,255,0.06)",
+                  cursor: "pointer",
+                }}
+                onClick={() => onToggle(l.id)}
+              >
+                {l.visible ? (
+                  <VisibilityIcon sx={{ color: "#EE7B04", fontSize: 20 }} />
+                ) : (
+                  <VisibilityOffIcon
+                    sx={{
+                      color: "rgba(255,255,255,0.35)",
+                      fontSize: 20,
+                    }}
+                  />
+                )}
+
+                <Typography sx={{ color: "white", fontSize: 13, flex: 1 }}>
+                  {l.name}
+                </Typography>
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemove(l.id);
+                  }}
+                >
+                  <DeleteIcon
+                    sx={{ color: "rgba(255,255,255,0.75)", fontSize: 18 }}
+                  />
+                </IconButton>
+              </Box>
+            ))}
+          </Box>
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
+export default UserGeoJsonLayerControl;

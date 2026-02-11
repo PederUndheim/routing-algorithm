@@ -1,0 +1,279 @@
+import { useMemo, useRef } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  Pane,
+  WMSTileLayer,
+  Marker,
+  GeoJSON,
+} from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import L from "leaflet";
+
+import Box from "@mui/material/Box";
+
+import type { BasemapId } from "../layers/basemaps";
+import type { OverlayId } from "../layers/overlays";
+import type { FeatureCollection } from "geojson";
+import type { UserGeoJsonLayer, LatLng, PickMode } from "../types/mapTypes";
+
+import { getBasemap } from "../layers/basemaps";
+import { OVERLAYS } from "../layers/overlays";
+import { startIcon, endIcon } from "../ui/StartAndEndIcons";
+
+import MapController from "./MapController";
+import BasemapControl from "./BasemapControl";
+import MapActions from "./MapActions";
+import RoutingButton from "../ui/RoutingButton";
+import MapClickPicker from "../ui/MapClickPicker";
+import ScaleBar from "../ui/ScaleBar";
+import CursorCoords from "../ui/CursorCoords";
+
+const center: [number, number] = [62.63, 7.896];
+
+export type MapApi = {
+  zoomIn: () => void;
+  zoomOut: () => void;
+  flyToCenter: () => void;
+  locateUser: () => void;
+};
+
+type DraggableMarkerProps = {
+  position: LatLng;
+  icon: L.DivIcon;
+  onPositionChange: (position: LatLng) => void;
+};
+
+const DraggableMarker = ({
+  position,
+  icon,
+  onPositionChange,
+}: DraggableMarkerProps) => {
+  return (
+    <Marker
+      position={[position.lat, position.lng]}
+      icon={icon}
+      draggable
+      eventHandlers={{
+        dragend: (e) => {
+          const marker = e.target as L.Marker;
+          const latLng = marker.getLatLng();
+          onPositionChange({ lat: latLng.lat, lng: latLng.lng });
+        },
+      }}
+    />
+  );
+};
+
+type MapViewProps = {
+  basemap: BasemapId;
+  onBasemapChange: (id: BasemapId) => void;
+
+  overlays: Record<OverlayId, boolean>;
+  onToggleOverlay: (id: OverlayId) => void;
+
+  overlayOpacity: Record<OverlayId, number>;
+  onOverlayOpacityChange: (id: OverlayId, opacity: number) => void;
+
+  onMapReady: (api: MapApi) => void;
+  sidebarOpen?: boolean;
+  onToggleSidebar: () => void;
+  onCloseSidebar: () => void;
+
+  pickMode: PickMode;
+  onPickModeChange: (mode: PickMode) => void;
+  startPoint: LatLng | null;
+  endPoint: LatLng | null;
+  onStartPointChange: (point: LatLng | null) => void;
+  onEndPointChange: (point: LatLng | null) => void;
+  routeGeoJson?: FeatureCollection | null;
+  userGeoJsonLayers: UserGeoJsonLayer[];
+  onAddGeoJson: (name: string, data: FeatureCollection) => void;
+  onToggleGeoJson: (id: string) => void;
+  onRemoveGeoJson: (id: string) => void;
+  geoJsonVisible: boolean;
+  onToggleGeoJsonVisible: () => void;
+};
+
+const MapView = ({
+  basemap,
+  onBasemapChange,
+  overlays,
+  onToggleOverlay,
+  overlayOpacity,
+  onOverlayOpacityChange,
+  onMapReady,
+  sidebarOpen,
+  onToggleSidebar,
+  pickMode,
+  onPickModeChange,
+  startPoint,
+  endPoint,
+  onStartPointChange,
+  onEndPointChange,
+  routeGeoJson,
+  userGeoJsonLayers,
+  onAddGeoJson,
+  onToggleGeoJson,
+  onRemoveGeoJson,
+  geoJsonVisible,
+  onToggleGeoJsonVisible,
+}: MapViewProps) => {
+  const bm = useMemo(() => getBasemap(basemap), [basemap]);
+  const mapApiRef = useRef<MapApi | null>(null);
+
+  return (
+    <Box sx={{ height: "100vh", width: "100vw", position: "relative" }}>
+      <MapContainer
+        center={center}
+        zoom={11}
+        zoomControl={false}
+        style={{ height: "100%", width: "100vw" }}
+      >
+        <Pane name="basemap" style={{ zIndex: 200 }}>
+          <TileLayer
+            url={bm.url}
+            attribution={bm.attribution}
+            maxZoom={bm.maxZoom ?? 18}
+          />
+        </Pane>
+
+        <Pane name="overlays" style={{ zIndex: 400 }}>
+          {OVERLAYS.map((o) => {
+            if (!overlays[o.id]) return null;
+
+            return (
+              <WMSTileLayer
+                key={o.id}
+                url={o.wmsUrl}
+                layers={o.layers}
+                format="image/png"
+                transparent
+                opacity={overlayOpacity[o.id] ?? o.opacityDefault}
+                version="1.1.1"
+              />
+            );
+          })}
+        </Pane>
+
+        {geoJsonVisible &&
+          userGeoJsonLayers?.some((layer) => layer.visible) && (
+            <Pane name="user-geojson" style={{ zIndex: 500 }}>
+              {userGeoJsonLayers
+                .filter((layer) => layer.visible)
+                .map((layer) => (
+                  <GeoJSON
+                    key={layer.id}
+                    data={layer.data}
+                    style={() => ({
+                      weight: 4,
+                      opacity: 1,
+                      color: "#EE7B04",
+                    })}
+                  />
+                ))}
+            </Pane>
+          )}
+
+        {routeGeoJson && (
+          <Pane name="route" style={{ zIndex: 650 }}>
+            <GeoJSON
+              data={routeGeoJson}
+              style={() => ({
+                weight: 6,
+                opacity: 1,
+                color: "#367E98",
+              })}
+            />
+          </Pane>
+        )}
+
+        {/* Markers */}
+        {startPoint && (
+          <DraggableMarker
+            position={startPoint}
+            icon={startIcon}
+            onPositionChange={(p) => onStartPointChange(p)}
+          />
+        )}
+        {endPoint && (
+          <DraggableMarker
+            position={endPoint}
+            icon={endIcon}
+            onPositionChange={(p) => onEndPointChange(p)}
+          />
+        )}
+
+        {/* Picker layer */}
+        <MapClickPicker
+          pickMode={pickMode}
+          onPickModeChange={onPickModeChange}
+          onStartPointChange={onStartPointChange}
+          onEndPointChange={onEndPointChange}
+        />
+
+        <MapController
+          onReady={(api) => {
+            mapApiRef.current = api;
+            onMapReady(api);
+          }}
+        />
+
+        <ScaleBar position="bottomleft" />
+        <CursorCoords />
+      </MapContainer>
+
+      <RoutingButton onClick={onToggleSidebar} hidden={sidebarOpen} />
+
+      <Box
+        sx={{
+          position: "fixed",
+          top: 16,
+          right: 16,
+          zIndex: 1300,
+          display: "flex",
+          flexDirection: "column",
+          gap: 1,
+          pointerEvents: "none",
+        }}
+      >
+        <Box sx={{ pointerEvents: "auto" }}>
+          <BasemapControl
+            basemap={basemap}
+            onBasemapChange={onBasemapChange}
+            overlays={overlays}
+            onToggleOverlay={onToggleOverlay}
+            overlayOpacity={overlayOpacity}
+            onOverlayOpacityChange={onOverlayOpacityChange}
+            userGeoJsonLayers={userGeoJsonLayers}
+            onAddGeoJson={onAddGeoJson}
+            onToggleGeoJson={onToggleGeoJson}
+            onRemoveGeoJson={onRemoveGeoJson}
+            geoJsonVisible={geoJsonVisible}
+            onToggleGeoJsonVisible={onToggleGeoJsonVisible}
+          />
+        </Box>
+
+        <Box sx={{ pointerEvents: "auto" }}>
+          <MapActions
+            onSearch={() => mapApiRef.current?.flyToCenter()}
+            onLocate={() => mapApiRef.current?.locateUser()}
+            onZoomIn={() => mapApiRef.current?.zoomIn()}
+            onZoomOut={() => mapApiRef.current?.zoomOut()}
+          />
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+export default MapView;
+
+// Fargekart (topo)
+// Gråtonekart (topograatone)
+// Turkart (toporaster)
+// Sjøkart (sjokartraster)
+
+// Web mercator - EPSG:3857 (webmercator)
+// UTM sone 32 - EPSG:25832 (utm32n)
+// UTM sone 33 - EPSG:25833 (utm33n)
+// UTM sone 35 - EPSG:25835 (utm35n)

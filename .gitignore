@@ -1,0 +1,82 @@
+# ============================================
+# Python
+# ============================================
+
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+
+# ============================================
+# Node / Vite / React
+# ============================================
+
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ============================================
+# IDE
+# ============================================
+
+.vscode/
+.idea/
+.DS_Store
+
+# ============================================
+# Raster + GIS outputs (VERY IMPORTANT)
+# ============================================
+
+# Raster
+*.tif
+*.tiff
+*.aux.xml
+*.ovr
+
+# Vector
+*.gpkg
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.gdb/
+
+# CSV exports
+*.csv
+
+# ============================================
+# Project-specific generated data
+# ============================================
+
+data_preprocessing/data_cache/
+data/areas/*/input/
+data/areas/*/grid/
+data_preprocessing/data_cache/outlines/
+
+# ============================================
+# Temporary
+# ============================================
+
+tmp/
+*_tmp/
+*_temp/
+*.log
