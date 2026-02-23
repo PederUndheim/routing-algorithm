@@ -1,8 +1,0 @@
-{
-"type": "FeatureCollection",
-"name": "path_smooth_run_e6087a07_ccc1_47ff_8ec9_df5e0d8e4055",
-"crs": { "type": "name", "properties": { "name": "urn:ogc:def:crs:EPSG::25833" } },
-"features": [
-{ "type": "Feature", "properties": { "cat": 1 }, "geometry": { "type": "LineString", "coordinates": [ [ 135200.0, 6959820.0 ], [ 134050.0, 6959860.0 ], [ 133220.0, 6960070.0 ], [ 132900.0, 6959820.0 ], [ 132570.0, 6960010.0 ] ] } }
-]
-}
