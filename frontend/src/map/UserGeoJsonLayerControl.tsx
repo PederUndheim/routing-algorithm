@@ -63,8 +63,7 @@ const UserGeoJsonLayerControl = ({
           display: "flex",
           alignItems: "center",
           gap: 3,
-          pl: 3.3,
-          pr: 2.5,
+          px: 3,
         }}
       >
         {/* Global toggle on/off for GeoJSON layers */}
@@ -143,7 +142,32 @@ const UserGeoJsonLayerControl = ({
           </Button>
 
           <Box
-            sx={{ mt: 1, display: "flex", flexDirection: "column", gap: 0.5 }}
+            sx={{
+              mt: 1,
+              display: "flex",
+              flexDirection: "column",
+              gap: 0.5,
+              maxHeight: 250,
+              maxWidth: 250,
+              overflowY: "auto",
+              overflowX: "hidden",
+              pr: 2,
+              // Chrome / Edge / Safari
+              "&::-webkit-scrollbar": {
+                width: 10,
+              },
+              "&::-webkit-scrollbar-track": {
+                background: "rgba(255,255,255,0.06)",
+                borderRadius: 8,
+              },
+              "&::-webkit-scrollbar-thumb": {
+                backgroundColor: "#367E98",
+                borderRadius: 4,
+              },
+              "&::-webkit-scrollbar-thumb:hover": {
+                backgroundColor: "#2c657b",
+              },
+            }}
           >
             {layers.length === 0 && (
               <Typography
@@ -181,7 +205,16 @@ const UserGeoJsonLayerControl = ({
                   />
                 )}
 
-                <Typography sx={{ color: "white", fontSize: 13, flex: 1 }}>
+                <Typography
+                  sx={{
+                    color: "white",
+                    fontSize: 13,
+                    flex: 1,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {l.name}
                 </Typography>
                 <IconButton

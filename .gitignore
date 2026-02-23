@@ -60,6 +60,8 @@ pnpm-debug.log*
 *.cpg
 *.gdb/
 
+
+
 # CSV exports
 *.csv
 
@@ -68,8 +70,7 @@ pnpm-debug.log*
 # ============================================
 
 data_preprocessing/data_cache/
-data/areas/*/input/
-data/areas/*/grid/
+data/
 data_preprocessing/data_cache/outlines/
 
 # ============================================

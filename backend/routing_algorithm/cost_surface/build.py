@@ -36,6 +36,7 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
     # Load input rasters
     slope_arr, _ = read_raster(inputs["slope"])
     curvature_arr, _ = read_raster(inputs["curvature"])
+    curvature_arr = np.nan_to_num(curvature_arr, nan=0.0)
     pra_runout_combined_arr, _ = read_raster(inputs["pra_runout_combined"])
 
     # Verify shapes
@@ -126,18 +127,20 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
  
     # Barrier / reduction layers
     rivers_mask = read_mask(inputs["river"])
+    ocean_mask = read_mask(inputs["ocean"])
     roads_mask = read_mask(inputs["road"])
     tractorroads_trails_forest_mask = read_mask(inputs["tractorroad_trail_forest"])
     bridges_mask = read_mask(inputs["bridge"])
 
     rivers_barrier = barrier_layer_from_mask(rivers_mask, barrier_value=config.RIVER_BARRIER_VALUE, min_cost=config.MIN_COST)
+    ocean_barrier = barrier_layer_from_mask(ocean_mask, barrier_value=config.OCEAN_BARRIER_VALUE, min_cost=config.MIN_COST)
     roads_reduction = reduction_layer_from_mask_soft(roads_mask, validity_w, low_value=config.ROADS_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
     tractorroads_trails_forest_reduction = reduction_layer_from_mask_soft(tractorroads_trails_forest_mask, validity_w, low_value=config.TRACTOROADS_TRAILS_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
     bridges_reduction = reduction_layer_from_mask_soft(bridges_mask, validity_w, low_value=config.BRIDGES_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
 
     # MAX for barriers, MIN for reductions
     with_barriers = surface_sum
-    with_barriers = max_combine(with_barriers, rivers_barrier)
+    with_barriers = max_combine(with_barriers, rivers_barrier, ocean_barrier)
     
     if debug_mode:
         debug_layer_save(with_barriers, "06_with_barriers.tif", ref_profile, paths.debug_cost_layer_dir)
@@ -196,7 +199,7 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
 
 
     # Propagate nodata
-    nodata_mask = np.isnan(slope_arr) | np.isnan(curvature_arr) | np.isnan(pra_runout_combined_arr)
+    nodata_mask = np.isnan(slope_arr)
     surface_u8 = clip_round(with_reductions, min_cost=1.0, max_cost=99.0)
     surface_u8[nodata_mask] = config.NODATA_VALUE
 

@@ -5,7 +5,6 @@ import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
-import Chip from "@mui/material/Chip";
 import CloseIcon from "@mui/icons-material/Close";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 
@@ -23,6 +22,8 @@ type SidebarProps = {
   endPoint: LatLng | null;
   pickMode: PickMode;
   onPickModeChange: (mode: PickMode) => void;
+  showCorridor: boolean;
+  onShowCorridorChange: (show: boolean) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -42,6 +43,8 @@ const Sidebar = ({
   endPoint,
   pickMode,
   onPickModeChange,
+  showCorridor,
+  onShowCorridorChange,
   onClearStart,
   onClearEnd,
   onGenerate,
@@ -113,6 +116,8 @@ const Sidebar = ({
         endPoint={endPoint}
         pickMode={pickMode}
         onPickModeChange={onPickModeChange}
+        showCorridor={showCorridor}
+        onShowCorridorChange={onShowCorridorChange}
         onClearStart={onClearStart}
         onClearEnd={onClearEnd}
         onGenerate={onGenerate}

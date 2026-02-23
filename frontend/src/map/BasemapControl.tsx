@@ -142,6 +142,7 @@ const BasemapControl = ({
                   sx={{
                     width: 80,
                     height: 80,
+                    flexShrink: 0,
                     borderRadius: "50%",
                     overflow: "hidden",
                     border: isSelected
@@ -215,6 +216,7 @@ const BasemapControl = ({
                   alignItems: "center",
                   cursor: "pointer",
                   gap: 2,
+                  marginBottom: 0.5,
                 }}
               >
                 <Box
@@ -222,6 +224,7 @@ const BasemapControl = ({
                   sx={{
                     width: 80,
                     height: 80,
+                    flexShrink: 0,
                     borderRadius: "50%",
                     overflow: "hidden",
                     border: enabled
@@ -256,6 +259,7 @@ const BasemapControl = ({
                     fontSize: 14,
                     fontWeight: 500,
                     color: "white",
+                    width: 50,
                   }}
                 >
                   {o.label}

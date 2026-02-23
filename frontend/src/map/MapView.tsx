@@ -28,6 +28,7 @@ import RoutingButton from "../ui/RoutingButton";
 import MapClickPicker from "../ui/MapClickPicker";
 import ScaleBar from "../ui/ScaleBar";
 import CursorCoords from "../ui/CursorCoords";
+import CorridorRaster from "./CorridorRaster";
 
 const center: [number, number] = [62.63, 7.896];
 
@@ -87,6 +88,9 @@ type MapViewProps = {
   onStartPointChange: (point: LatLng | null) => void;
   onEndPointChange: (point: LatLng | null) => void;
   routeGeoJson?: FeatureCollection | null;
+  showCorridor: boolean;
+  onShowCorridorChange: (show: boolean) => void;
+  corridorTifUrl?: string | null;
   userGeoJsonLayers: UserGeoJsonLayer[];
   onAddGeoJson: (name: string, data: FeatureCollection) => void;
   onToggleGeoJson: (id: string) => void;
@@ -112,6 +116,9 @@ const MapView = ({
   onStartPointChange,
   onEndPointChange,
   routeGeoJson,
+  showCorridor,
+  onShowCorridorChange,
+  corridorTifUrl,
   userGeoJsonLayers,
   onAddGeoJson,
   onToggleGeoJson,
@@ -128,6 +135,9 @@ const MapView = ({
         center={center}
         zoom={11}
         zoomControl={false}
+        zoomAnimation={false}
+        fadeAnimation={false}
+        markerZoomAnimation={false}
         style={{ height: "100%", width: "100vw" }}
       >
         <Pane name="basemap" style={{ zIndex: 200 }}>
@@ -142,17 +152,35 @@ const MapView = ({
           {OVERLAYS.map((o) => {
             if (!overlays[o.id]) return null;
 
-            return (
-              <WMSTileLayer
-                key={o.id}
-                url={o.wmsUrl}
-                layers={o.layers}
-                format="image/png"
-                transparent
-                opacity={overlayOpacity[o.id] ?? o.opacityDefault}
-                version="1.1.1"
-              />
-            );
+            const opacity = overlayOpacity[o.id] ?? o.opacityDefault;
+
+            if (o.type === "wms") {
+              return (
+                <WMSTileLayer
+                  key={o.id}
+                  url={o.wmsUrl}
+                  layers={o.layers}
+                  opacity={opacity}
+                  transparent
+                  format="image/png"
+                />
+              );
+            }
+
+            if (o.type === "geojson") {
+              return (
+                <GeoJSON
+                  key={o.id}
+                  data={o.data}
+                  style={() => ({
+                    weight: 3,
+                    opacity: opacity,
+                    color: "#367E98",
+                    fillColor: "transparent",
+                  })}
+                />
+              );
+            }
           })}
         </Pane>
 
@@ -169,6 +197,7 @@ const MapView = ({
                       weight: 4,
                       opacity: 1,
                       color: "#EE7B04",
+                      fillColor: "transparent",
                     })}
                   />
                 ))}
@@ -186,6 +215,18 @@ const MapView = ({
               })}
             />
           </Pane>
+        )}
+
+        {corridorTifUrl && showCorridor && (
+          <CorridorRaster
+            key={corridorTifUrl}
+            tifUrl={corridorTifUrl}
+            opacity={0.6}
+            paneName={`corridor_${corridorTifUrl
+              .split("/")
+              .pop()!
+              .replaceAll(".", "_")}`}
+          />
         )}
 
         {/* Markers */}

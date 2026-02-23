@@ -3,6 +3,8 @@
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^7.3.7",
-    "@mui/material": "^7.3.7"
+    "@mui/material": "^7.3.7",
+    "georaster": "^1.6.0",
+    "georaster-layer-for-leaflet": "^4.1.2"
   }
 }

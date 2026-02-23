@@ -15,12 +15,16 @@ import Alert from "@mui/material/Alert";
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>("topo");
   const [overlays, setOverlays] = useState<Record<OverlayId, boolean>>({
+    study_areas: false,
     slope: false,
+    slope_runout: false,
   });
   const [overlayOpacity, setOverlayOpacity] = useState<
     Record<OverlayId, number>
   >({
+    study_areas: 1.0,
     slope: 0.55,
+    slope_runout: 0.38,
   });
   const [userGeoJsonLayers, setUserGeoJsonLayers] = useState<
     UserGeoJsonLayer[]
@@ -38,6 +42,8 @@ const App = () => {
   const [routeGeoJson, setRouteGeoJson] = useState<FeatureCollection | null>(
     null
   );
+  const [showCorridor, setShowCorridor] = useState(false);
+  const [corridorTifUrl, setCorridorTifUrl] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleGenerateRoute = async ({
@@ -51,6 +57,7 @@ const App = () => {
 
     const runId = crypto.randomUUID().replaceAll("-", "_");
 
+    setShowCorridor(showCorridor);
     setRouteGeoJson(null);
     setErrorMsg(null);
 
@@ -81,20 +88,25 @@ const App = () => {
 
     const data = await res.json();
     setRouteGeoJson(data.route);
+    console.log("corridor url from api", data.corridor?.tif_url);
+    setCorridorTifUrl(data.corridor?.tif_url ?? null);
   };
 
   const clearStart = () => {
     setStartPoint(null);
     setRouteGeoJson(null);
+    setCorridorTifUrl(null);
   };
 
   const clearEnd = () => {
     setEndPoint(null);
     setRouteGeoJson(null);
+    setCorridorTifUrl(null);
   };
 
   useEffect(() => {
     if (!startPoint || !endPoint) setRouteGeoJson(null);
+    if (!startPoint || !endPoint) setCorridorTifUrl(null);
   }, [startPoint, endPoint]);
 
   const addGeoJsonLayer = (name: string, data: FeatureCollection) => {
@@ -145,6 +157,9 @@ const App = () => {
         onStartPointChange={setStartPoint}
         onEndPointChange={setEndPoint}
         routeGeoJson={routeGeoJson}
+        showCorridor={showCorridor}
+        onShowCorridorChange={setShowCorridor}
+        corridorTifUrl={corridorTifUrl}
         userGeoJsonLayers={userGeoJsonLayers}
         onAddGeoJson={addGeoJsonLayer}
         onToggleGeoJson={toggleGeoJsonLayer}
@@ -160,6 +175,8 @@ const App = () => {
         endPoint={endPoint}
         pickMode={pickMode}
         onPickModeChange={setPickMode}
+        showCorridor={showCorridor}
+        onShowCorridorChange={setShowCorridor}
         onClearStart={clearStart}
         onClearEnd={clearEnd}
         onGenerate={handleGenerateRoute}

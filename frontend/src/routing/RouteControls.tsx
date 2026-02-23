@@ -3,6 +3,8 @@ import Typography from "@mui/material/Typography";
 import Slider from "@mui/material/Slider";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Checkbox from "@mui/material/Checkbox";
 
 import { useState } from "react";
 
@@ -13,6 +15,8 @@ type RouteControlsProps = {
   endPoint: LatLng | null;
   pickMode: PickMode;
   onPickModeChange: (mode: PickMode) => void;
+  showCorridor: boolean;
+  onShowCorridorChange: (show: boolean) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -39,12 +43,15 @@ const RouteControls = ({
   endPoint,
   pickMode,
   onPickModeChange,
+  showCorridor,
+  onShowCorridorChange,
   onClearStart,
   onClearEnd,
   onGenerate,
 }: RouteControlsProps) => {
   const DEFAULT_LAMBDA_WEIGHT = 0.7;
   const DEFAULT_SMOOTH_THRESHOLD = 8;
+  const DEFAULT_SHOW_CORRIDOR = false;
 
   const [lambdaWeight, setLambdaWeight] = useState(DEFAULT_LAMBDA_WEIGHT);
   const [smoothThreshold, setSmoothThreshold] = useState(
@@ -54,6 +61,7 @@ const RouteControls = ({
   const resetRoutingParameters = () => {
     setLambdaWeight(DEFAULT_LAMBDA_WEIGHT);
     setSmoothThreshold(DEFAULT_SMOOTH_THRESHOLD);
+    onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
     onClearStart();
     onClearEnd();
   };
@@ -61,7 +69,7 @@ const RouteControls = ({
   return (
     <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 3 }}>
       {/* Start point row */}
-      <Box sx={{ mb: 1 }}>
+      <Box>
         <Typography variant="subtitle2" sx={{ color: "white", mb: 1 }}>
           Choose start point
         </Typography>
@@ -110,7 +118,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 13,
+            fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -120,7 +128,7 @@ const RouteControls = ({
       </Box>
 
       {/* End point row */}
-      <Box sx={{ mb: 1 }}>
+      <Box>
         <Typography variant="subtitle2" sx={{ color: "white", mb: 1 }}>
           Choose end point
         </Typography>
@@ -169,7 +177,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 13,
+            fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -188,7 +196,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 13,
+            fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -227,7 +235,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 13,
+            fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -259,6 +267,25 @@ const RouteControls = ({
         </Box>
       </Box>
 
+      <FormControlLabel
+        label={
+          <Typography sx={{ color: "rgba(255,255,255,0.85)", fontSize: 14 }}>
+            Show corridor
+          </Typography>
+        }
+        control={
+          <Checkbox
+            checked={showCorridor}
+            onChange={(e) => onShowCorridorChange(e.target.checked)}
+            sx={{
+              color: "rgba(255,255,255,0.55)",
+              "&.Mui-checked": { color: "#367E98" },
+            }}
+          />
+        }
+        sx={{ m: 0 }}
+      />
+
       <Box sx={{ display: "flex" }}>
         <Button
           variant="contained"
@@ -283,7 +310,8 @@ const RouteControls = ({
             startPoint === null &&
             endPoint === null &&
             lambdaWeight === DEFAULT_LAMBDA_WEIGHT &&
-            smoothThreshold === DEFAULT_SMOOTH_THRESHOLD
+            smoothThreshold === DEFAULT_SMOOTH_THRESHOLD &&
+            showCorridor === DEFAULT_SHOW_CORRIDOR
           }
           size="small"
           sx={{

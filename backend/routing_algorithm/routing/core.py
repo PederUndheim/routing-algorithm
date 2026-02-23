@@ -47,22 +47,26 @@ def init_grass():
 
 
 # Import a single (x,y) point as a GRASS vector
-def _import_points(name: str, coords: Tuple[float, float]):
+def _import_points(name: str, coords: Tuple[float, float]) -> None:
     x, y = coords
     coords_str = f"{x},{y}\n"
-    cmd = ["v.in.ascii", "input=-", f"output={name}", "separator=,", "--overwrite"]
-    proc = subprocess.Popen(
-        cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True
+
+    # Import as point with x in column 1 and y in column 2
+    gs.write_command(
+        "v.in.ascii",
+        input="-",
+        output=name,
+        separator=",",
+        format="point",
+        x=1,
+        y=2,
+        overwrite=True,
+        stdin=coords_str,
     )
-    stdout_data, stderr_data = proc.communicate(input=coords_str)
-    if proc.returncode != 0:
-        raise RuntimeError(f"Failed to import points '{name}': {stderr_data}")
-    if stdout_data:
-        print(stdout_data.strip())
+
+    # Quick sanity check, should report points=1
+    info = gs.read_command("v.info", map=name, flags="t").strip()
+    print(info)
     print(f"Imported point {name} at ({x}, {y}).")
 
 
@@ -76,18 +80,23 @@ def _safe_name(base: str) -> str:
 # Sample raster value at vector point
 def _sample_raster_at_point(raster: str, vector_point: str) -> float:
     out = gs.read_command("r.what", map=raster, points=vector_point).strip()
-
-    # expected: x|y|value
     parts = out.split("|")
-    if len(parts) < 3:
+    if len(parts) < 4:
         raise RuntimeError(f"Unexpected r.what output: {out}")
 
+    val = parts[-1].strip()
+    if val in {"*", ""}:
+        raise RuntimeError(
+            f"Raster '{raster}' is NULL at point '{vector_point}'. "
+            "Start and end may be disconnected, outside valid cost area, "
+            "or DEM/cost has NULL there."
+        )
+
     try:
-        value = float(parts[-1])
+        return float(val)
     except Exception:
         raise RuntimeError(f"Failed to parse value from r.what output: {out}")
 
-    return value
 
 
 def run_routing_for_tour(
@@ -100,7 +109,9 @@ def run_routing_for_tour(
     lambda_weight: float,
     smooth_threshold: float,
     multi_routing: bool = False,
-    multi_routing_params: Optional[Dict[str, Any]] = None
+    multi_routing_params: Optional[Dict[str, Any]] = None,
+    cost_surface_override: Optional[str] = None,
+    dem_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Run the full GRASS routing for a single tour and export outputs.
@@ -117,11 +128,17 @@ def run_routing_for_tour(
     optimal_path = f"path_{slug}"
     smooth_path = f"path_smooth_{slug}"
 
-    dem_name, cost_name = ensure_base_rasters(
-    area_id=paths.area_id,
-    dem_path=inputs["dem"],
-    cost_surface_path=paths.cost_surface,
-)
+    if dem_override is not None and cost_surface_override is not None:
+        dem_name = dem_override
+        cost_name = cost_surface_override
+    else:
+        dem_name, cost_name = ensure_base_rasters(
+        area_id=paths.area_id,
+        dem_path=inputs["dem"],
+        cost_surface_path=paths.cost_surface,
+    )
+
+    gs.run_command("g.region", raster=dem_name, flags="a")
 
     # Ensure output dirs
     corridor_dir = paths.corridor
@@ -141,6 +158,7 @@ def run_routing_for_tour(
     print(f"[{tour_name}] Importing start/end points...")
     _import_points(start_vec, start_coords)
     _import_points(end_vec, end_coords)
+    
 
     if multi_routing:
         print(f"[{tour_name}] Running multi-routing...")
@@ -251,12 +269,17 @@ def run_routing_for_tour(
 
     # 5) Export: corridor GeoTIFF + path as Shapefile (native CRS) + GeoJSON (native CRS)
     print(f"[{tour_name}] Exporting corridor and vector path...")
+    corridor_f32 = f"{corridor_score_gamma}_f32"
+    gs.mapcalc(f"{corridor_f32} = float({corridor_score_gamma})", overwrite=True)
     gs.run_command(
         "r.out.gdal",
-        input=corridor_score_gamma,
+        input=corridor_f32,
         output=str(corridor_tif),
         format="GTiff",
-        overwrite=True
+        flags="c",
+        type="Float32",
+        nodata=-9999,
+        overwrite=True,
     )
     gs.run_command(
         "v.out.ogr",
@@ -275,7 +298,7 @@ def run_routing_for_tour(
 
 
     return {
-        "corridor_tif": corridor_tif,
-        "path_shapefile": path_shp,
-        "path_geojson_native": path_geojson
+        "corridor_tif": str(corridor_tif),
+        "path_shapefile": str(path_shp),
+        "path_geojson_native": str(path_geojson)
     }
