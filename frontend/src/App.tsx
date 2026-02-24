@@ -61,7 +61,9 @@ const App = () => {
     setRouteGeoJson(null);
     setErrorMsg(null);
 
-    const res = await fetch("http://localhost:8000/route", {
+    const API = import.meta.env.VITE_API_BASE_URL;
+
+    const res = await fetch(`${API}/route`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -74,6 +76,7 @@ const App = () => {
         name: "run_" + runId,
       }),
     });
+
     if (!res.ok) {
       let msg = "Failed to generate route.";
       try {
