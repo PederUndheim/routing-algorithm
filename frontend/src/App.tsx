@@ -158,7 +158,6 @@ const App = () => {
         onEndPointChange={setEndPoint}
         routeGeoJson={routeGeoJson}
         showCorridor={showCorridor}
-        onShowCorridorChange={setShowCorridor}
         corridorTifUrl={corridorTifUrl}
         userGeoJsonLayers={userGeoJsonLayers}
         onAddGeoJson={addGeoJsonLayer}

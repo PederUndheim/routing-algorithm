@@ -77,7 +77,7 @@ type MapViewProps = {
   onOverlayOpacityChange: (id: OverlayId, opacity: number) => void;
 
   onMapReady: (api: MapApi) => void;
-  sidebarOpen?: boolean;
+  sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onCloseSidebar: () => void;
 
