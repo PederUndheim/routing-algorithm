@@ -13,10 +13,8 @@ from shapely.geometry import Point, box
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from urllib.parse import quote
 from pydantic import BaseModel, Field
 from pyproj import Transformer
-import os
 
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
 setup_grass_python_path()
@@ -32,12 +30,11 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "https://PederUndheim.github.io",
+        "https://pederundheim.github.io",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 _grass_lock = Lock()
