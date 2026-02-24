@@ -6,9 +6,25 @@ class AreaPaths:
     area_id: str
     project_root: Path
 
+    
     @property
     def area_root(self) -> Path:
         return self.project_root / "data" / "areas" / self.area_id
+    
+    
+    #--- RUNTIME DATA ----
+    @property
+    def runtime_area_root(self) -> Path:
+        return self.project_root / "data" / "runtime" / "areas" / self.area_id
+    
+    @property
+    def cost_surface(self) -> Path:
+        return self.runtime_area_root / "cost_surface.tif"
+    
+    @property
+    def dem(self) -> Path:
+        return self.runtime_area_root / "dem.tif"
+    
     
     # ---- INPUT ----
     @property
@@ -28,10 +44,6 @@ class AreaPaths:
     @property
     def cost_surface_dir(self) -> Path:
         return self.output / "cost_surface"
-    
-    @property
-    def cost_surface(self) -> Path:
-        return self.cost_surface_dir / "cost_surface.tif"
     
     @property
     def debug_cost_layer_dir(self) -> Path:

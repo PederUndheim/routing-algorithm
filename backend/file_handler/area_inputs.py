@@ -3,7 +3,7 @@ from .area_paths import AreaPaths
 
 def get_input_rasters(p: AreaPaths) -> dict[str, Path]:
     return {
-        "dem": p.input / "dem.tif",                                                         # meters above sea level
+        "dem": p.runtime_area_root / "dem.tif",                                                         # meters above sea level
 
         "slope": p.input / "slope.tif",                                                     # degrees (0-90)
         "curvature": p.input / "windshelter.tif",                                           # curvature (-1, 1), (from "ridges" to "bowls")

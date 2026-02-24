@@ -23,6 +23,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy backend code
 COPY backend /app/backend
+COPY data/runtime /app/data/runtime
 COPY data_preprocessing/data_cache/outlines/study_areas.gpkg /app/data_preprocessing/data_cache/outlines/study_areas.gpkg
 
 # Add entrypoint that sets GRASS env vars (GISBASE, PYTHONPATH, PATH)

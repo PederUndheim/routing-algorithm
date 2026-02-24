@@ -5,6 +5,7 @@ from threading import Lock
 from typing import Optional, List, Tuple
 import hashlib
 import traceback
+import os
 
 import geopandas as gpd
 import rasterio
@@ -16,6 +17,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from pyproj import Transformer
 
+from backend.storage.blob_outputs import upload_tif
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
 setup_grass_python_path()
 import grass.script as gs
@@ -170,7 +172,7 @@ def _build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
             tif_path = paths.cost_surface
             base = f"cost__{_safe_grass_name(area_id)}"
         else:
-            tif_path = Path(inputs["dem"])
+            tif_path = paths.dem
             base = f"dem__{_safe_grass_name(area_id)}"
 
         _ensure_raster_imported(tif_path, base)
@@ -324,6 +326,7 @@ def route(req: RouteRequest, request: Request):
                 cost_surface_override=cost_mosaic,
                 dem_override=dem_mosaic,
             )
+            print(res)
 
     except HTTPException:
         raise
@@ -337,13 +340,23 @@ def route(req: RouteRequest, request: Request):
         raise HTTPException(500, f"Routing failed. {msg}")
 
     geojson = export_wgs84_geojson(res["path_geojson_native"])
-    corridor_rel = _safe_rel_to_output_root(res["corridor_tif"])
-    corridor_url = request.url_for("get_output", relpath=corridor_rel)
+
+    outputs_container = os.environ.get("BLOB_OUTPUTS_CONTAINER", "outputs")
+    corridor_local = Path(res["corridor_tif"])
+    blob_name = f"runs/{req.name or 'adhoc'}/{corridor_local.name}"
+    corridor_url = upload_tif(outputs_container, blob_name, corridor_local)
+    # delete local file to avoid storing user outputs
+    try:
+        corridor_local.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 
     return {
         "route": geojson,
         "corridor": {
-            "tif_url": str(corridor_url),
+            "tif_url": corridor_url,
         },
         "meta": {
             "area_ids": area_ids,
