@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMap, useMapEvents } from "react-leaflet";
-import type { LatLng, PickMode } from "../App";
+import type { LatLng, PickMode } from "../types/mapTypes";
 
 type MapClickPickerProps = {
   pickMode: PickMode;

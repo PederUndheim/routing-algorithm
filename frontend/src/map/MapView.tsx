@@ -89,7 +89,6 @@ type MapViewProps = {
   onEndPointChange: (point: LatLng | null) => void;
   routeGeoJson?: FeatureCollection | null;
   showCorridor: boolean;
-  onShowCorridorChange: (show: boolean) => void;
   corridorTifUrl?: string | null;
   userGeoJsonLayers: UserGeoJsonLayer[];
   onAddGeoJson: (name: string, data: FeatureCollection) => void;
@@ -117,7 +116,6 @@ const MapView = ({
   onEndPointChange,
   routeGeoJson,
   showCorridor,
-  onShowCorridorChange,
   corridorTifUrl,
   userGeoJsonLayers,
   onAddGeoJson,
