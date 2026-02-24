@@ -19,6 +19,15 @@ source .venv/bin/activate
 from root: python -m uvicorn backend.api.main:app --reload --port 8000  
 from frontend: npm run dev
 
+## Docker commands
+
+export AZ_RG="rg-routing-algorithm"
+export AZ_LOC="swedencentral"
+export ACR_NAME="skiroutingalgorithm"
+export APP_ENV="env-routing-algorithm"
+export APP_NAME="api-routing-algorithm"
+export IMAGE_NAME="image-routing-algorithm"
+
 ---
 
 ## Features

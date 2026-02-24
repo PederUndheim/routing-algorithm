@@ -1,5 +1,7 @@
+import os
+
 from backend.scripts._cli import parse_area_arg
-from backend.routing_algorithm.routing.core import init_grass
+from backend.routing_algorithm.routing.core import init_grass, GRASS_DB
 from backend.scripts.make_input_layers import run as run_inputs
 from backend.scripts.build_cost_surface import run as run_cost
 from backend.scripts.run_routing import run as run_routing
@@ -28,6 +30,7 @@ def main():
 
     print("=== Running full pipeline ===")
 
+    os.makedirs(GRASS_DB, exist_ok=True)
     init_grass()
 
     if area_id:

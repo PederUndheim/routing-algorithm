@@ -1,5 +1,6 @@
 from pathlib import Path
 import subprocess
+import os
 from typing import Tuple, Dict, Any, Optional
 from backend.file_handler.area_paths import AreaPaths
 
@@ -42,8 +43,23 @@ def ensure_base_rasters(area_id: str, dem_path: Path, cost_surface_path: Path) -
 
 # Initialize a GRASS session once per run
 def init_grass():
+    """
+    Ensure GRASS DB + LOCATION exists, then start a GRASS session.
+    Works on fresh Docker/Azure containers.
+    """
+    os.makedirs(GRASS_DB, exist_ok=True)
+
+    location_path = os.path.join(GRASS_DB, GRASS_LOCATION)
+
+    # If location is missing, create it with the correct projection.
+    # Default is EPSG:25833 (UTM33N), but override via env GRASS_EPSG if needed.
+    if not os.path.isdir(location_path):
+        epsg = os.environ.get("GRASS_EPSG", "25833")
+        print(f"GRASS location missing. Creating: {location_path} (EPSG:{epsg})")
+        subprocess.check_call(["grass", "-c", f"EPSG:{epsg}", "-e", location_path])
+
     gsetup.init(GRASS_DB, GRASS_LOCATION, GRASS_MAPSET)
-    print(f"GRASS initialized: location={GRASS_LOCATION}, mapset={GRASS_MAPSET}")
+    print(f"GRASS initialized: db={GRASS_DB}, location={GRASS_LOCATION}, mapset={GRASS_MAPSET}")
 
 
 # Import a single (x,y) point as a GRASS vector
