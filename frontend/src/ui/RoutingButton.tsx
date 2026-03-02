@@ -30,8 +30,8 @@ const RoutingButton = ({ onClick, hidden = false }: RoutingButtonProps) => {
             borderRadius: 4,
             backgroundColor: "#EE7B04",
             color: "#fff",
-            width: 64,
-            height: 64,
+            width: 70,
+            height: 70,
 
             boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
 

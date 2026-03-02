@@ -5,12 +5,17 @@ import type { BasemapId } from "./layers/basemaps";
 import type { MapApi } from "./map/MapView";
 import type { OverlayId } from "./layers/overlays";
 import type { LatLng, PickMode, UserGeoJsonLayer } from "./types/mapTypes";
+import type { CorridorBounds } from "./types/corridor";
 
 import MapView from "./map/MapView";
 import Sidebar from "./routing/Sidebar";
 
 import Snackbar from "@mui/material/Snackbar";
 import Alert from "@mui/material/Alert";
+import Backdrop from "@mui/material/Backdrop";
+import CircularProgress from "@mui/material/CircularProgress";
+import Typography from "@mui/material/Typography";
+import Box from "@mui/material/Box";
 
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>("topo");
@@ -39,11 +44,15 @@ const App = () => {
 
   const mapApiRef = useRef<MapApi | null>(null);
 
+  const [isRouting, setIsRouting] = useState(false);
   const [routeGeoJson, setRouteGeoJson] = useState<FeatureCollection | null>(
     null
   );
   const [showCorridor, setShowCorridor] = useState(false);
-  const [corridorTifUrl, setCorridorTifUrl] = useState<string | null>(null);
+  const [corridorPngUrl, setCorridorPngUrl] = useState<string | null>(null);
+  const [corridorBounds, setCorridorBounds] = useState<CorridorBounds | null>(
+    null
+  );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleGenerateRoute = async ({
@@ -56,60 +65,69 @@ const App = () => {
     if (!startPoint || !endPoint) return;
 
     const runId = crypto.randomUUID().replaceAll("-", "_");
-
-    setShowCorridor(showCorridor);
     setRouteGeoJson(null);
+    setCorridorPngUrl(null);
+    setIsRouting(true);
     setErrorMsg(null);
 
-    const API = import.meta.env.VITE_API_BASE_URL;
+    try {
+      const API = import.meta.env.VITE_API_BASE_URL;
 
-    const res = await fetch(`${API}/route`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        start: startPoint,
-        end: endPoint,
-        lambda_weight: lambdaWeight,
-        smooth_threshold: smoothThreshold,
-        name: "run_" + runId,
-      }),
-    });
+      const res = await fetch(`${API}/route`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          start: startPoint,
+          end: endPoint,
+          lambda_weight: lambdaWeight,
+          smooth_threshold: smoothThreshold,
+          name: "run_" + runId,
+        }),
+      });
 
-    if (!res.ok) {
-      let msg = "Failed to generate route.";
-      try {
-        const err = await res.json();
-        msg = err?.detail ?? msg;
-      } catch {
-        msg = await res.text();
+      if (!res.ok) {
+        let msg = "Failed to generate route.";
+        try {
+          const err = await res.json();
+          msg = err?.detail ?? msg;
+        } catch {
+          msg = await res.text();
+        }
+        setErrorMsg(msg);
+        return;
       }
-      setErrorMsg(msg);
-      return;
-    }
 
-    const data = await res.json();
-    setRouteGeoJson(data.route);
-    console.log("corridor url from api", data.corridor?.tif_url);
-    setCorridorTifUrl(data.corridor?.tif_url ?? null);
+      const data = await res.json();
+      setRouteGeoJson(data.route);
+      setCorridorPngUrl(data.corridor?.png_url ?? null);
+      setCorridorBounds(data.corridor?.bounds ?? null);
+    } finally {
+      setIsRouting(false);
+    }
   };
 
   const clearStart = () => {
     setStartPoint(null);
     setRouteGeoJson(null);
-    setCorridorTifUrl(null);
+    setCorridorPngUrl(null);
+    setCorridorBounds(null);
   };
 
   const clearEnd = () => {
     setEndPoint(null);
     setRouteGeoJson(null);
-    setCorridorTifUrl(null);
+    setCorridorPngUrl(null);
+    setCorridorBounds(null);
   };
 
   useEffect(() => {
-    if (!startPoint || !endPoint) setRouteGeoJson(null);
-    if (!startPoint || !endPoint) setCorridorTifUrl(null);
+    if (!startPoint || !endPoint) {
+      setRouteGeoJson(null);
+      setCorridorPngUrl(null);
+      setCorridorBounds(null);
+    }
   }, [startPoint, endPoint]);
 
   const addGeoJsonLayer = (name: string, data: FeatureCollection) => {
@@ -161,7 +179,8 @@ const App = () => {
         onEndPointChange={setEndPoint}
         routeGeoJson={routeGeoJson}
         showCorridor={showCorridor}
-        corridorTifUrl={corridorTifUrl}
+        corridorPngUrl={corridorPngUrl}
+        corridorBounds={corridorBounds}
         userGeoJsonLayers={userGeoJsonLayers}
         onAddGeoJson={addGeoJsonLayer}
         onToggleGeoJson={toggleGeoJsonLayer}
@@ -199,6 +218,22 @@ const App = () => {
           {errorMsg}
         </Alert>
       </Snackbar>
+
+      <Backdrop open={isRouting} sx={{ zIndex: 2000, color: "#fff" }}>
+        <Box
+          sx={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
+          <CircularProgress />
+          <Typography>
+            Routing in progress. This may take some seconds.
+          </Typography>
+        </Box>
+      </Backdrop>
     </div>
   );
 };

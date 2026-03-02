@@ -2,28 +2,29 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Lock
-from typing import Optional, List, Tuple
-import hashlib
+from typing import List, Tuple
 import traceback
-import os
 
 import geopandas as gpd
-import rasterio
 from shapely.geometry import Point, box
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+
 from pyproj import Transformer
 
-from backend.storage.blob_outputs import upload_tif
+from backend.api.models import RouteRequest
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
+
 setup_grass_python_path()
 import grass.script as gs
 
 from backend.file_handler.area_context import load_area
 from backend.routing_algorithm.routing.core import init_grass, run_routing_for_tour
+
+from backend.api.mosaic_service import build_or_get_mosaic, set_region_local
+from backend.api.corridor_to_png import corridor_tif_to_png, warp_tif_to_3857, corridor_tif_3857_to_png, tif_3857_bounds_wgs84
 
 app = FastAPI(title="Routing API")
 
@@ -45,41 +46,14 @@ WGS84 = "EPSG:4326"
 NATIVE = "EPSG:25833"
 _to_native = Transformer.from_crs(WGS84, NATIVE, always_xy=True)
 
-# Config
 AREAS_GPKG = Path("data_preprocessing/data_cache/outlines/study_areas.gpkg")
 AREAS_LAYER = "study_areas"
-DEFAULT_BUFFER_M = 5000.0
-
 OUTPUT_ROOT = Path("data").resolve()
-
-
-
-class LatLng(BaseModel):
-    lat: float
-    lng: float
-
-
-class RouteRequest(BaseModel):
-    start: LatLng
-    end: LatLng
-    lambda_weight: float = Field(0.5, ge=0.0, le=1.0)
-    smooth_threshold: float = Field(7.5, ge=0.0, le=100.0)
-    name: Optional[str] = "adhoc"
-    buffer_m: float = Field(DEFAULT_BUFFER_M, ge=0.0, le=50000.0)
 
 
 def export_wgs84_geojson(native_geojson_path: str | Path) -> dict:
     gdf = gpd.read_file(native_geojson_path)
-    gdf_wgs84 = gdf.to_crs(WGS84)
-    return gdf_wgs84.__geo_interface__
-    
-
-
-def _safe_grass_name(s: str) -> str:
-    out = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in s)
-    if out and out[0].isdigit():
-        out = "_" + out
-    return out
+    return gdf.to_crs(WGS84).__geo_interface__
 
 
 def _load_area_index() -> gpd.GeoDataFrame:
@@ -90,32 +64,12 @@ def _load_area_index() -> gpd.GeoDataFrame:
         raise RuntimeError("Area index layer must contain column 'area_id'")
     return gdf[["area_id", "geometry"]].copy()
 
+
 def _areas_containing_point(gdf: gpd.GeoDataFrame, xy: Tuple[float, float]) -> List[str]:
     pt_native = Point(xy[0], xy[1])
     pt = gpd.GeoSeries([pt_native], crs=NATIVE).to_crs(gdf.crs).iloc[0]
     hits = gdf[gdf.contains(pt)]
     return sorted({str(x) for x in hits["area_id"].tolist()})
-
-def _set_region_to_tif_union(tif_paths: List[Path]) -> None:
-    if not tif_paths:
-        raise ValueError("No tif paths provided to set region")
-
-    left = bottom = float("inf")
-    right = top = float("-inf")
-    res = None
-
-    for p in tif_paths:
-        with rasterio.open(p) as ds:
-            b = ds.bounds
-            left = min(left, b.left)
-            bottom = min(bottom, b.bottom)
-            right = max(right, b.right)
-            top = max(top, b.top)
-            if res is None:
-                res = ds.res[0]
-
-    gs.run_command("g.region", n=top, s=bottom, e=right, w=left, res=res, quiet=True)
-
 
 
 def _areas_for_bbox(gdf: gpd.GeoDataFrame, start_xy, end_xy, buffer_m) -> List[str]:
@@ -130,110 +84,8 @@ def _areas_for_bbox(gdf: gpd.GeoDataFrame, start_xy, end_xy, buffer_m) -> List[s
     return sorted({str(x) for x in hits["area_id"].tolist()})
 
 
-def _grass_raster_exists(name: str) -> bool:
-    found = gs.find_file(name, element="cell")
-    return bool(found and found.get("name"))
-
-def _raster_has_data(name: str) -> bool:
-    txt = gs.read_command("r.univar", map=name, flags="g").strip().splitlines()
-    d = dict(line.split("=", 1) for line in txt if "=" in line)
-    return int(float(d.get("n", "0"))) > 0
-
-
-def _ensure_raster_imported(tif_path: Path, raster_name: str) -> None:
-    if _grass_raster_exists(raster_name):
-        return
-
-    gs.run_command(
-        "r.in.gdal",
-        input=str(tif_path),
-        output=raster_name,
-        overwrite=False,
-        quiet=True,
-    )
-
-
-def _mosaic_name(prefix: str, area_ids: List[str]) -> str:
-    key = ",".join(area_ids).encode("utf-8")
-    h = hashlib.sha1(key).hexdigest()[:10]
-    return f"{prefix}_mosaic_{h}"
-
-
-def _build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
-    if kind not in {"cost", "dem"}:
-        raise ValueError("kind must be 'cost' or 'dem'")
-
-    # If only one area, import and return base raster name
-    if len(area_ids) == 1:
-        area_id = area_ids[0]
-        paths, inputs = load_area(area_id)
-
-        if kind == "cost":
-            tif_path = paths.cost_surface
-            base = f"cost__{_safe_grass_name(area_id)}"
-        else:
-            tif_path = paths.dem
-            base = f"dem__{_safe_grass_name(area_id)}"
-
-        _ensure_raster_imported(tif_path, base)
-        return base
-
-    mosaic = _mosaic_name(kind, area_ids)
-
-    if _grass_raster_exists(mosaic):
-        if _raster_has_data(mosaic):
-            return mosaic
-        # cached bad mosaic, delete it
-        #gs.run_command("g.remove", type="raster", name=mosaic, flags="f", quiet=True)
-
-
-    input_maps: List[str] = []
-    tif_paths: List[Path] = []
-
-    for area_id in area_ids:
-        paths, inputs = load_area(area_id)
-
-        if kind == "cost":
-            tif_path = paths.cost_surface
-            base = f"cost__{_safe_grass_name(area_id)}"
-        else:
-            tif_path = Path(inputs["dem"])
-            base = f"dem__{_safe_grass_name(area_id)}"
-
-        _ensure_raster_imported(tif_path, base)
-        input_maps.append(base)
-        tif_paths.append(tif_path)  # <-- THIS WAS MISSING
-
-    # IMPORTANT: set region to cover all tifs BEFORE building mosaic
-    _set_region_to_tif_union(tif_paths)
-
-    # Build virtual mosaic (fast + robust)
-    gs.run_command(
-        "r.buildvrt",
-        input=",".join(input_maps),
-        output=mosaic,
-        overwrite=True,   # allow rebuild if needed
-        quiet=True,
-    )
-
-    return mosaic
-
-
-def _set_region_local(mosaic_raster: str, start_xy: Tuple[float, float], end_xy: Tuple[float, float], buffer_m: float) -> None:
-    # Align first
-    gs.run_command("g.region", raster=mosaic_raster, quiet=True)
-
-    # Then shrink to bbox window
-    minx = min(start_xy[0], end_xy[0]) - buffer_m
-    maxx = max(start_xy[0], end_xy[0]) + buffer_m
-    miny = min(start_xy[1], end_xy[1]) - buffer_m
-    maxy = max(start_xy[1], end_xy[1]) + buffer_m
-
-    gs.run_command("g.region", n=maxy, s=miny, e=maxx, w=minx, quiet=True)
-
-
-def _safe_rel_to_output_root(p: str | Path) -> str:
-    p = Path(p).resolve()
+def _safe_rel_to_output_root(p: Path) -> str:
+    p = p.resolve()
     if OUTPUT_ROOT not in p.parents and p != OUTPUT_ROOT:
         raise HTTPException(500, "Output path outside OUTPUT_ROOT")
     return str(p.relative_to(OUTPUT_ROOT))
@@ -242,6 +94,7 @@ def _safe_rel_to_output_root(p: str | Path) -> str:
 @app.on_event("startup")
 def _startup():
     try:
+        app.state.output_root = OUTPUT_ROOT
         app.state.areas_gdf = _load_area_index()
         init_grass()
         app.state.ready = True
@@ -257,7 +110,6 @@ def health():
     return {"ready": bool(getattr(app.state, "ready", False))}
 
 
-
 @app.get("/outputs/{relpath:path}")
 def get_output(relpath: str):
     p = (OUTPUT_ROOT / relpath).resolve()
@@ -265,15 +117,18 @@ def get_output(relpath: str):
         raise HTTPException(400, "Bad path")
     if not p.exists():
         raise HTTPException(404, "Not found")
-    return FileResponse(str(p), media_type="image/tiff", filename=p.name)
+
+    resp = FileResponse(str(p), filename=p.name)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.post("/route")
 def route(req: RouteRequest, request: Request):
-
     if not getattr(app.state, "ready", False):
         raise HTTPException(status_code=500, detail="API not initialized")
-    areas_gdf = app.state.areas_gdf
+
+    areas_gdf: gpd.GeoDataFrame = app.state.areas_gdf
 
     sx, sy = _to_native.transform(req.start.lng, req.start.lat)
     ex, ey = _to_native.transform(req.end.lng, req.end.lat)
@@ -283,15 +138,10 @@ def route(req: RouteRequest, request: Request):
 
     try:
         with _grass_lock:
-            gs.run_command(
-                "g.remove",
-                type="raster",
-                pattern="*",
-                flags="f",
-                quiet=True,
-            )
-            bbox_ids = _areas_for_bbox(areas_gdf, start_xy, end_xy, req.buffer_m)
+            # NOTE: wipes all rasters in the current mapset
+            gs.run_command("g.remove", type="raster", pattern="*", flags="f", quiet=True)
 
+            bbox_ids = _areas_for_bbox(areas_gdf, start_xy, end_xy, req.buffer_m)
             start_ids = _areas_containing_point(areas_gdf, start_xy)
             end_ids = _areas_containing_point(areas_gdf, end_xy)
 
@@ -304,15 +154,11 @@ def route(req: RouteRequest, request: Request):
             if not area_ids:
                 raise HTTPException(422, "No areas selected for routing.")
 
+            dem_mosaic = build_or_get_mosaic(area_ids, kind="dem")
+            cost_mosaic = build_or_get_mosaic(area_ids, kind="cost")
 
-            dem_mosaic = _build_or_get_mosaic(area_ids, kind="dem")
-            cost_mosaic = _build_or_get_mosaic(area_ids, kind="cost")
+            set_region_local(cost_mosaic, start_xy, end_xy, req.buffer_m)
 
-
-            _set_region_local(cost_mosaic, start_xy, end_xy, req.buffer_m)
-
-            # Use any one area's paths/inputs just for output folders
-            # (later you can make a dedicated output area like "adhoc")
             any_paths, any_inputs = load_area(area_ids[0])
 
             res = run_routing_for_tour(
@@ -326,7 +172,6 @@ def route(req: RouteRequest, request: Request):
                 cost_surface_override=cost_mosaic,
                 dem_override=dem_mosaic,
             )
-            print(res)
 
     except HTTPException:
         raise
@@ -339,24 +184,33 @@ def route(req: RouteRequest, request: Request):
             raise HTTPException(422, "End point is outside the routable area.")
         raise HTTPException(500, f"Routing failed. {msg}")
 
+    # Route GeoJSON (WGS84)
     geojson = export_wgs84_geojson(res["path_geojson_native"])
 
-    outputs_container = os.environ.get("BLOB_OUTPUTS_CONTAINER", "outputs")
-    corridor_local = Path(res["corridor_tif"])
-    blob_name = f"runs/{req.name or 'adhoc'}/{corridor_local.name}"
-    corridor_url = upload_tif(outputs_container, blob_name, corridor_local)
-    # delete local file to avoid storing user outputs
-    try:
-        corridor_local.unlink(missing_ok=True)
-    except Exception:
-        pass
+    # Corridor outputs
+    corridor_tif = Path(res["corridor_tif"])
 
+    corridor_tif_3857 = corridor_tif.with_name(corridor_tif.stem + "_3857.tif")
+    corridor_png = corridor_tif.with_suffix(".png")
 
+    warp_tif_to_3857(corridor_tif, corridor_tif_3857)
+    corridor_tif_3857_to_png(corridor_tif_3857, corridor_png, threshold=0.95)
+    bounds = tif_3857_bounds_wgs84(corridor_tif_3857)
+
+    # Local URL for PNG via /outputs
+    png_rel = _safe_rel_to_output_root(corridor_png)
+    png_url = str(request.base_url).rstrip("/") + "/outputs/" + png_rel
+
+    # Optional: also return tif_url (local only) for debugging
+    tif_rel = _safe_rel_to_output_root(corridor_tif)
+    tif_url = str(request.base_url).rstrip("/") + "/outputs/" + tif_rel
 
     return {
         "route": geojson,
         "corridor": {
-            "tif_url": corridor_url,
+            "png_url": png_url,
+            "bounds": bounds,
+            "tif_url": tif_url,  # optional
         },
         "meta": {
             "area_ids": area_ids,

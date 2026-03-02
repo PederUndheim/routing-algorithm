@@ -28,7 +28,7 @@ import RoutingButton from "../ui/RoutingButton";
 import MapClickPicker from "../ui/MapClickPicker";
 import ScaleBar from "../ui/ScaleBar";
 import CursorCoords from "../ui/CursorCoords";
-import CorridorRaster from "./CorridorRaster";
+import CorridorOverlay from "./CorridorOverlay";
 
 const center: [number, number] = [62.63, 7.896];
 
@@ -43,12 +43,14 @@ type DraggableMarkerProps = {
   position: LatLng;
   icon: L.DivIcon;
   onPositionChange: (position: LatLng) => void;
+  pane?: string;
 };
 
 const DraggableMarker = ({
   position,
   icon,
   onPositionChange,
+  pane,
 }: DraggableMarkerProps) => {
   return (
     <Marker
@@ -62,6 +64,7 @@ const DraggableMarker = ({
           onPositionChange({ lat: latLng.lat, lng: latLng.lng });
         },
       }}
+      pane={pane}
     />
   );
 };
@@ -89,7 +92,13 @@ type MapViewProps = {
   onEndPointChange: (point: LatLng | null) => void;
   routeGeoJson?: FeatureCollection | null;
   showCorridor: boolean;
-  corridorTifUrl?: string | null;
+  corridorPngUrl?: string | null;
+  corridorBounds?: {
+    west: number;
+    south: number;
+    east: number;
+    north: number;
+  } | null;
   userGeoJsonLayers: UserGeoJsonLayer[];
   onAddGeoJson: (name: string, data: FeatureCollection) => void;
   onToggleGeoJson: (id: string) => void;
@@ -116,7 +125,8 @@ const MapView = ({
   onEndPointChange,
   routeGeoJson,
   showCorridor,
-  corridorTifUrl,
+  corridorPngUrl,
+  corridorBounds,
   userGeoJsonLayers,
   onAddGeoJson,
   onToggleGeoJson,
@@ -146,7 +156,7 @@ const MapView = ({
           />
         </Pane>
 
-        <Pane name="overlays" style={{ zIndex: 400 }}>
+        <Pane name="overlays" style={{ zIndex: 300 }}>
           {OVERLAYS.map((o) => {
             if (!overlays[o.id]) return null;
 
@@ -184,7 +194,7 @@ const MapView = ({
 
         {geoJsonVisible &&
           userGeoJsonLayers?.some((layer) => layer.visible) && (
-            <Pane name="user-geojson" style={{ zIndex: 500 }}>
+            <Pane name="user-geojson" style={{ zIndex: 400 }}>
               {userGeoJsonLayers
                 .filter((layer) => layer.visible)
                 .map((layer) => (
@@ -203,7 +213,7 @@ const MapView = ({
           )}
 
         {routeGeoJson && (
-          <Pane name="route" style={{ zIndex: 650 }}>
+          <Pane name="route" style={{ zIndex: 450 }}>
             <GeoJSON
               data={routeGeoJson}
               style={() => ({
@@ -215,15 +225,15 @@ const MapView = ({
           </Pane>
         )}
 
-        {corridorTifUrl && showCorridor && (
-          <CorridorRaster
-            key={corridorTifUrl}
-            tifUrl={corridorTifUrl}
-            opacity={0.6}
-            paneName={`corridor_${corridorTifUrl
-              .split("/")
-              .pop()!
-              .replaceAll(".", "_")}`}
+        <Pane name="corridor" style={{ zIndex: 500, pointerEvents: "none" }} />
+        <Pane name="markers" style={{ zIndex: 600, pointerEvents: "auto" }} />
+
+        {corridorPngUrl && corridorBounds && showCorridor && (
+          <CorridorOverlay
+            key={corridorPngUrl}
+            pngUrl={corridorPngUrl}
+            bounds={corridorBounds}
+            opacity={0.4}
           />
         )}
 
@@ -233,6 +243,7 @@ const MapView = ({
             position={startPoint}
             icon={startIcon}
             onPositionChange={(p) => onStartPointChange(p)}
+            pane="markers"
           />
         )}
         {endPoint && (
@@ -240,6 +251,7 @@ const MapView = ({
             position={endPoint}
             icon={endIcon}
             onPositionChange={(p) => onEndPointChange(p)}
+            pane="markers"
           />
         )}
 

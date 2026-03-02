@@ -67,7 +67,7 @@ const RouteControls = ({
   };
 
   return (
-    <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 3 }}>
+    <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
       {/* Start point row */}
       <Box>
         <Typography variant="subtitle2" sx={{ color: "white", mb: 1 }}>
@@ -194,13 +194,12 @@ const RouteControls = ({
         </Typography>
         <Typography
           sx={{
-            mt: 0.8,
             ml: 0.8,
             fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
-          Higher values give more importance to cost friction vs distance.
+          More importance to cost friction vs distance.
         </Typography>
         <Box sx={{ px: 2 }}>
           <Slider
@@ -233,14 +232,12 @@ const RouteControls = ({
         </Typography>
         <Typography
           sx={{
-            mt: 0.8,
             ml: 0.8,
             fontSize: 12,
             color: "rgba(255,255,255,0.75)",
           }}
         >
-          Maximal allowed deviation (in meters) from original route when
-          simplifying route.
+          Max deviation [m] from route when simplifying.
         </Typography>
         <Box sx={{ px: 2 }}>
           <Slider
@@ -267,10 +264,15 @@ const RouteControls = ({
         </Box>
       </Box>
 
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+
       <FormControlLabel
         label={
-          <Typography sx={{ color: "rgba(255,255,255,0.85)", fontSize: 14 }}>
-            Show corridor
+          <Typography
+            variant="subtitle2"
+            sx={{ color: "rgba(255,255,255,0.85)" }}
+          >
+            Show area of possible route choices
           </Typography>
         }
         control={
@@ -280,6 +282,7 @@ const RouteControls = ({
             sx={{
               color: "rgba(255,255,255,0.55)",
               "&.Mui-checked": { color: "#367E98" },
+              pl: 0,
             }}
           />
         }
