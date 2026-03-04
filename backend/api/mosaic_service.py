@@ -36,6 +36,9 @@ def raster_has_data(name: str) -> bool:
 def ensure_raster_imported(tif_path: Path, raster_name: str) -> None:
     if grass_raster_exists(raster_name):
         return
+    
+    if not tif_path.exists():
+        raise FileNotFoundError(f"Missing raster source tif: {tif_path}")
 
     gs.run_command(
         "r.in.gdal",
@@ -83,6 +86,8 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
 
     if not area_ids:
         raise ValueError("area_ids is empty")
+    
+    print("MOSAIC_SERVICE_VERSION=2026-03-03-A")
 
     # Single area: import and return base raster
     if len(area_ids) == 1:
@@ -93,7 +98,7 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
             tif_path = Path(paths.cost_surface)
             base = f"cost__{safe_grass_name(area_id)}"
         else:
-            tif_path = Path(paths.dem)  # or Path(inputs["dem"]) depending on your structure
+            tif_path = Path(paths.dem)
             base = f"dem__{safe_grass_name(area_id)}"
 
         ensure_raster_imported(tif_path, base)

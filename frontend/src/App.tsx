@@ -54,6 +54,32 @@ const App = () => {
     null
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const API = import.meta.env.VITE_API_BASE_URL;
+
+    if (!API) return;
+
+    let cancelled = false;
+
+    const warmUp = async () => {
+      try {
+        await fetch(`${API}/health`, {
+          method: "GET",
+          cache: "no-store",
+        });
+      } catch (err) {
+        if (!cancelled) {
+          console.debug("Backend warm-up ping failed (likely cold start)");
+        }
+      }
+    };
+    warmUp();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleGenerateRoute = async ({
     lambdaWeight,
@@ -63,6 +89,11 @@ const App = () => {
     smoothThreshold: number;
   }) => {
     if (!startPoint || !endPoint) return;
+
+    if (activeRunId) {
+      await deleteRun(activeRunId);
+      setActiveRunId(null);
+    }
 
     const runId = crypto.randomUUID().replaceAll("-", "_");
     setRouteGeoJson(null);
@@ -103,6 +134,7 @@ const App = () => {
       setRouteGeoJson(data.route);
       setCorridorPngUrl(data.corridor?.png_url ?? null);
       setCorridorBounds(data.corridor?.bounds ?? null);
+      setActiveRunId(data.run_id ?? null);
     } finally {
       setIsRouting(false);
     }
@@ -120,6 +152,22 @@ const App = () => {
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
     setCorridorBounds(null);
+  };
+
+  const toggleGeoJsonLayer = (id: string) => {
+    setUserGeoJsonLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === id ? { ...layer, visible: !layer.visible } : layer
+      )
+    );
+  };
+  const removeGeoJsonLayer = (id: string) => {
+    setUserGeoJsonLayers((prev) => prev.filter((layer) => layer.id !== id));
+  };
+
+  const deleteRun = async (runId: string) => {
+    const API = import.meta.env.VITE_API_BASE_URL;
+    await fetch(`${API}/runs_output/${runId}`, { method: "DELETE" });
   };
 
   useEffect(() => {
@@ -140,16 +188,6 @@ const App = () => {
         data,
       },
     ]);
-  };
-  const toggleGeoJsonLayer = (id: string) => {
-    setUserGeoJsonLayers((prev) =>
-      prev.map((layer) =>
-        layer.id === id ? { ...layer, visible: !layer.visible } : layer
-      )
-    );
-  };
-  const removeGeoJsonLayer = (id: string) => {
-    setUserGeoJsonLayers((prev) => prev.filter((layer) => layer.id !== id));
   };
 
   return (

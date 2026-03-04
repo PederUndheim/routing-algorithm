@@ -72,6 +72,7 @@ def run(area_id: str, tours: Optional[List[Tour]] = None) -> None:
             smooth_threshold=config.ROUTING_SETTINGS["smooth_threshold"],
             multi_routing=config.MULTIROUTING,
             multi_routing_params=config.MULTIROUTING_PARAMS,
+            output_mode="area"
         )
 
         slug = _safe_slug(tour.name)

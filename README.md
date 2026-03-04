@@ -28,13 +28,14 @@ export APP_ENV="env-routing-algorithm"
 export APP_NAME="api-routing-algorithm"
 export IMAGE_REPO="image-routing-algorithm"
 export APP_FQDN="api-routing-algorithm.mangohill-479de517.swedencentral.azurecontainerapps.io"
+export SA_NAME="skirouting02241318out"
 
 az acr login -n "$ACR_NAME"
 
 docker buildx build \
  --platform linux/amd64 \
  -f backend/Dockerfile \
- -t "$ACR_NAME.azurecr.io/$IMAGE_REPO:latest" \
+ -t "$ACR_NAME.azurecr.io/image-routing-algorithm:latest" \
  --push \
  .
 
@@ -43,7 +44,7 @@ az containerapp update \
   -g "$AZ_RG" \
  --image "$ACR_NAME.azurecr.io/image-routing-algorithm:latest"
 
-curl -s "https://$APP_FQDN/health"
+curl -i "https://$APP_FQDN/health"
 
 ---
 

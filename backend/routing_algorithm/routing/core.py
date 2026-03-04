@@ -1,7 +1,7 @@
 from pathlib import Path
 import subprocess
 import os
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, Literal
 from backend.file_handler.area_paths import AreaPaths
 
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path, GRASS_DB, GRASS_LOCATION, GRASS_MAPSET
@@ -13,31 +13,41 @@ import grass.script as gs
 import grass.script.setup as gsetup
 
 
+# Create a GRASS-safe layer name
+def _safe_name(base: str) -> str:
+    out = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in base)
+    if out and out[0].isdigit():
+        out = "_" + out
+    return out
+
 def _grass_base_names(area_id: str) -> tuple[str, str]:
     safe = _safe_name(area_id.lower())
     return f"dem__{safe}", f"cost__{safe}"
 
-def ensure_base_rasters(area_id: str, dem_path: Path, cost_surface_path: Path) -> tuple[str, str]:
+def ensure_base_rasters(paths: AreaPaths) -> tuple[str, str]:
     """
     Import DEM + cost surface into GRASS raster names unique per area.
     Returns (DEM_NAME, COST_NAME).
     Safe to call multiple times.
     """
-    dem_name, cost_name = _grass_base_names(area_id)
+
+    print("USING ensure_base_rasters(paths) NEW VERSION", paths.dem, paths.cost_surface)
+    
+    dem_name, cost_name = _grass_base_names(paths.area_id)
 
     existing = set(gs.list_strings(type="raster"))
 
     if dem_name not in existing:
-        print(f"Importing DEM -> {dem_name}")
+        dem_path = paths.dem
+        if not dem_path.exists():
+            raise FileNotFoundError(f"Runtime DEM missing: {dem_path}")
         gs.run_command("r.in.gdal", input=str(dem_path), output=dem_name, overwrite=True)
-    else:
-        print(f"DEM already present -> {dem_name}")
 
     if cost_name not in existing:
-        print(f"Importing cost surface -> {cost_name}")
-        gs.run_command("r.in.gdal", input=str(cost_surface_path), output=cost_name, overwrite=True)
-    else:
-        print(f"Cost surface already present -> {cost_name}")
+        cost_path = paths.cost_surface
+        if not cost_path.exists():
+            raise FileNotFoundError(f"Runtime cost surface missing: {cost_path}")
+        gs.run_command("r.in.gdal", input=str(cost_path), output=cost_name, overwrite=True)
 
     return dem_name, cost_name
 
@@ -86,13 +96,6 @@ def _import_points(name: str, coords: Tuple[float, float]) -> None:
     print(f"Imported point {name} at ({x}, {y}).")
 
 
-# Create a GRASS-safe layer name
-def _safe_name(base: str) -> str:
-    out = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in base)
-    if out and out[0].isdigit():
-        out = "_" + out
-    return out
-
 # Sample raster value at vector point
 def _sample_raster_at_point(raster: str, vector_point: str) -> float:
     out = gs.read_command("r.what", map=raster, points=vector_point).strip()
@@ -113,7 +116,7 @@ def _sample_raster_at_point(raster: str, vector_point: str) -> float:
     except Exception:
         raise RuntimeError(f"Failed to parse value from r.what output: {out}")
 
-
+OutputMode = Literal["area", "run"]
 
 def run_routing_for_tour(
     paths: AreaPaths,
@@ -125,9 +128,11 @@ def run_routing_for_tour(
     lambda_weight: float,
     smooth_threshold: float,
     multi_routing: bool = False,
-    multi_routing_params: Optional[Dict[str, Any]] = None,
     cost_surface_override: Optional[str] = None,
     dem_override: Optional[str] = None,
+    output_mode: OutputMode = "area",
+    run_id: Optional[str] = None,
+    output_root: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Run the full GRASS routing for a single tour and export outputs.
@@ -144,30 +149,56 @@ def run_routing_for_tour(
     optimal_path = f"path_{slug}"
     smooth_path = f"path_smooth_{slug}"
 
+
+    ###### Debugging
+    def _stat(p: Path) -> str:
+        try:
+            s = p.stat()
+            return f"exists size={s.st_size} bytes"
+        except FileNotFoundError:
+            return "MISSING"
+
+    print("DEM:", paths.dem, _stat(paths.dem))
+    print("COST:", paths.cost_surface, _stat(paths.cost_surface))
+    ########
+
     if dem_override is not None and cost_surface_override is not None:
         dem_name = dem_override
         cost_name = cost_surface_override
     else:
-        dem_name, cost_name = ensure_base_rasters(
-        area_id=paths.area_id,
-        dem_path=inputs["dem"],
-        cost_surface_path=paths.cost_surface,
-    )
+        dem_name, cost_name = ensure_base_rasters(paths)
+
 
     gs.run_command("g.region", raster=dem_name, flags="a")
 
     # Ensure output dirs
-    corridor_dir = paths.corridor
-    geojson_native_dir = paths.routes_geojson_native
-    shp_dir = paths.routes_shp
+    if output_mode == "run":
+        if not run_id:
+            raise ValueError("run_id must be provided when output_mode is 'run'")
+        if output_root is None:
+            raise ValueError("output_root must be provided when output_mode is 'run'")
+
+        output_root = Path(output_root).resolve()
+        output_base = (output_root / "runs_output" / run_id).resolve()
+
+        corridor_dir = output_base / "corridor"
+        route_dir = output_base / "route"
+    else:
+        corridor_dir = paths.corridor
+        route_dir = paths.route_dir
 
     corridor_dir.mkdir(parents=True, exist_ok=True)
-    geojson_native_dir.mkdir(parents=True, exist_ok=True)
-    shp_dir.mkdir(parents=True, exist_ok=True)
+    route_dir.mkdir(parents=True, exist_ok=True)
 
-    corridor_tif = corridor_dir / f"{slug}_corridor.tif"
-    path_geojson = geojson_native_dir / f"{slug}_path.geojson"
-    path_shp = shp_dir / f"{slug}_path.shp"
+    if output_mode == "run":
+        corridor_tif = corridor_dir / "corridor.tif"
+        path_geojson = route_dir / "path.geojson"
+    else:
+        corridor_tif = corridor_dir / f"{slug}_corridor.tif"
+        path_geojson = route_dir / f"{slug}_path.geojson"
+
+
+
 
 
     # 1) Import points
@@ -300,13 +331,6 @@ def run_routing_for_tour(
     gs.run_command(
         "v.out.ogr",
         input=smooth_path,
-        output=str(path_shp),
-        format="ESRI_Shapefile",
-        overwrite=True
-    )
-    gs.run_command(
-        "v.out.ogr",
-        input=smooth_path,
         output=str(path_geojson),
         format="GeoJSON",
         overwrite=True
@@ -315,6 +339,5 @@ def run_routing_for_tour(
 
     return {
         "corridor_tif": str(corridor_tif),
-        "path_shapefile": str(path_shp),
         "path_geojson_native": str(path_geojson)
     }

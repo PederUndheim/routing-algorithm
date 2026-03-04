@@ -5,28 +5,6 @@ from PIL import Image
 from pyproj import Transformer
 from rasterio.warp import calculate_default_transform, reproject, Resampling
 
-
-
-def corridor_tif_to_png(tif_path: Path, png_path: Path, threshold: float = 0.95) -> None:
-    with rasterio.open(tif_path) as ds:
-        arr = ds.read(1).astype(np.float32)
-        nodata = ds.nodata
-
-    mask = np.zeros(arr.shape, dtype=np.uint8)
-    if nodata is not None:
-        arr[arr == nodata] = np.nan
-
-    mask[(~np.isnan(arr)) & (arr > threshold)] = 255
-
-    # RGBA: color corridor pixels, transparent elsewhere
-    rgba = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
-    rgba[..., 0] = 0x36  # R
-    rgba[..., 1] = 0x7E  # G
-    rgba[..., 2] = 0x98  # B
-    rgba[..., 3] = mask  # alpha
-
-    Image.fromarray(rgba, mode="RGBA").save(png_path)
-
 WEBM = "EPSG:3857"
 WGS84 = "EPSG:4326"
 
@@ -53,27 +31,43 @@ def warp_tif_to_3857(src_tif: Path, dst_tif: Path) -> None:
                 src_crs=src.crs,
                 dst_transform=transform,
                 dst_crs=WEBM,
-                resampling=Resampling.nearest,
+                resampling=Resampling.bilinear,
             )
 
 
-def corridor_tif_3857_to_png(tif_3857: Path, png_path: Path, threshold: float = 0.95) -> None:
+def corridor_tif_3857_to_png(tif_3857: Path, png_path: Path) -> None:
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+
     with rasterio.open(tif_3857) as ds:
         arr = ds.read(1).astype(np.float32)
         nodata = ds.nodata
 
+    # Mask nodata only
     if nodata is not None:
-        arr = np.where(np.isclose(arr, nodata), np.nan, arr)
+        valid_mask = ~np.isclose(arr, nodata)
+    else:
+        valid_mask = np.isfinite(arr)
 
-    mask = ((~np.isnan(arr)) & (arr > threshold)).astype(np.uint8) * 255
+    # Replace invalid values with 0 just for scaling
+    arr_clean = np.where(valid_mask, arr, 0.0)
 
-    rgba = np.zeros((mask.shape[0], mask.shape[1], 4), dtype=np.uint8)
+    # Normalize full value range
+    vmin = np.nanmin(arr_clean[valid_mask])
+    vmax = np.nanmax(arr_clean[valid_mask])
+
+    norm = (arr_clean - vmin) / (vmax - vmin + 1e-9)
+    norm = np.clip(norm, 0.0, 1.0)
+
+    alpha = (norm * 255).astype(np.uint8)
+
+    rgba = np.zeros((arr.shape[0], arr.shape[1], 4), dtype=np.uint8)
+
     rgba[..., 0] = 0x36
     rgba[..., 1] = 0x7E
     rgba[..., 2] = 0x98
-    rgba[..., 3] = mask
+    rgba[..., 3] = np.where(valid_mask, alpha, 0)
 
-    Image.fromarray(rgba, mode="RGBA").save(png_path)
+    Image.fromarray(rgba, mode="RGBA").save(png_path, optimize=True)
 
 
 def tif_3857_bounds_wgs84(tif_3857: Path) -> dict:

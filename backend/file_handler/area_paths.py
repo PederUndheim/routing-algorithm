@@ -25,6 +25,15 @@ class AreaPaths:
     def dem(self) -> Path:
         return self.runtime_area_root / "dem.tif"
     
+
+    #--- RUNS OUTPUT ----
+    @property
+    def data_root(self) -> Path:
+        return self.project_root / "data"
+
+    def run_root(self, run_id: str) -> Path:
+        return self.data_root / "runs_output" / run_id
+    
     
     # ---- INPUT ----
     @property
@@ -50,36 +59,28 @@ class AreaPaths:
         return self.cost_surface_dir / "debug_cost_layer"
     
     @property
-    def routes_dir(self) -> Path:
-        return self.output / "routes"
+    def route_dir(self) -> Path:
+        return self.output / "route"
     
     @property
-    def routes_geojson_native(self) -> Path:
-        return self.routes_dir / "route_geojson" / "native"
+    def route_native(self) -> Path:
+        return self.route_dir / "native"
     
     @property
-    def routes_geojson_wgs84(self) -> Path:
-        return self.routes_dir / "route_geojson" / "wgs84"
-    
-    @property
-    def routes_shp(self) -> Path:
-        return self.routes_dir / "route_shp"
+    def route_wgs84(self) -> Path:
+        return self.route_dir / "wgs84"
     
     @property
     def multirouting_dir(self) -> Path:
         return self.output / "multirouting"
     
     @property
-    def multirouting_geojson_native(self) -> Path:
-        return self.multirouting_dir / "route_geojson" / "native"
+    def multirouting_native(self) -> Path:
+        return self.multirouting_dir / "native"
     
     @property
-    def multirouting_geojson_wgs84(self) -> Path:
-        return self.multirouting_dir / "route_geojson" / "wgs84"
-    
-    @property
-    def multirouting_shp(self) -> Path:
-        return self.multirouting_dir / "route_shp"
+    def multirouting_wgs84(self) -> Path:
+        return self.multirouting_dir / "wgs84"
     
     @property
     def multirouting_heatmap(self) -> Path:
