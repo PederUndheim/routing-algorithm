@@ -3,7 +3,10 @@ from __future__ import annotations
 import os
 import uuid
 import traceback
+import json
 import geopandas as gpd
+import gpxpy
+import gpxpy.gpx
 import shutil
 from pathlib import Path
 from threading import Lock
@@ -12,7 +15,7 @@ from shapely.geometry import Point, box
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -72,6 +75,40 @@ def _get_output_root() -> Path:
 def _export_wgs84_geojson(native_geojson_path: str | Path) -> dict:
     gdf = gpd.read_file(native_geojson_path)
     return gdf.to_crs(WGS84).__geo_interface__
+
+
+def _geojson_to_gpx(geojson_dict: dict) -> str:
+    """Convert GeoJSON LineString to GPX format."""
+    gpx = gpxpy.gpx.GPX()
+    
+    try:
+        # Extract coordinates from GeoJSON
+        features = geojson_dict.get("features", [])
+        if not features:
+            raise ValueError("No features in GeoJSON")
+        
+        geometry = features[0].get("geometry", {})
+        coords = geometry.get("coordinates", [])
+        
+        if not coords:
+            raise ValueError("No coordinates in feature")
+        
+        # Create track segment
+        track = gpxpy.gpx.GPXTrack()
+        segment = gpxpy.gpx.GPXTrackSegment()
+        
+        for coord in coords:
+            if len(coord) >= 2:
+                lng, lat = coord[0], coord[1]
+                segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude=lat, longitude=lng))
+        
+        if segment.points:
+            track.segments.append(segment)
+            gpx.tracks.append(track)
+        
+        return gpx.to_xml()
+    except Exception as e:
+        raise ValueError(f"Error converting GeoJSON to GPX: {str(e)}")
 
 
 def _load_area_index() -> gpd.GeoDataFrame:
@@ -265,3 +302,56 @@ def route(req: RouteRequest, request: Request):
             "outputs": {k: str(v) for k, v in res.items()},
         },
     }
+
+
+@app.get("/runs_output/{run_id}/route.gpx")
+def download_route_gpx(run_id: str, request: Request):
+    """Download route as GPX file."""
+    try:
+        run_dir = request.app.state.output_root / "runs_output" / run_id
+        path_geojson = run_dir / "route" / "path.geojson"
+        
+        if not path_geojson.exists():
+            raise HTTPException(404, f"Route not found at {path_geojson}")
+        
+        # Read GeoJSON, convert to WGS84, then to GPX
+        geojson_dict = _export_wgs84_geojson(path_geojson)
+        gpx_content = _geojson_to_gpx(geojson_dict)
+        
+        return Response(
+            content=gpx_content,
+            media_type="application/gpx+xml",
+            headers={"Content-Disposition": "attachment; filename=route.gpx"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in route.gpx endpoint: {str(e)}")
+        raise HTTPException(500, f"Failed to generate GPX: {str(e)}")
+
+
+@app.get("/runs_output/{run_id}/route.geojson")
+def download_route_geojson(run_id: str, request: Request):
+    """Download route as GeoJSON file in WGS84."""
+    try:
+        run_dir = request.app.state.output_root / "runs_output" / run_id
+        path_geojson = run_dir / "route" / "path.geojson"
+        
+        if not path_geojson.exists():
+            raise HTTPException(404, f"Route not found at {path_geojson}")
+        
+        # Convert to WGS84 and return as JSON
+        geojson_dict = _export_wgs84_geojson(path_geojson)
+        
+        response = JSONResponse(geojson_dict)
+        response.headers["Content-Disposition"] = "attachment; filename=route.geojson"
+        return response
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"Error in route.geojson endpoint: {str(e)}")
+        raise HTTPException(500, f"Failed to retrieve GeoJSON: {str(e)}")

@@ -191,7 +191,7 @@ const App = () => {
   };
 
   return (
-    <div style={{ height: "100vh" }}>
+    <div style={{ height: "100dvh" }}>
       <MapView
         basemap={basemap}
         onBasemapChange={setBasemap}
@@ -239,6 +239,7 @@ const App = () => {
         onClearStart={clearStart}
         onClearEnd={clearEnd}
         onGenerate={handleGenerateRoute}
+        runId={activeRunId}
       />
 
       <Snackbar

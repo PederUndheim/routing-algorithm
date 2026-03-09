@@ -5,6 +5,8 @@ import Box from "@mui/material/Box";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import Divider from "@mui/material/Divider";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 
@@ -30,11 +32,12 @@ type SidebarProps = {
     lambdaWeight: number;
     smoothThreshold: number;
   }) => void;
+  runId: string | null;
 };
 
-const MIN_W = 250;
-const MAX_W = 800;
-const DEFAULT_W = 330;
+const MIN_W = 280;
+const MAX_W = 1100;
+const DEFAULT_W = 360;
 
 const Sidebar = ({
   open,
@@ -48,14 +51,31 @@ const Sidebar = ({
   onClearStart,
   onClearEnd,
   onGenerate,
+  runId,
 }: SidebarProps) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isLargeDesktop = useMediaQuery(theme.breakpoints.up("xl"));
   const [width, setWidth] = useState(DEFAULT_W);
   const draggingRef = useRef(false);
+  const desktopMaxWidth = Math.min(MAX_W, Math.floor(window.innerWidth * 0.58));
+  const effectiveWidth = isMobile
+    ? Math.min(window.innerWidth * 0.96, 420)
+    : Math.max(MIN_W, Math.min(width, desktopMaxWidth));
+
+  useEffect(() => {
+    if (isMobile) return;
+    setWidth((prev) => {
+      if (prev !== DEFAULT_W) return prev;
+      return isLargeDesktop ? 460 : 380;
+    });
+  }, [isMobile, isLargeDesktop]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (!draggingRef.current) return;
-      const next = Math.max(MIN_W, Math.min(MAX_W, e.clientX));
+      const maxForViewport = Math.min(MAX_W, Math.floor(window.innerWidth * 0.58));
+      const next = Math.max(MIN_W, Math.min(maxForViewport, e.clientX));
       setWidth(next);
     };
     const onUp = () => {
@@ -75,22 +95,24 @@ const Sidebar = ({
     <Drawer
       anchor="left"
       open={open}
-      variant="persistent"
+      variant={isMobile ? "temporary" : "persistent"}
       onClose={onClose}
       ModalProps={{
         keepMounted: true,
-        hideBackdrop: true,
+        hideBackdrop: !isMobile,
         disableEnforceFocus: true,
         disableAutoFocus: true,
         disableRestoreFocus: true,
       }}
       sx={{
-        width: width,
+        width: effectiveWidth,
         flexShrink: 0,
         "& .MuiDrawer-paper": {
-          width: width,
+          width: effectiveWidth,
           backgroundColor: "#555555",
-          overflow: "visible",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
           boxSizing: "border-box",
           borderRight: "1px solid rgba(0,0,0,0.12)",
         },
@@ -99,7 +121,7 @@ const Sidebar = ({
       {/* Header */}
       <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
         <Typography
-          variant="h5"
+          variant={isMobile ? "h6" : "h5"}
           sx={{ flex: 1, color: "white", fontWeight: 540 }}
         >
           Route generation
@@ -111,93 +133,98 @@ const Sidebar = ({
 
       <Divider color="#EE7B04" variant="middle" />
 
-      <RouteControls
-        startPoint={startPoint}
-        endPoint={endPoint}
-        pickMode={pickMode}
-        onPickModeChange={onPickModeChange}
-        showCorridor={showCorridor}
-        onShowCorridorChange={onShowCorridorChange}
-        onClearStart={onClearStart}
-        onClearEnd={onClearEnd}
-        onGenerate={onGenerate}
-      />
+      <Box sx={{ flex: 1, overflowY: "auto" }}>
+        <RouteControls
+          startPoint={startPoint}
+          endPoint={endPoint}
+          pickMode={pickMode}
+          onPickModeChange={onPickModeChange}
+          showCorridor={showCorridor}
+          onShowCorridorChange={onShowCorridorChange}
+          onClearStart={onClearStart}
+          onClearEnd={onClearEnd}
+          onGenerate={onGenerate}
+          runId={runId}
+        />
+      </Box>
 
       {/* Logos */}
       <Box
         sx={{
-          position: "absolute",
-          bottom: 16,
-          left: 16,
-          right: 16,
+          px: 2,
+          pb: 2,
+          pt: 1,
+          mt: "auto",
           display: "flex",
           flexDirection: "row",
           justifyContent: "center",
-          gap: 2,
+          gap: { xs: 1.2, sm: 2 },
         }}
       >
         <Box
           component="img"
           src={LogoNVE}
           alt="NVE Logo"
-          sx={{ height: 40, objectFit: "contain" }}
+          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
         />
         <Box
           component="img"
           src={LogoVarsom}
           alt="Varsom Logo"
-          sx={{ height: 40, objectFit: "contain" }}
+          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
         />
         <Box
           component="img"
           src={LogoNTNU}
           alt="NTNU Logo"
-          sx={{ height: 40, objectFit: "contain" }}
+          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
         />
       </Box>
 
       {/* Drag handle */}
-      <Box
-        onMouseDown={() => {
-          draggingRef.current = true;
-          document.body.style.cursor = "col-resize";
-          document.body.style.userSelect = "none";
-        }}
-        sx={{
-          position: "absolute",
-          top: 0,
-          right: -4,
-          width: 10,
-          height: "100%",
-          cursor: "col-resize",
-          zIndex: 1400,
-          "&:hover": {
-            backgroundColor: "rgba(0,0,0,0.16)",
-          },
-        }}
-      >
-        <IconButton
-          onClick={onClose}
-          size="small"
+      {!isMobile && (
+        <Box
+          onMouseDown={() => {
+            draggingRef.current = true;
+            document.body.style.cursor = "col-resize";
+            document.body.style.userSelect = "none";
+          }}
           sx={{
-            borderRadius: 2,
-            width: 20,
-            height: 40,
             position: "absolute",
-            top: "50%",
-            right: -6,
-            transform: "translateY(-50%)",
-            backgroundColor: "#555555",
-            zIndex: 1500,
+            top: 0,
+            right: -4,
+            width: 10,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 1400,
             "&:hover": {
-              backgroundColor: "#777777",
-              boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              backgroundColor: "rgba(0,0,0,0.16)",
             },
           }}
         >
-          <ChevronLeftIcon sx={{ color: "white", fontSize: 30 }} />
-        </IconButton>
-      </Box>
+          <IconButton
+            onClick={onClose}
+            size="small"
+            sx={{
+              borderRadius: 2,
+              width: 20,
+              height: 40,
+              position: "absolute",
+              top: "50%",
+              right: -6,
+              transform: "translateY(-50%)",
+              backgroundColor: "#555555",
+              zIndex: 1500,
+              "&:hover": {
+                backgroundColor: "#777777",
+                boxShadow: "0 0 5px rgba(0,0,0,0.3)",
+              },
+            }}
+          >
+            <ChevronLeftIcon sx={{ color: "white", fontSize: 30 }} />
+          </IconButton>
+        </Box>
+      )}
     </Drawer>
   );
 };

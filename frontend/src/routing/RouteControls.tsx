@@ -5,8 +5,10 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
+import Stack from "@mui/material/Stack";
+import FileDownloadIcon from "@mui/icons-material/FileDownload";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { LatLng, PickMode } from "../types/mapTypes";
 
@@ -23,6 +25,7 @@ type RouteControlsProps = {
     lambdaWeight: number;
     smoothThreshold: number;
   }) => void;
+  runId: string | null;
 };
 
 const formatCoord = (p: LatLng) =>
@@ -48,6 +51,7 @@ const RouteControls = ({
   onClearStart,
   onClearEnd,
   onGenerate,
+  runId,
 }: RouteControlsProps) => {
   const DEFAULT_LAMBDA_WEIGHT = 0.7;
   const DEFAULT_SMOOTH_THRESHOLD = 8;
@@ -57,8 +61,55 @@ const RouteControls = ({
   const [smoothThreshold, setSmoothThreshold] = useState(
     DEFAULT_SMOOTH_THRESHOLD
   );
+  const [routeInputsDirty, setRouteInputsDirty] = useState(false);
+
+  useEffect(() => {
+    // A newly received runId means routing completed successfully.
+    setRouteInputsDirty(false);
+  }, [runId]);
+
+  const handleDownloadGPX = async () => {
+    if (!runId) return;
+    try {
+      const API = import.meta.env.VITE_API_BASE_URL;
+      const response = await fetch(
+        `${API}/runs_output/${runId}/route.gpx`
+      );
+      if (!response.ok) throw new Error("Failed to download GPX");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "route.gpx";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading GPX:", error);
+    }
+  };
+
+  const handleDownloadGeoJSON = async () => {
+    if (!runId) return;
+    try {
+      const API = import.meta.env.VITE_API_BASE_URL;
+      const response = await fetch(
+        `${API}/runs_output/${runId}/route.geojson`
+      );
+      if (!response.ok) throw new Error("Failed to download GeoJSON");
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "route.geojson";
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Error downloading GeoJSON:", error);
+    }
+  };
 
   const resetRoutingParameters = () => {
+    setRouteInputsDirty(true);
     setLambdaWeight(DEFAULT_LAMBDA_WEIGHT);
     setSmoothThreshold(DEFAULT_SMOOTH_THRESHOLD);
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
@@ -74,11 +125,21 @@ const RouteControls = ({
           Choose start point
         </Typography>
 
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1,
+            alignItems: "center",
+            flexDirection: { xs: "column", sm: "row" },
+          }}
+        >
           <Button
             variant="outlined"
             fullWidth
-            onClick={() => onPickModeChange("start")}
+            onClick={() => {
+              setRouteInputsDirty(true);
+              onPickModeChange("start");
+            }}
             sx={{
               borderColor: "#367E98",
               color: "white",
@@ -98,9 +159,12 @@ const RouteControls = ({
           <Button
             variant="outlined"
             disabled={!startPoint}
-            onClick={onClearStart}
+            onClick={() => {
+              setRouteInputsDirty(true);
+              onClearStart();
+            }}
             sx={{
-              minWidth: 90,
+              minWidth: { xs: "100%", sm: 90 },
               borderColor: "rgba(255,255,255,0.35)",
               color: "white",
               "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
@@ -133,11 +197,21 @@ const RouteControls = ({
           Choose end point
         </Typography>
 
-        <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
+        <Box
+          sx={{
+            display: "flex",
+            gap: 1,
+            alignItems: "center",
+            flexDirection: { xs: "column", sm: "row" },
+          }}
+        >
           <Button
             variant="outlined"
             fullWidth
-            onClick={() => onPickModeChange("end")}
+            onClick={() => {
+              setRouteInputsDirty(true);
+              onPickModeChange("end");
+            }}
             sx={{
               borderColor: "#EE7B04",
               color: "white",
@@ -157,9 +231,12 @@ const RouteControls = ({
           <Button
             variant="outlined"
             disabled={!endPoint}
-            onClick={onClearEnd}
+            onClick={() => {
+              setRouteInputsDirty(true);
+              onClearEnd();
+            }}
             sx={{
-              minWidth: 90,
+              minWidth: { xs: "100%", sm: 90 },
               borderColor: "rgba(255,255,255,0.35)",
               color: "white",
               "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
@@ -204,7 +281,10 @@ const RouteControls = ({
         <Box sx={{ px: 2 }}>
           <Slider
             value={lambdaWeight}
-            onChange={(_, val) => setLambdaWeight(val as number)}
+            onChange={(_, val) => {
+              setRouteInputsDirty(true);
+              setLambdaWeight(val as number);
+            }}
             valueLabelDisplay="auto"
             min={0}
             max={1}
@@ -242,7 +322,10 @@ const RouteControls = ({
         <Box sx={{ px: 2 }}>
           <Slider
             value={smoothThreshold}
-            onChange={(_, val) => setSmoothThreshold(val as number)}
+            onChange={(_, val) => {
+              setRouteInputsDirty(true);
+              setSmoothThreshold(val as number);
+            }}
             valueLabelDisplay="auto"
             min={0}
             max={100}
@@ -278,7 +361,9 @@ const RouteControls = ({
         control={
           <Checkbox
             checked={showCorridor}
-            onChange={(e) => onShowCorridorChange(e.target.checked)}
+            onChange={(e) => {
+              onShowCorridorChange(e.target.checked);
+            }}
             sx={{
               color: "rgba(255,255,255,0.55)",
               "&.Mui-checked": { color: "#367E98" },
@@ -294,7 +379,10 @@ const RouteControls = ({
           variant="contained"
           fullWidth
           disabled={!startPoint || !endPoint || pickMode !== null}
-          onClick={() => onGenerate({ lambdaWeight, smoothThreshold })}
+          onClick={() => {
+            setRouteInputsDirty(false);
+            onGenerate({ lambdaWeight, smoothThreshold });
+          }}
           size="large"
           sx={{
             backgroundColor: "#EE7B04",
@@ -304,6 +392,49 @@ const RouteControls = ({
           Generate route
         </Button>
       </Box>
+
+      {runId && !routeInputsDirty && pickMode === null && startPoint && endPoint && (
+        <Stack
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          justifyContent="center"
+        >
+          <Button
+            variant="outlined"
+            fullWidth
+            startIcon={<FileDownloadIcon />}
+            onClick={handleDownloadGPX}
+            size="small"
+            sx={{
+              borderColor: "#367E98",
+              color: "white",
+              "&:hover": {
+                backgroundColor: "rgba(54,126,152,0.10)",
+                borderColor: "#367E98",
+              },
+            }}
+          >
+            GPX
+          </Button>
+          <Button
+            variant="outlined"
+            fullWidth
+            startIcon={<FileDownloadIcon />}
+            onClick={handleDownloadGeoJSON}
+            size="small"
+            sx={{
+              borderColor: "#367E98",
+              color: "white",
+              "&:hover": {
+                backgroundColor: "rgba(54,126,152,0.10)",
+                borderColor: "#367E98",
+              },
+            }}
+          >
+            GeoJSON
+          </Button>
+        </Stack>
+      )}
 
       <Box sx={{ display: "flex", justifyContent: "center" }}>
         <Button
