@@ -11,6 +11,14 @@ class CorridorStorage(ABC):
     def put_corridor_tif(self, *, run_id: str, tif_path: Path) -> str | None:
         """Optional, return url or None if you do not upload."""
         raise NotImplementedError
+
+    @abstractmethod
+    def put_route_geojson(self, *, run_id: str, geojson_path: Path) -> str:
+        raise NotImplementedError
+
+    @abstractmethod
+    def put_route_gpx(self, *, run_id: str, gpx_path: Path) -> str:
+        raise NotImplementedError
     
     @abstractmethod
     def delete_run(self, *, run_id: str) -> None:

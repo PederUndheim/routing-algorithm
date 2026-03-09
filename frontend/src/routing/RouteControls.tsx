@@ -26,6 +26,8 @@ type RouteControlsProps = {
     smoothThreshold: number;
   }) => void;
   runId: string | null;
+  gpxDownloadUrl: string | null;
+  geojsonDownloadUrl: string | null;
 };
 
 const formatCoord = (p: LatLng) =>
@@ -52,6 +54,8 @@ const RouteControls = ({
   onClearEnd,
   onGenerate,
   runId,
+  gpxDownloadUrl,
+  geojsonDownloadUrl,
 }: RouteControlsProps) => {
   const DEFAULT_LAMBDA_WEIGHT = 0.7;
   const DEFAULT_SMOOTH_THRESHOLD = 8;
@@ -72,9 +76,8 @@ const RouteControls = ({
     if (!runId) return;
     try {
       const API = import.meta.env.VITE_API_BASE_URL;
-      const response = await fetch(
-        `${API}/runs_output/${runId}/route.gpx`
-      );
+      const downloadUrl = gpxDownloadUrl ?? `${API}/runs_output/${runId}/route.gpx`;
+      const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error("Failed to download GPX");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
@@ -92,9 +95,9 @@ const RouteControls = ({
     if (!runId) return;
     try {
       const API = import.meta.env.VITE_API_BASE_URL;
-      const response = await fetch(
-        `${API}/runs_output/${runId}/route.geojson`
-      );
+      const downloadUrl =
+        geojsonDownloadUrl ?? `${API}/runs_output/${runId}/route.geojson`;
+      const response = await fetch(downloadUrl);
       if (!response.ok) throw new Error("Failed to download GeoJSON");
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);

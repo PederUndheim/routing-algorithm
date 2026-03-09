@@ -138,7 +138,7 @@ const MapView = ({
   const mapApiRef = useRef<MapApi | null>(null);
 
   return (
-    <Box sx={{ height: "100vh", width: "100vw", position: "relative" }}>
+    <Box sx={{ height: "100dvh", width: "100vw", position: "relative" }}>
       <MapContainer
         center={center}
         zoom={11}
@@ -279,12 +279,12 @@ const MapView = ({
       <Box
         sx={{
           position: "fixed",
-          top: 16,
-          right: 16,
+          top: { xs: 8, sm: 12, md: 16, xl: 22 },
+          right: { xs: 8, sm: 12, md: 16, xl: 22 },
           zIndex: 1300,
           display: "flex",
           flexDirection: "column",
-          gap: 1,
+          gap: { xs: 0.8, sm: 1, xl: 1.2 },
           pointerEvents: "none",
         }}
       >
@@ -307,7 +307,6 @@ const MapView = ({
 
         <Box sx={{ pointerEvents: "auto" }}>
           <MapActions
-            onSearch={() => mapApiRef.current?.flyToCenter()}
             onLocate={() => mapApiRef.current?.locateUser()}
             onZoomIn={() => mapApiRef.current?.zoomIn()}
             onZoomOut={() => mapApiRef.current?.zoomOut()}

@@ -30,6 +30,26 @@ class AzureBlobStorage(CorridorStorage):
             cache_control="no-store",
         )
 
+    def put_route_geojson(self, *, run_id: str, geojson_path: Path) -> str:
+        blob_name = f"runs_output/{run_id}/{geojson_path.name}"
+        return upload_file(
+            container=self.container,
+            blob_name=blob_name,
+            local_path=geojson_path,
+            content_type="application/geo+json",
+            cache_control="no-store",
+        )
+
+    def put_route_gpx(self, *, run_id: str, gpx_path: Path) -> str:
+        blob_name = f"runs_output/{run_id}/{gpx_path.name}"
+        return upload_file(
+            container=self.container,
+            blob_name=blob_name,
+            local_path=gpx_path,
+            content_type="application/gpx+xml",
+            cache_control="no-store",
+        )
+
     def delete_run(self, *, run_id: str) -> None:
         # delete everything under runs_output/<run_id>/
         delete_prefix(container=self.container, prefix=f"runs_output/{run_id}/")

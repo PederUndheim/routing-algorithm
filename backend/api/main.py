@@ -7,7 +7,6 @@ import json
 import geopandas as gpd
 import gpxpy
 import gpxpy.gpx
-import shutil
 from pathlib import Path
 from threading import Lock
 from typing import List, Tuple
@@ -257,6 +256,15 @@ def route(req: RouteRequest, request: Request):
     # Route GeoJSON (WGS84)
     geojson = _export_wgs84_geojson(res["path_geojson_native"])
 
+    # Persist route artifacts so downloads work in prod across replicas/restarts.
+    path_geojson_native = Path(res["path_geojson_native"])
+    route_dir = path_geojson_native.parent
+    route_geojson_wgs84_path = route_dir / "route_wgs84.geojson"
+    route_gpx_path = route_dir / "route.gpx"
+
+    route_geojson_wgs84_path.write_text(json.dumps(geojson), encoding="utf-8")
+    route_gpx_path.write_text(_geojson_to_gpx(geojson), encoding="utf-8")
+
     # Corridor outputs
     corridor_tif = Path(res["corridor_tif"])
     corridor_dir = corridor_tif.parent
@@ -273,6 +281,14 @@ def route(req: RouteRequest, request: Request):
     storage = get_corridor_storage(request)
 
     png_url = storage.put_corridor_png(run_id=run_id, png_path=corridor_png)
+    route_geojson_url = storage.put_route_geojson(
+        run_id=run_id,
+        geojson_path=route_geojson_wgs84_path,
+    )
+    route_gpx_url = storage.put_route_gpx(
+        run_id=run_id,
+        gpx_path=route_gpx_path,
+    )
 
     tif_url = None
     if get_settings().env == "local":
@@ -281,9 +297,7 @@ def route(req: RouteRequest, request: Request):
         # skipping uploading tif in prod mode
         # tif_url = storage.put_corridor_tif(run_id=run_id, tif_path=corridor_tif)
         tif_url = None
-    if get_settings().env == "prod":
-        run_dir = (request.app.state.output_root / "runs_output" / run_id)
-        shutil.rmtree(run_dir, ignore_errors=True)
+
 
     return {
         "run_id": run_id,
@@ -292,6 +306,10 @@ def route(req: RouteRequest, request: Request):
             "png_url": png_url,
             "bounds": bounds,
             "tif_url": tif_url,  # optional
+        },
+        "downloads": {
+            "geojson_url": route_geojson_url,
+            "gpx_url": route_gpx_url,
         },
         "meta": {
             "area_ids": area_ids,

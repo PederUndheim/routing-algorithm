@@ -23,6 +23,14 @@ class LocalOutputsStorage(CorridorStorage):
     def put_corridor_tif(self, *, run_id: str, tif_path: Path) -> str | None:
         rel = self._safe_rel(tif_path)
         return f"{self.base_url}/outputs/{quote(rel)}"
+
+    def put_route_geojson(self, *, run_id: str, geojson_path: Path) -> str:
+        rel = self._safe_rel(geojson_path)
+        return f"{self.base_url}/outputs/{quote(rel)}"
+
+    def put_route_gpx(self, *, run_id: str, gpx_path: Path) -> str:
+        rel = self._safe_rel(gpx_path)
+        return f"{self.base_url}/outputs/{quote(rel)}"
     
     def delete_run(self, *, run_id: str) -> None:
         run_dir = (self.output_root / "runs_output" / run_id).resolve()

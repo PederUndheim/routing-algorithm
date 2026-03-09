@@ -33,6 +33,8 @@ type SidebarProps = {
     smoothThreshold: number;
   }) => void;
   runId: string | null;
+  gpxDownloadUrl: string | null;
+  geojsonDownloadUrl: string | null;
 };
 
 const MIN_W = 280;
@@ -52,6 +54,8 @@ const Sidebar = ({
   onClearEnd,
   onGenerate,
   runId,
+  gpxDownloadUrl,
+  geojsonDownloadUrl,
 }: SidebarProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -110,7 +114,7 @@ const Sidebar = ({
         "& .MuiDrawer-paper": {
           width: effectiveWidth,
           backgroundColor: "#555555",
-          overflow: "hidden",
+          overflow: "visible",
           display: "flex",
           flexDirection: "column",
           boxSizing: "border-box",
@@ -145,6 +149,8 @@ const Sidebar = ({
           onClearEnd={onClearEnd}
           onGenerate={onGenerate}
           runId={runId}
+          gpxDownloadUrl={gpxDownloadUrl}
+          geojsonDownloadUrl={geojsonDownloadUrl}
         />
       </Box>
 

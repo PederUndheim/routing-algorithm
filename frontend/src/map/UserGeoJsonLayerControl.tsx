@@ -62,8 +62,8 @@ const UserGeoJsonLayerControl = ({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: 3,
-          px: 3,
+          gap: { xs: 1.5, sm: 3 },
+          px: { xs: 1, sm: 3 },
         }}
       >
         {/* Global toggle on/off for GeoJSON layers */}
@@ -76,8 +76,8 @@ const UserGeoJsonLayerControl = ({
         >
           <Box
             sx={{
-              width: 75,
-              height: 75,
+              width: { xs: 62, sm: 75 },
+              height: { xs: 62, sm: 75 },
               borderRadius: "50%",
               overflow: "hidden",
               border: "4px solid",
@@ -103,10 +103,10 @@ const UserGeoJsonLayerControl = ({
               onToggleGeoJsonVisible(); // ONLY master toggle
             }}
           >
-            <PolylineIcon sx={{ fontSize: 45, color: "white" }} />
+            <PolylineIcon sx={{ fontSize: { xs: 34, sm: 45 }, color: "white" }} />
           </Box>
           <Typography
-            sx={{ mt: 1, fontSize: 12, color: "rgba(255,255,255,0.65)" }}
+            sx={{ mt: 1, fontSize: { xs: 11, sm: 12 }, color: "rgba(255,255,255,0.65)" }}
           >
             Toggle on/off
           </Typography>
@@ -147,11 +147,11 @@ const UserGeoJsonLayerControl = ({
               display: "flex",
               flexDirection: "column",
               gap: 0.5,
-              maxHeight: 250,
-              maxWidth: 250,
+              maxHeight: { xs: 190, sm: 250 },
+              width: "100%",
               overflowY: "auto",
               overflowX: "hidden",
-              pr: 2,
+              pr: 1,
               // Chrome / Edge / Safari
               "&::-webkit-scrollbar": {
                 width: 10,
@@ -208,7 +208,7 @@ const UserGeoJsonLayerControl = ({
                 <Typography
                   sx={{
                     color: "white",
-                    fontSize: 13,
+                    fontSize: { xs: 12, sm: 13 },
                     flex: 1,
                     overflow: "hidden",
                     textOverflow: "ellipsis",

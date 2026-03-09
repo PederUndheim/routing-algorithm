@@ -55,6 +55,10 @@ const App = () => {
   );
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [gpxDownloadUrl, setGpxDownloadUrl] = useState<string | null>(null);
+  const [geojsonDownloadUrl, setGeojsonDownloadUrl] = useState<string | null>(
+    null
+  );
 
   useEffect(() => {
     const API = import.meta.env.VITE_API_BASE_URL;
@@ -98,6 +102,8 @@ const App = () => {
     const runId = crypto.randomUUID().replaceAll("-", "_");
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
     setIsRouting(true);
     setErrorMsg(null);
 
@@ -135,6 +141,8 @@ const App = () => {
       setCorridorPngUrl(data.corridor?.png_url ?? null);
       setCorridorBounds(data.corridor?.bounds ?? null);
       setActiveRunId(data.run_id ?? null);
+      setGpxDownloadUrl(data.downloads?.gpx_url ?? null);
+      setGeojsonDownloadUrl(data.downloads?.geojson_url ?? null);
     } finally {
       setIsRouting(false);
     }
@@ -145,6 +153,8 @@ const App = () => {
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
     setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
   };
 
   const clearEnd = () => {
@@ -152,6 +162,8 @@ const App = () => {
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
     setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
   };
 
   const toggleGeoJsonLayer = (id: string) => {
@@ -175,6 +187,8 @@ const App = () => {
       setRouteGeoJson(null);
       setCorridorPngUrl(null);
       setCorridorBounds(null);
+      setGpxDownloadUrl(null);
+      setGeojsonDownloadUrl(null);
     }
   }, [startPoint, endPoint]);
 
@@ -240,6 +254,8 @@ const App = () => {
         onClearEnd={clearEnd}
         onGenerate={handleGenerateRoute}
         runId={activeRunId}
+        gpxDownloadUrl={gpxDownloadUrl}
+        geojsonDownloadUrl={geojsonDownloadUrl}
       />
 
       <Snackbar

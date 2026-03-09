@@ -7,6 +7,8 @@ import Tooltip from "@mui/material/Tooltip";
 import Popover from "@mui/material/Popover";
 import Typography from "@mui/material/Typography";
 import Slider from "@mui/material/Slider";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 import MapOutlinedIcon from "@mui/icons-material/MapOutlined";
 
@@ -49,8 +51,14 @@ const BasemapControl = ({
   geoJsonVisible,
   onToggleGeoJsonVisible,
 }: BasemapControlProps) => {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const isLarge = useMediaQuery(theme.breakpoints.up("xl"));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
+  const fabSize = isMobile ? 52 : isLarge ? 72 : 64;
+  const thumbSize = isMobile ? 66 : isLarge ? 92 : 80;
+  const popoverWidth = isMobile ? "calc(100vw - 24px)" : isLarge ? 460 : 400;
 
   return (
     <>
@@ -60,10 +68,10 @@ const BasemapControl = ({
           sx={{
             backgroundColor: "#367E98",
             color: "#fff",
-            width: 64,
-            height: 64,
+            width: fabSize,
+            height: fabSize,
             boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
-            marginBottom: 4,
+            marginBottom: { xs: 2, sm: 4 },
             transition: "all 0.2s ease",
             "&:hover": {
               backgroundColor: "#367E98",
@@ -72,7 +80,7 @@ const BasemapControl = ({
             },
           }}
         >
-          <MapOutlinedIcon sx={{ fontSize: 33 }} />
+          <MapOutlinedIcon sx={{ fontSize: isMobile ? 28 : isLarge ? 38 : 33 }} />
         </Fab>
       </Tooltip>
 
@@ -88,7 +96,10 @@ const BasemapControl = ({
               backgroundColor: "#555555",
               p: 2,
               borderRadius: 3,
-              width: 400,
+              width: popoverWidth,
+              maxWidth: "calc(100vw - 24px)",
+              maxHeight: "calc(100dvh - 24px)",
+              overflowY: "auto",
               ml: -2,
             },
           },
@@ -103,7 +114,7 @@ const BasemapControl = ({
         >
           {/* Basemaps row */}
           <Typography
-            sx={{ fontWeight: 600, fontSize: 18, color: "white", mb: 1 }}
+            sx={{ fontWeight: 600, fontSize: { xs: 16, sm: 18 }, color: "white", mb: 1 }}
           >
             Basemaps
           </Typography>
@@ -113,11 +124,27 @@ const BasemapControl = ({
           sx={{
             display: "flex",
             gap: 1,
+            flexWrap: "nowrap",
             alignItems: "flex-start",
-            justifyContent: "space-between",
+            justifyContent: "flex-start",
+            overflowX: "auto",
+            overflowY: "hidden",
+            pb: 1.2,
             px: 1,
-            pb: 1,
             mb: 3,
+            scrollbarWidth: "thin",
+            scrollbarColor: "#367E98 rgba(255,255,255,0.08)",
+            "&::-webkit-scrollbar": {
+              height: 8,
+            },
+            "&::-webkit-scrollbar-track": {
+              background: "rgba(255,255,255,0.08)",
+              borderRadius: 8,
+            },
+            "&::-webkit-scrollbar-thumb": {
+              backgroundColor: "#367E98",
+              borderRadius: 8,
+            },
           }}
         >
           {BASEMAPS.map((b) => {
@@ -131,7 +158,7 @@ const BasemapControl = ({
                   cursor: "pointer",
                   userSelect: "none",
                   textAlign: "center",
-                  width: 150,
+                  minWidth: { xs: 110, sm: 125, xl: 145 },
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -140,8 +167,8 @@ const BasemapControl = ({
                 {/* Circle thumbnail */}
                 <Box
                   sx={{
-                    width: 80,
-                    height: 80,
+                    width: thumbSize,
+                    height: thumbSize,
                     flexShrink: 0,
                     borderRadius: "50%",
                     overflow: "hidden",
@@ -176,7 +203,7 @@ const BasemapControl = ({
                 <Typography
                   sx={{
                     mt: 0.5,
-                    fontSize: 14,
+                    fontSize: { xs: 12, sm: 14 },
                     fontWeight: isSelected ? 700 : 500,
                     color: "white",
                   }}
@@ -190,7 +217,7 @@ const BasemapControl = ({
 
         {/* Overlays row */}
         <Typography
-          sx={{ fontWeight: 600, fontSize: 18, color: "white", mb: 1 }}
+          sx={{ fontWeight: 600, fontSize: { xs: 16, sm: 18 }, color: "white", mb: 1 }}
         >
           Overlays
         </Typography>
@@ -215,15 +242,15 @@ const BasemapControl = ({
                   display: "flex",
                   alignItems: "center",
                   cursor: "pointer",
-                  gap: 2,
+                  gap: { xs: 1, sm: 2 },
                   marginBottom: 0.5,
                 }}
               >
                 <Box
                   onClick={() => onToggleOverlay(o.id)}
                   sx={{
-                    width: 80,
-                    height: 80,
+                    width: thumbSize,
+                    height: thumbSize,
                     flexShrink: 0,
                     borderRadius: "50%",
                     overflow: "hidden",
@@ -256,10 +283,10 @@ const BasemapControl = ({
 
                 <Typography
                   sx={{
-                    fontSize: 14,
+                    fontSize: { xs: 12, sm: 14 },
                     fontWeight: 500,
                     color: "white",
-                    width: 50,
+                    width: { xs: 42, sm: 50 },
                   }}
                 >
                   {o.label}
@@ -271,7 +298,7 @@ const BasemapControl = ({
                   flexDirection={"column"}
                   alignItems={"center"}
                   sx={{
-                    width: 170,
+                    width: { xs: 110, sm: 170 },
                     opacity: enabled ? 1 : 0.5,
                     pointerEvents: enabled ? "auto" : "none",
                     transition: "opacity 0.15s ease",
