@@ -15,6 +15,8 @@ const CursorCoords = () => {
     },
   });
 
+  if (!pos) return null;
+
   return (
     <Box
       sx={{
@@ -29,13 +31,10 @@ const CursorCoords = () => {
         py: 0.5,
         borderRadius: 1.5,
         boxShadow: "0 8px 20px rgba(0,0,0,0.25)",
-        opacity: pos ? 1 : 0.7,
       }}
     >
       <Typography sx={{ fontSize: 11, fontVariantNumeric: "tabular-nums" }}>
-        {pos
-          ? `${pos.lat.toFixed(3)}°N, ${pos.lng.toFixed(3)}°E`
-          : "Move cursor to see coordinates"}
+        {`${pos.lat.toFixed(3)}°N, ${pos.lng.toFixed(3)}°E`}
       </Typography>
     </Box>
   );

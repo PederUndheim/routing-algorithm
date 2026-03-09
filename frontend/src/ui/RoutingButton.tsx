@@ -30,8 +30,8 @@ const RoutingButton = ({ onClick, hidden = false }: RoutingButtonProps) => {
             borderRadius: 4,
             backgroundColor: "#EE7B04",
             color: "#fff",
-            width: { xs: 50, sm: 70 },
-            height: { xs: 50, sm: 70 },
+            width: { xs: 60, sm: 70 },
+            height: { xs: 60, sm: 70 },
 
             boxShadow: "0 8px 20px rgba(0,0,0,0.2)",
 
@@ -44,7 +44,7 @@ const RoutingButton = ({ onClick, hidden = false }: RoutingButtonProps) => {
             },
           }}
         >
-          <RouteIcon sx={{ fontSize: { xs: 30, sm: 40 }, color: "fff" }} />
+          <RouteIcon sx={{ fontSize: { xs: 40, sm: 45 }, color: "fff" }} />
         </Fab>
       </Tooltip>
     </Box>

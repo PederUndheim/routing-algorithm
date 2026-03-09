@@ -36,6 +36,11 @@ def upload_file(
 
     return client.url
 
+
+def get_blob_url(*, container: str, blob_name: str) -> str:
+    client = _bsc().get_blob_client(container=container, blob=blob_name)
+    return client.url
+
 def delete_prefix(*, container: str, prefix: str) -> int:
     cc = _bsc().get_container_client(container)
     deleted = 0

@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 from backend.storage.base import CorridorStorage
-from backend.storage.blob_helpers import upload_file, delete_prefix
+from backend.storage.blob_helpers import upload_file, delete_prefix, get_blob_url
 
 class AzureBlobStorage(CorridorStorage):
     def __init__(self, *, container: str | None = None):
@@ -49,6 +49,14 @@ class AzureBlobStorage(CorridorStorage):
             content_type="application/gpx+xml",
             cache_control="no-store",
         )
+
+    def get_route_geojson_url(self, *, run_id: str) -> str:
+        blob_name = f"runs_output/{run_id}/route.geojson"
+        return get_blob_url(container=self.container, blob_name=blob_name)
+
+    def get_route_gpx_url(self, *, run_id: str) -> str:
+        blob_name = f"runs_output/{run_id}/route.gpx"
+        return get_blob_url(container=self.container, blob_name=blob_name)
 
     def delete_run(self, *, run_id: str) -> None:
         # delete everything under runs_output/<run_id>/

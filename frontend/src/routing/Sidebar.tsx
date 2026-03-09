@@ -64,14 +64,14 @@ const Sidebar = ({
   const draggingRef = useRef(false);
   const desktopMaxWidth = Math.min(MAX_W, Math.floor(window.innerWidth * 0.58));
   const effectiveWidth = isMobile
-    ? Math.min(window.innerWidth * 0.96, 420)
+    ? Math.min(window.innerWidth * 0.75, 420)
     : Math.max(MIN_W, Math.min(width, desktopMaxWidth));
 
   useEffect(() => {
     if (isMobile) return;
     setWidth((prev) => {
       if (prev !== DEFAULT_W) return prev;
-      return isLargeDesktop ? 460 : 380;
+      return isLargeDesktop ? 350 : 330;
     });
   }, [isMobile, isLargeDesktop]);
 
@@ -123,7 +123,7 @@ const Sidebar = ({
       }}
     >
       {/* Header */}
-      <Box sx={{ p: 2, display: "flex", alignItems: "center", gap: 1 }}>
+      <Box sx={{ p: 2, pb: { xs: 1, sm: 2 }, display: "flex", alignItems: "center"}}>
         <Typography
           variant={isMobile ? "h6" : "h5"}
           sx={{ flex: 1, color: "white", fontWeight: 540 }}
@@ -137,7 +137,7 @@ const Sidebar = ({
 
       <Divider color="#EE7B04" variant="middle" />
 
-      <Box sx={{ flex: 1, overflowY: "auto" }}>
+      <Box sx={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
         <RouteControls
           startPoint={startPoint}
           endPoint={endPoint}
@@ -152,40 +152,43 @@ const Sidebar = ({
           gpxDownloadUrl={gpxDownloadUrl}
           geojsonDownloadUrl={geojsonDownloadUrl}
         />
+        
+
+        {/* Logos */}
+        <Box
+          sx={{
+            px: 2,
+            pb: 2,
+            pt: 1,
+            mt: "auto",
+            display: "flex",
+            flexDirection: "row",
+            justifyContent: "center",
+            gap: { xs: 1.6, sm: 2 },
+          }}
+        >
+          <Box
+            component="img"
+            src={LogoNVE}
+            alt="NVE Logo"
+            sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
+          />
+          <Box
+            component="img"
+            src={LogoVarsom}
+            alt="Varsom Logo"
+            sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
+          />
+          <Box
+            component="img"
+            src={LogoNTNU}
+            alt="NTNU Logo"
+            sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
+          />
+        </Box>
       </Box>
 
-      {/* Logos */}
-      <Box
-        sx={{
-          px: 2,
-          pb: 2,
-          pt: 1,
-          mt: "auto",
-          display: "flex",
-          flexDirection: "row",
-          justifyContent: "center",
-          gap: { xs: 1.2, sm: 2 },
-        }}
-      >
-        <Box
-          component="img"
-          src={LogoNVE}
-          alt="NVE Logo"
-          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
-        />
-        <Box
-          component="img"
-          src={LogoVarsom}
-          alt="Varsom Logo"
-          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
-        />
-        <Box
-          component="img"
-          src={LogoNTNU}
-          alt="NTNU Logo"
-          sx={{ height: { xs: 30, sm: 40 }, objectFit: "contain" }}
-        />
-      </Box>
+    
 
       {/* Drag handle */}
       {!isMobile && (

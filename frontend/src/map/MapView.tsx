@@ -142,6 +142,8 @@ const MapView = ({
       <MapContainer
         center={center}
         zoom={11}
+        maxZoom={18}
+        minZoom={5}
         zoomControl={false}
         zoomAnimation={false}
         fadeAnimation={false}
@@ -152,7 +154,6 @@ const MapView = ({
           <TileLayer
             url={bm.url}
             attribution={bm.attribution}
-            maxZoom={bm.maxZoom ?? 18}
           />
         </Pane>
 
@@ -279,12 +280,12 @@ const MapView = ({
       <Box
         sx={{
           position: "fixed",
-          top: { xs: 8, sm: 12, md: 16, xl: 22 },
+          top: { xs: 10, sm: 12, md: 16, xl: 22 },
           right: { xs: 8, sm: 12, md: 16, xl: 22 },
           zIndex: 1300,
           display: "flex",
           flexDirection: "column",
-          gap: { xs: 0.8, sm: 1, xl: 1.2 },
+          gap: { xs: 1, sm: 1, xl: 1.2 },
           pointerEvents: "none",
         }}
       >

@@ -21,30 +21,37 @@ from frontend: npm run dev
 
 ## Docker commands
 
+set -euo pipefail
+
 export AZ_RG="rg-routing-algorithm"
-export AZ_LOC="swedencentral"
 export ACR_NAME="skiroutingalgorithm"
-export APP_ENV="env-routing-algorithm"
 export APP_NAME="api-routing-algorithm"
 export IMAGE_REPO="image-routing-algorithm"
 export APP_FQDN="api-routing-algorithm.mangohill-479de517.swedencentral.azurecontainerapps.io"
-export SA_NAME="skirouting02241318out"
+
+export TAG="$(date -u +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
+export IMAGE="$ACR_NAME.azurecr.io/$IMAGE_REPO:$TAG"
 
 az acr login -n "$ACR_NAME"
 
 docker buildx build \
- --platform linux/amd64 \
- -f backend/Dockerfile \
- -t "$ACR_NAME.azurecr.io/image-routing-algorithm:latest" \
- --push \
- .
+  --platform linux/amd64 \
+  -f backend/Dockerfile \
+  -t "$IMAGE" \
+  --push \
+  .
 
 az containerapp update \
- -n "$APP_NAME" \
+  -n "$APP_NAME" \
   -g "$AZ_RG" \
- --image "$ACR_NAME.azurecr.io/image-routing-algorithm:latest"
+  --image "$IMAGE"
 
 curl -i "https://$APP_FQDN/health"
+
+az containerapp show \
+  -n "$APP_NAME" \
+  -g "$AZ_RG" \
+  --query "properties.template.containers[0].image" -o tsv
 
 ---
 

@@ -13,13 +13,14 @@ const ScaleBar = ({ position = "bottomleft" }: ScaleBarProps) => {
     if (!map) return;
 
     const control = L.control.scale({
-      position: "bottomleft",
+      position,
       metric: true,
       imperial: false,
       maxWidth: 180,
       updateWhenIdle: true,
     });
     control.addTo(map);
+
     return () => {
       control.remove();
     };

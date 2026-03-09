@@ -26,7 +26,6 @@ export const BASEMAPS: BasemapDef[] = [
     label: "Fargekart",
     url: `${baseUrl}/topo/default/webmercator/{z}/{y}/{x}.png`,
     attribution: "© Kartverket",
-    maxZoom: 18,
     thumbUrl: topoThumb,
   },
   {
@@ -34,7 +33,6 @@ export const BASEMAPS: BasemapDef[] = [
     label: "Gråtonekart",
     url: `${baseUrl}/topograatone/default/webmercator/{z}/{y}/{x}.png`,
     attribution: "© Kartverket",
-    maxZoom: 18,
     thumbUrl: graatoneThumb,
   },
   {
@@ -42,7 +40,6 @@ export const BASEMAPS: BasemapDef[] = [
     label: "Turkart",
     url: `${baseUrl}/toporaster/default/webmercator/{z}/{y}/{x}.png`,
     attribution: "© Kartverket",
-    maxZoom: 18,
     thumbUrl: turkartThumb,
   },
   {
@@ -50,7 +47,6 @@ export const BASEMAPS: BasemapDef[] = [
     label: "Sjøkart",
     url: `${baseUrl}/sjokartraster/default/webmercator/{z}/{y}/{x}.png`,
     attribution: "© Kartverket",
-    maxZoom: 18,
     thumbUrl: sjokartThumb,
   },
 ];

@@ -31,6 +31,14 @@ class LocalOutputsStorage(CorridorStorage):
     def put_route_gpx(self, *, run_id: str, gpx_path: Path) -> str:
         rel = self._safe_rel(gpx_path)
         return f"{self.base_url}/outputs/{quote(rel)}"
+
+    def get_route_geojson_url(self, *, run_id: str) -> str:
+        rel = quote(f"runs_output/{run_id}/route/route.geojson")
+        return f"{self.base_url}/outputs/{rel}"
+
+    def get_route_gpx_url(self, *, run_id: str) -> str:
+        rel = quote(f"runs_output/{run_id}/route/route.gpx")
+        return f"{self.base_url}/outputs/{rel}"
     
     def delete_run(self, *, run_id: str) -> None:
         run_dir = (self.output_root / "runs_output" / run_id).resolve()

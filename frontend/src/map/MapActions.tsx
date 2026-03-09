@@ -39,7 +39,7 @@ const ActionButton = ({ title, onClick, children, extraSpace, size, iconSize }: 
 
                 "&:hover": {
                     backgroundColor: "#555555",
-                    transform: "scale(1.05)",
+                    transform: "scale(1.03)",
                     boxShadow: "0 12px 28px rgba(0,0,0,0.25)",
                 },
             }}

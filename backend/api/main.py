@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import os
-import uuid
 import traceback
 import json
+import secrets
 import geopandas as gpd
 import gpxpy
 import gpxpy.gpx
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import List, Tuple
@@ -14,7 +15,7 @@ from shapely.geometry import Point, box
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, RedirectResponse
 
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
@@ -108,6 +109,13 @@ def _geojson_to_gpx(geojson_dict: dict) -> str:
         return gpx.to_xml()
     except Exception as e:
         raise ValueError(f"Error converting GeoJSON to GPX: {str(e)}")
+
+
+def _new_run_id() -> str:
+    # Example: 20260309_143012_ab12cd34
+    ts = datetime.now(timezone.utc).strftime("%d%m%Y_%H%M%S")
+    suffix = secrets.token_hex(2)
+    return f"{ts}_{suffix}"
 
 
 def _load_area_index() -> gpd.GeoDataFrame:
@@ -225,7 +233,7 @@ def route(req: RouteRequest, request: Request):
 
             any_paths, any_inputs = load_area(area_ids[0])
 
-            run_id = uuid.uuid4().hex
+            run_id = _new_run_id()
 
             res = run_routing_for_tour(
                 paths=any_paths,
@@ -259,7 +267,7 @@ def route(req: RouteRequest, request: Request):
     # Persist route artifacts so downloads work in prod across replicas/restarts.
     path_geojson_native = Path(res["path_geojson_native"])
     route_dir = path_geojson_native.parent
-    route_geojson_wgs84_path = route_dir / "route_wgs84.geojson"
+    route_geojson_wgs84_path = route_dir / "route.geojson"
     route_gpx_path = route_dir / "route.gpx"
 
     route_geojson_wgs84_path.write_text(json.dumps(geojson), encoding="utf-8")
@@ -326,21 +334,33 @@ def route(req: RouteRequest, request: Request):
 def download_route_gpx(run_id: str, request: Request):
     """Download route as GPX file."""
     try:
-        run_dir = request.app.state.output_root / "runs_output" / run_id
-        path_geojson = run_dir / "route" / "path.geojson"
-        
-        if not path_geojson.exists():
-            raise HTTPException(404, f"Route not found at {path_geojson}")
-        
-        # Read GeoJSON, convert to WGS84, then to GPX
-        geojson_dict = _export_wgs84_geojson(path_geojson)
-        gpx_content = _geojson_to_gpx(geojson_dict)
-        
-        return Response(
-            content=gpx_content,
-            media_type="application/gpx+xml",
-            headers={"Content-Disposition": "attachment; filename=route.gpx"}
-        )
+        run_dir = request.app.state.output_root / "runs_output" / run_id / "route"
+        path_gpx = run_dir / "route.gpx"
+
+        if path_gpx.exists():
+            return FileResponse(
+                path=str(path_gpx),
+                media_type="application/gpx+xml",
+                filename="route.gpx",
+            )
+
+        # Backward compatibility: older runs may only have native path.geojson.
+        path_geojson_native = run_dir / "path.geojson"
+        if path_geojson_native.exists():
+            geojson_dict = _export_wgs84_geojson(path_geojson_native)
+            gpx_content = _geojson_to_gpx(geojson_dict)
+            return Response(
+                content=gpx_content,
+                media_type="application/gpx+xml",
+                headers={"Content-Disposition": "attachment; filename=route.gpx"},
+            )
+
+        # Prod fallback for clients still calling this endpoint.
+        if get_settings().env == "prod":
+            storage = get_corridor_storage(request)
+            return RedirectResponse(storage.get_route_gpx_url(run_id=run_id), status_code=307)
+
+        raise HTTPException(404, f"Route GPX not found for run_id={run_id}")
     except HTTPException:
         raise
     except Exception as e:
@@ -354,18 +374,30 @@ def download_route_gpx(run_id: str, request: Request):
 def download_route_geojson(run_id: str, request: Request):
     """Download route as GeoJSON file in WGS84."""
     try:
-        run_dir = request.app.state.output_root / "runs_output" / run_id
-        path_geojson = run_dir / "route" / "path.geojson"
-        
-        if not path_geojson.exists():
-            raise HTTPException(404, f"Route not found at {path_geojson}")
-        
-        # Convert to WGS84 and return as JSON
-        geojson_dict = _export_wgs84_geojson(path_geojson)
-        
-        response = JSONResponse(geojson_dict)
-        response.headers["Content-Disposition"] = "attachment; filename=route.geojson"
-        return response
+        run_dir = request.app.state.output_root / "runs_output" / run_id / "route"
+        path_geojson_wgs84 = run_dir / "route.geojson"
+
+        if path_geojson_wgs84.exists():
+            return FileResponse(
+                path=str(path_geojson_wgs84),
+                media_type="application/geo+json",
+                filename="route.geojson",
+            )
+
+        # Backward compatibility: older runs may only have native path.geojson.
+        path_geojson_native = run_dir / "path.geojson"
+        if path_geojson_native.exists():
+            geojson_dict = _export_wgs84_geojson(path_geojson_native)
+            response = JSONResponse(geojson_dict)
+            response.headers["Content-Disposition"] = "attachment; filename=route.geojson"
+            return response
+
+        # Prod fallback for clients still calling this endpoint.
+        if get_settings().env == "prod":
+            storage = get_corridor_storage(request)
+            return RedirectResponse(storage.get_route_geojson_url(run_id=run_id), status_code=307)
+
+        raise HTTPException(404, f"Route GeoJSON not found for run_id={run_id}")
     except HTTPException:
         raise
     except Exception as e:

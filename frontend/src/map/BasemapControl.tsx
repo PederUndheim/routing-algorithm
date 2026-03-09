@@ -56,9 +56,14 @@ const BasemapControl = ({
   const isLarge = useMediaQuery(theme.breakpoints.up("xl"));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
-  const fabSize = isMobile ? 52 : isLarge ? 72 : 64;
-  const thumbSize = isMobile ? 66 : isLarge ? 92 : 80;
-  const popoverWidth = isMobile ? "calc(100vw - 24px)" : isLarge ? 460 : 400;
+  const fabSize = isMobile ? 55 : isLarge ? 72 : 64;
+  const thumbSize = isMobile ? 50 : isLarge ? 92 : 80;
+  const controlInset = isMobile ? 1 : isLarge ? 3.5 : 3;
+  const controlGap = isMobile ? 1.25 : isLarge ? 2.5 : 2;
+  const overlayLabelWidth = isMobile ? 54 : isLarge ? 68 : 60;
+  const sliderWidth = isMobile ? 125 : isLarge ? 210 : 180;
+  const sliderThumbSize = isMobile ? 12 : isLarge ? 16 : 14;
+  const popoverWidth = isMobile ? 277 : isLarge ? 460 : 400;
 
   return (
     <>
@@ -71,7 +76,7 @@ const BasemapControl = ({
             width: fabSize,
             height: fabSize,
             boxShadow: "0 8px 20px rgba(0,0,0,0.20)",
-            marginBottom: { xs: 2, sm: 4 },
+            marginBottom: { xs: 1, sm: 4 },
             transition: "all 0.2s ease",
             "&:hover": {
               backgroundColor: "#367E98",
@@ -80,7 +85,7 @@ const BasemapControl = ({
             },
           }}
         >
-          <MapOutlinedIcon sx={{ fontSize: isMobile ? 28 : isLarge ? 38 : 33 }} />
+          <MapOutlinedIcon sx={{ fontSize: isMobile ? 32 : isLarge ? 38 : 34 }} />
         </Fab>
       </Tooltip>
 
@@ -124,14 +129,14 @@ const BasemapControl = ({
           sx={{
             display: "flex",
             gap: 1,
+            justifyContent: "center",
             flexWrap: "nowrap",
-            alignItems: "flex-start",
-            justifyContent: "flex-start",
             overflowX: "auto",
             overflowY: "hidden",
             pb: 1.2,
+            pt: 1,
             px: 1,
-            mb: 3,
+            mb: { xs: 1, sm: 3 },
             scrollbarWidth: "thin",
             scrollbarColor: "#367E98 rgba(255,255,255,0.08)",
             "&::-webkit-scrollbar": {
@@ -158,7 +163,6 @@ const BasemapControl = ({
                   cursor: "pointer",
                   userSelect: "none",
                   textAlign: "center",
-                  minWidth: { xs: 110, sm: 125, xl: 145 },
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
@@ -225,10 +229,11 @@ const BasemapControl = ({
         <Box
           sx={{
             display: "flex",
-            gap: 1,
+            gap: { xs: 0, sm: 1 },
             flexDirection: "column",
-            pl: 3,
-            mb: 3,
+            pl: controlInset,
+            pr: controlInset,
+            mb: { xs: 0, sm: 3 },
           }}
         >
           {OVERLAYS.map((o) => {
@@ -242,8 +247,9 @@ const BasemapControl = ({
                   display: "flex",
                   alignItems: "center",
                   cursor: "pointer",
-                  gap: { xs: 1, sm: 2 },
+                  gap: controlGap,
                   marginBottom: 0.5,
+                  pr: controlInset,
                 }}
               >
                 <Box
@@ -286,7 +292,7 @@ const BasemapControl = ({
                     fontSize: { xs: 12, sm: 14 },
                     fontWeight: 500,
                     color: "white",
-                    width: { xs: 42, sm: 50 },
+                    width: overlayLabelWidth,
                   }}
                 >
                   {o.label}
@@ -298,7 +304,7 @@ const BasemapControl = ({
                   flexDirection={"column"}
                   alignItems={"center"}
                   sx={{
-                    width: { xs: 110, sm: 170 },
+                    width: sliderWidth,
                     opacity: enabled ? 1 : 0.5,
                     pointerEvents: enabled ? "auto" : "none",
                     transition: "opacity 0.15s ease",
@@ -321,7 +327,10 @@ const BasemapControl = ({
                     }
                     sx={{
                       color: "#367E98",
-                      "& .MuiSlider-thumb": { width: 14, height: 14 },
+                      "& .MuiSlider-thumb": {
+                        width: sliderThumbSize,
+                        height: sliderThumbSize,
+                      },
                     }}
                   />
 
@@ -346,6 +355,9 @@ const BasemapControl = ({
           onAdd={onAddGeoJson}
           onToggle={onToggleGeoJson}
           onRemove={onRemoveGeoJson}
+          thumbSize={thumbSize}
+          contentInset={controlInset}
+          rowGap={controlGap}
         />
       </Popover>
     </>

@@ -68,7 +68,6 @@ const RouteControls = ({
   const [routeInputsDirty, setRouteInputsDirty] = useState(false);
 
   useEffect(() => {
-    // A newly received runId means routing completed successfully.
     setRouteInputsDirty(false);
   }, [runId]);
 
@@ -121,10 +120,10 @@ const RouteControls = ({
   };
 
   return (
-    <Box sx={{ p: 2, display: "flex", flexDirection: "column", gap: 2 }}>
+    <Box sx={{ p: 2, display: "flex", flexDirection: "column", flex: 1 }}>
       {/* Start point row */}
-      <Box>
-        <Typography variant="subtitle2" sx={{ color: "white", mb: 1 }}>
+      <Box sx={{ mb: { xs: 1.5, sm: 2 } }}>
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 1 }}>
           Choose start point
         </Typography>
 
@@ -133,7 +132,7 @@ const RouteControls = ({
             display: "flex",
             gap: 1,
             alignItems: "center",
-            flexDirection: { xs: "column", sm: "row" },
+            flexDirection: "row"
           }}
         >
           <Button
@@ -144,6 +143,8 @@ const RouteControls = ({
               onPickModeChange("start");
             }}
             sx={{
+              flex: 4,
+              fontSize: {xs: 12, sm: 14},
               borderColor: "#367E98",
               color: "white",
               "&:hover": {
@@ -167,9 +168,10 @@ const RouteControls = ({
               onClearStart();
             }}
             sx={{
-              minWidth: { xs: "100%", sm: 90 },
               borderColor: "rgba(255,255,255,0.35)",
               color: "white",
+              flex: 1,
+              fontSize: {xs: 12, sm: 14},
               "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
               "&.Mui-disabled": {
                 color: "rgba(255,255,255,0.25)",
@@ -185,7 +187,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 12,
+            fontSize: {xs: 10, sm: 12},
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -195,8 +197,8 @@ const RouteControls = ({
       </Box>
 
       {/* End point row */}
-      <Box>
-        <Typography variant="subtitle2" sx={{ color: "white", mb: 1 }}>
+      <Box sx={{ mb: { xs: 1.5, sm: 2 } }}>
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 1 }}>
           Choose end point
         </Typography>
 
@@ -205,7 +207,7 @@ const RouteControls = ({
             display: "flex",
             gap: 1,
             alignItems: "center",
-            flexDirection: { xs: "column", sm: "row" },
+            flexDirection: "row"
           }}
         >
           <Button
@@ -218,6 +220,8 @@ const RouteControls = ({
             sx={{
               borderColor: "#EE7B04",
               color: "white",
+              fontSize: {xs: 12, sm: 14},
+              flex: 4,
               "&:hover": {
                 borderColor: "#EE7B04",
                 backgroundColor: "rgba(54,126,152,0.10)",
@@ -236,12 +240,13 @@ const RouteControls = ({
             disabled={!endPoint}
             onClick={() => {
               setRouteInputsDirty(true);
-              onClearEnd();
+                   onClearEnd();
             }}
             sx={{
-              minWidth: { xs: "100%", sm: 90 },
               borderColor: "rgba(255,255,255,0.35)",
               color: "white",
+              flex: 1,
+              fontSize: {xs: 12, sm: 14},
               "&:hover": { backgroundColor: "rgba(255,255,255,0.08)" },
               "&.Mui-disabled": {
                 color: "rgba(255,255,255,0.25)",
@@ -257,7 +262,7 @@ const RouteControls = ({
           sx={{
             mt: 0.8,
             ml: 0.8,
-            fontSize: 12,
+            fontSize: {xs: 10, sm: 12},
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -266,16 +271,16 @@ const RouteControls = ({
         </Typography>
       </Box>
 
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
 
-      <Box>
-        <Typography variant="subtitle2" sx={{ color: "white" }}>
+      <Box >
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
           Choose lambda weight
         </Typography>
         <Typography
           sx={{
             ml: 0.8,
-            fontSize: 12,
+            fontSize: {xs: 10, sm: 12},
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -295,14 +300,15 @@ const RouteControls = ({
             marks={marksLambdaSlider}
             sx={{
               color: "#367E98",
-              "& .MuiSlider-thumb": { width: 16, height: 16 },
+              "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
               "& .MuiSlider-mark": {
                 backgroundColor: "#367E98",
               },
 
               "& .MuiSlider-markLabel": {
+                top: 30,
                 color: "rgba(255,255,255,0.65)",
-                fontSize: 12,
+                fontSize: {xs: 10, sm: 12},
               },
             }}
           />
@@ -310,13 +316,13 @@ const RouteControls = ({
       </Box>
 
       <Box>
-        <Typography variant="subtitle2" sx={{ color: "white" }}>
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
           Choose smoothing threshold
         </Typography>
         <Typography
           sx={{
             ml: 0.8,
-            fontSize: 12,
+            fontSize: {xs: 10, sm: 12},
             color: "rgba(255,255,255,0.75)",
           }}
         >
@@ -336,26 +342,27 @@ const RouteControls = ({
             marks={marksSmoothingSlider}
             sx={{
               color: "#367E98",
-              "& .MuiSlider-thumb": { width: 16, height: 16 },
+              "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
               "& .MuiSlider-mark": {
                 backgroundColor: "#367E98",
               },
 
               "& .MuiSlider-markLabel": {
+                top: 34,
                 color: "rgba(255,255,255,0.65)",
-                fontSize: 12,
+                fontSize: {xs: 10, sm: 12},
               },
             }}
           />
         </Box>
       </Box>
 
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)" }} />
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: 1, mt: { xs: 0, sm: 1 } }} />
 
       <FormControlLabel
         label={
           <Typography
-            variant="subtitle2"
+            fontSize={{xs: 12, sm: 14}}
             sx={{ color: "rgba(255,255,255,0.85)" }}
           >
             Show area of possible route choices
@@ -377,7 +384,7 @@ const RouteControls = ({
         sx={{ m: 0 }}
       />
 
-      <Box sx={{ display: "flex" }}>
+      <Box sx={{ display: "flex", mb: { xs: 1, sm: 1.5 }, mt: "auto" }}>
         <Button
           variant="contained"
           fullWidth
@@ -389,6 +396,7 @@ const RouteControls = ({
           size="large"
           sx={{
             backgroundColor: "#EE7B04",
+            fontSize: {xs: 14, sm: 16},
             "&:hover": { transform: "scale(1.01)" },
           }}
         >
@@ -398,9 +406,10 @@ const RouteControls = ({
 
       {runId && !routeInputsDirty && pickMode === null && startPoint && endPoint && (
         <Stack
-          direction={{ xs: "column", sm: "row" }}
+          direction="row"
           spacing={1}
           justifyContent="center"
+          sx={{ mb: { xs: 1, sm: 1.5 }, mx: 1 }}
         >
           <Button
             variant="outlined"
@@ -411,6 +420,7 @@ const RouteControls = ({
             sx={{
               borderColor: "#367E98",
               color: "white",
+              fontSize: {xs: 12, sm: 14},
               "&:hover": {
                 backgroundColor: "rgba(54,126,152,0.10)",
                 borderColor: "#367E98",
@@ -428,6 +438,7 @@ const RouteControls = ({
             sx={{
               borderColor: "#367E98",
               color: "white",
+              fontSize: {xs: 12, sm: 14},
               "&:hover": {
                 backgroundColor: "rgba(54,126,152,0.10)",
                 borderColor: "#367E98",
@@ -439,7 +450,7 @@ const RouteControls = ({
         </Stack>
       )}
 
-      <Box sx={{ display: "flex", justifyContent: "center" }}>
+      <Box sx={{ display: "flex", justifyContent: "center", mt: { xs: 1, sm: 1.5 } }}>
         <Button
           variant="outlined"
           onClick={resetRoutingParameters}
@@ -454,6 +465,7 @@ const RouteControls = ({
           sx={{
             borderColor: "rgba(255,255,255,0.35)",
             color: "white",
+            fontSize: {xs: 12, sm: 14},
             "&:hover": {
               backgroundColor: "rgba(255,255,255,0.08)",
             },

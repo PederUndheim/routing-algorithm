@@ -17,6 +17,9 @@ type UserGeoJsonLayerControlProps = {
   onAdd: (name: string, data: FeatureCollection) => void;
   onToggle: (id: string) => void;
   onRemove: (id: string) => void;
+  thumbSize: number;
+  contentInset: number;
+  rowGap: number;
 };
 
 const readFileAsText = (file: File) =>
@@ -34,6 +37,9 @@ const UserGeoJsonLayerControl = ({
   onAdd,
   onToggle,
   onRemove,
+  thumbSize,
+  contentInset,
+  rowGap,
 }: UserGeoJsonLayerControlProps) => {
   const onPickFile = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -54,7 +60,7 @@ const UserGeoJsonLayerControl = ({
 
   return (
     <Box sx={{ mt: 2, width: "100%" }}>
-      <Typography sx={{ fontWeight: 600, fontSize: 18, color: "white", mb: 1 }}>
+      <Typography sx={{ fontWeight: 600, fontSize: { xs: 16, sm: 18 }, color: "white", mb: 1 }}>
         GeoJSON
       </Typography>
 
@@ -62,8 +68,9 @@ const UserGeoJsonLayerControl = ({
         sx={{
           display: "flex",
           alignItems: "center",
-          gap: { xs: 1.5, sm: 3 },
-          px: { xs: 1, sm: 3 },
+          gap: rowGap,
+          pl: contentInset,
+          pr: contentInset,
         }}
       >
         {/* Global toggle on/off for GeoJSON layers */}
@@ -76,8 +83,8 @@ const UserGeoJsonLayerControl = ({
         >
           <Box
             sx={{
-              width: { xs: 62, sm: 75 },
-              height: { xs: 62, sm: 75 },
+              width: thumbSize,
+              height: thumbSize,
               borderRadius: "50%",
               overflow: "hidden",
               border: "4px solid",
@@ -103,7 +110,7 @@ const UserGeoJsonLayerControl = ({
               onToggleGeoJsonVisible(); // ONLY master toggle
             }}
           >
-            <PolylineIcon sx={{ fontSize: { xs: 34, sm: 45 }, color: "white" }} />
+            <PolylineIcon sx={{ fontSize: thumbSize * 0.55, color: "white" }} />
           </Box>
           <Typography
             sx={{ mt: 1, fontSize: { xs: 11, sm: 12 }, color: "rgba(255,255,255,0.65)" }}
@@ -123,6 +130,7 @@ const UserGeoJsonLayerControl = ({
             fullWidth
             size="small"
             sx={{
+              fontSize: { xs: 10, sm: 13 },
               borderColor: "#367E98",
               color: "white",
               "&:hover": { backgroundColor: "rgba(54,126,152,0.10)" },
