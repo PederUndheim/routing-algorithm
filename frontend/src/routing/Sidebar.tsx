@@ -81,9 +81,7 @@ const Sidebar = ({
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isLargeDesktop = useMediaQuery(theme.breakpoints.up("xl"));
   const [width, setWidth] = useState(DEFAULT_W);
-  const [isScrolling, setIsScrolling] = useState(false);
   const draggingRef = useRef(false);
-  const scrollTimeoutRef = useRef<number | null>(null);
   const desktopMaxWidth = Math.min(MAX_W, Math.floor(window.innerWidth * 0.58));
   const effectiveWidth = isMobile
     ? Math.min(window.innerWidth * 0.75, 420)
@@ -116,25 +114,6 @@ const Sidebar = ({
       window.removeEventListener("mouseup", onUp);
     };
   }, []);
-
-  useEffect(() => {
-    return () => {
-      if (scrollTimeoutRef.current !== null) {
-        window.clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const handleScroll = () => {
-    setIsScrolling(true);
-    if (scrollTimeoutRef.current !== null) {
-      window.clearTimeout(scrollTimeoutRef.current);
-    }
-    scrollTimeoutRef.current = window.setTimeout(() => {
-      setIsScrolling(false);
-      scrollTimeoutRef.current = null;
-    }, 700);
-  };
 
   return (
     <Drawer
