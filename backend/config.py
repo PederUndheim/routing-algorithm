@@ -59,21 +59,19 @@ SAFE_MASK_SOFT_PARAMS = {
     "pra_runout_combined_width": 1.5,
 }
 
-# Track influence modes: (w_outside, w_forest)
-# w_outside = weight applied to tracks outside forest
-# w_forest  = weight applied to tracks inside forest
-TRACK_INFLUENCE_PARAMS: dict[str, tuple[float, float]] = {
-    "off":         (0.0,  0.0),
-    "forest_only": (0.0,  0.5),
-    "balanced":    (0.2,  0.5),
-    "strong":      (0.35, 0.65),
+# Track influence modes: named parameters for readability.
+TRACK_INFLUENCE_PARAMS: dict[str, dict[str, float]] = {
+    "off": {"w_outside": 0.0, "w_forest": 0.0},
+    "forest_only": {"w_outside": 0.0, "w_forest": 0.5},
+    "balanced": {"w_outside": 0.2, "w_forest": 0.5},
+    "strong": {"w_outside": 0.35, "w_forest": 0.65},
 }
 
 # Corridor rendering modes: controls corridor width and contrast
 CORRIDOR_MODE_PARAMS: dict[str, dict[str, float]] = {
     "conservative": {"slack": 0.1, "gamma": 6.0},
     "balanced": {"slack": 0.2, "gamma": 4.0},
-    "explorative": {"slack": 0.3, "gamma": 2.5},
+    "explorative": {"slack": 0.3, "gamma": 1.5},
 }
 
 

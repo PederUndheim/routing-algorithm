@@ -4,16 +4,20 @@ import type { LatLng, PickMode } from "../types/mapTypes";
 
 type MapClickPickerProps = {
   pickMode: PickMode;
+  stopPickIndex: number | null;
   onPickModeChange: (mode: PickMode) => void;
   onStartPointChange: (point: LatLng | null) => void;
   onEndPointChange: (point: LatLng | null) => void;
+  onStopPointChange: (point: LatLng, index: number | null) => void;
 };
 
 const MapClickPicker = ({
   pickMode,
+  stopPickIndex,
   onPickModeChange,
   onStartPointChange,
   onEndPointChange,
+  onStopPointChange,
 }: MapClickPickerProps) => {
   const map = useMap();
 
@@ -33,6 +37,7 @@ const MapClickPicker = ({
       const point: LatLng = { lat: e.latlng.lat, lng: e.latlng.lng };
       if (pickMode === "start") onStartPointChange(point);
       if (pickMode === "end") onEndPointChange(point);
+      if (pickMode === "stop") onStopPointChange(point, stopPickIndex);
       onPickModeChange(null);
     },
   });

@@ -2,6 +2,7 @@ import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
 import Slider from "@mui/material/Slider";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
@@ -10,6 +11,9 @@ import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
 import Collapse from "@mui/material/Collapse";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import AddIcon from "@mui/icons-material/Add";
+import EditLocationAltIcon from "@mui/icons-material/EditLocationAlt";
+import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 
@@ -27,6 +31,11 @@ type RouteControlsProps = {
   onShowCorridorChange: (show: boolean) => void;
   corridorMode: CorridorMode;
   onCorridorModeChange: (mode: CorridorMode) => void;
+  stopPoints: LatLng[];
+  onRequestAddStop: () => void;
+  onRequestRepickStop: (index: number) => void;
+  onRemoveStop: (index: number) => void;
+  onMoveStop: (fromIndex: number, toIndex: number) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -36,6 +45,7 @@ type RouteControlsProps = {
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: "conservative" | "balanced" | "explorative";
+    stopPoints: LatLng[];
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -54,6 +64,8 @@ const marksSmoothingSlider = [
   { value: 0, label: "0 m" },
   { value: 100, label: "100 m" },
 ];
+
+const MAX_STOPS = 3;
 
 type TrackInfluenceMode = "off" | "forest_only" | "balanced" | "strong";
 const compactRadioSx = {
@@ -78,6 +90,11 @@ const RouteControls = ({
   onShowCorridorChange,
   corridorMode,
   onCorridorModeChange,
+  stopPoints,
+  onRequestAddStop,
+  onRequestRepickStop,
+  onRemoveStop,
+  onMoveStop,
   onClearStart,
   onClearEnd,
   onGenerate,
@@ -103,6 +120,7 @@ const RouteControls = ({
     useState<TrackInfluenceMode>(DEFAULT_TRACK_INFLUENCE_MODE);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [routeInputsDirty, setRouteInputsDirty] = useState(false);
+  const hasReachedMaxStops = stopPoints.length >= MAX_STOPS;
 
   useEffect(() => {
     setRouteInputsDirty(false);
@@ -237,6 +255,139 @@ const RouteControls = ({
         </Typography>
       </Box>
 
+      <Box sx={{ mb: { xs: 1, sm: 1 }, mx: { xs: 1, sm: 1.5 } }}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<AddIcon />}
+            disabled={hasReachedMaxStops}
+            onClick={() => {
+              setRouteInputsDirty(true);
+              if (pickMode === "stop") {
+                onPickModeChange(null);
+              } else {
+                onRequestAddStop();
+              }
+            }}
+            sx={{
+              borderColor: "rgba(255,255,255,0.35)",
+              color: "white",
+              fontSize: { xs: 11, sm: 12 },
+              minWidth: "auto",
+              px: 1,
+              "&.Mui-disabled": {
+                color: "rgba(255,255,255,0.45)",
+                borderColor: "rgba(255,255,255,0.2)",
+              },
+            }}
+          >
+            {hasReachedMaxStops
+              ? `Maximum ${MAX_STOPS} stops`
+              : pickMode === "stop"
+              ? "Click on map..."
+              : "Add stop"}
+          </Button>
+        </Box>
+
+        {stopPoints.length > 0 && (
+          <Stack spacing={0.8}>
+            {stopPoints.map((stopPoint, index) => (
+              <Box
+                key={`stop-control-${index}`}
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0.2,
+                  px: 1,
+                  py: 0.7,
+                  borderRadius: 1.5,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 22,
+                    height: 22,
+                    mr: 1,
+                    borderRadius: "50%",
+                    border: "1px solid rgba(255,255,255,0.35)",
+                    backgroundColor: "#555555",
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    flexShrink: 0,
+                  }}
+                >
+                  {index + 1}
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography fontSize={{ xs: 11, sm: 13 }} sx={{ color: "white" }}>
+                    Stop {index + 1}
+                  </Typography>
+                  <Typography sx={{ fontSize: { xs: 9, sm: 11 }, color: "rgba(255,255,255,0.75)" }}>
+                    {formatCoord(stopPoint)}
+                  </Typography>
+                </Box>
+                <IconButton
+                  size="small"
+                  disabled={index === 0}
+                  onClick={() => {
+                    setRouteInputsDirty(true);
+                    onMoveStop(index, index - 1);
+                  }}
+                  sx={{
+                    color: "rgba(255,255,255,0.8)",
+                    "&.Mui-disabled": {
+                      color: "rgba(255,255,255,0.25)",
+                    },
+                  }}
+                >
+                  <KeyboardArrowUpIcon sx={{ color: "inherit", fontSize: 18 }} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  disabled={index === stopPoints.length - 1}
+                  onClick={() => {
+                    setRouteInputsDirty(true);
+                    onMoveStop(index, index + 1);
+                  }}
+                  sx={{
+                    color: "rgba(255,255,255,0.8)",
+                    "&.Mui-disabled": {
+                      color: "rgba(255,255,255,0.25)",
+                    },
+                  }}
+                >
+                  <KeyboardArrowDownIcon sx={{ color: "inherit", fontSize: 18 }} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    setRouteInputsDirty(true);
+                    onRequestRepickStop(index);
+                  }}
+                >
+                  <EditLocationAltIcon sx={{ color: "rgba(255,255,255,0.8)", fontSize: 18 }} />
+                </IconButton>
+                <IconButton
+                  size="small"
+                  onClick={() => {
+                    setRouteInputsDirty(true);
+                    onRemoveStop(index);
+                  }}
+                >
+                  <DeleteOutlineIcon sx={{ color: "rgba(255,255,255,0.8)", fontSize: 18 }} />
+                </IconButton>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </Box>
+
       {/* End point row */}
       <Box sx={{ mb: { xs: 1.5, sm: 2 } }}>
         <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 1 }}>
@@ -360,7 +511,7 @@ const RouteControls = ({
         <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0, sm: 0.5 } }}>
           Make routing restrictions?
         </Typography> 
-        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+        <Stack direction="row" sx={{ mb: 1 }}>
           <FormControlLabel
             label={
               <Typography
@@ -521,7 +672,7 @@ const RouteControls = ({
         </Box>
       </Collapse>
 
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1, sm: 1.5 } }} />
 
       <FormControlLabel
         label={
@@ -552,7 +703,7 @@ const RouteControls = ({
         sx={{
           ml: { xs: 0.5, sm: 1 },
           mt: 0.2,
-          mb: 0.8,
+          mb: 3,
           opacity: showCorridor ? 1 : 0.45,
           pointerEvents: showCorridor ? "auto" : "none",
           transition: "opacity 0.15s ease",
@@ -607,6 +758,7 @@ const RouteControls = ({
               avoidGlacier,
               trackInfluenceMode,
               corridorMode,
+              stopPoints,
             });
           }}
           size="large"
@@ -679,6 +831,7 @@ const RouteControls = ({
             avoidGlacier === DEFAULT_AVOID_GLACIER &&
             trackInfluenceMode === DEFAULT_TRACK_INFLUENCE_MODE &&
             corridorMode === DEFAULT_CORRIDOR_MODE &&
+            stopPoints.length === 0 &&
             showCorridor === DEFAULT_SHOW_CORRIDOR
           }
           size="small"

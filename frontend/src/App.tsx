@@ -17,6 +17,8 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 
+const MAX_STOPS = 3;
+
 const formatApiErrorDetail = (detail: unknown): string => {
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
@@ -60,7 +62,9 @@ const App = () => {
 
   const [startPoint, setStartPoint] = useState<LatLng | null>(null);
   const [endPoint, setEndPoint] = useState<LatLng | null>(null);
+  const [stopPoints, setStopPoints] = useState<LatLng[]>([]);
   const [pickMode, setPickMode] = useState<PickMode>(null);
+  const [stopPickIndex, setStopPickIndex] = useState<number | null>(null);
 
   const mapApiRef = useRef<MapApi | null>(null);
 
@@ -114,6 +118,7 @@ const App = () => {
     avoidGlacier,
     trackInfluenceMode,
     corridorMode,
+    stopPoints,
   }: {
     lambdaWeight: number;
     smoothThreshold: number;
@@ -121,6 +126,7 @@ const App = () => {
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: CorridorMode;
+    stopPoints: LatLng[];
   }) => {
     if (!startPoint || !endPoint) return;
 
@@ -149,6 +155,7 @@ const App = () => {
         body: JSON.stringify({
           name: "run_" + runId,
           start: startPoint,
+          stops: stopPoints,
           end: endPoint,
           lambda_weight: lambdaWeight,
           smooth_threshold: smoothThreshold,
@@ -196,6 +203,94 @@ const App = () => {
 
   const clearEnd = () => {
     setEndPoint(null);
+    setRouteGeoJson(null);
+    setCorridorPngUrl(null);
+    setCorridorPngUrls({});
+    setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
+  };
+
+  const handleStopPointChange = (point: LatLng, index: number | null) => {
+    setStopPoints((prev) => {
+      if (index === null || index < 0 || index >= prev.length) {
+        if (prev.length >= MAX_STOPS) {
+          return prev;
+        }
+        return [...prev, point];
+      }
+
+      const next = [...prev];
+      next[index] = point;
+      return next;
+    });
+    setStopPickIndex(null);
+    setPickMode(null);
+    setRouteGeoJson(null);
+    setCorridorPngUrl(null);
+    setCorridorPngUrls({});
+    setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
+  };
+
+  const requestAddStop = () => {
+    if (stopPoints.length >= MAX_STOPS) {
+      setPickMode(null);
+      setStopPickIndex(null);
+      return;
+    }
+    setStopPickIndex(null);
+    setPickMode("stop");
+  };
+
+  const requestRepickStop = (index: number) => {
+    setStopPickIndex(index);
+    setPickMode("stop");
+  };
+
+  const removeStop = (index: number) => {
+    setStopPoints((prev) => prev.filter((_, currentIndex) => currentIndex !== index));
+    setStopPickIndex((prev) => {
+      if (prev === null) return null;
+      if (prev === index) return null;
+      if (prev > index) return prev - 1;
+      return prev;
+    });
+    setRouteGeoJson(null);
+    setCorridorPngUrl(null);
+    setCorridorPngUrls({});
+    setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
+  };
+
+  const moveStop = (fromIndex: number, toIndex: number) => {
+    setStopPoints((prev) => {
+      if (
+        fromIndex < 0 ||
+        toIndex < 0 ||
+        fromIndex >= prev.length ||
+        toIndex >= prev.length ||
+        fromIndex === toIndex
+      ) {
+        return prev;
+      }
+
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+
+    setStopPickIndex((prev) => {
+      if (prev === null) return null;
+      if (prev === fromIndex) return toIndex;
+      if (fromIndex < prev && prev <= toIndex) return prev - 1;
+      if (toIndex <= prev && prev < fromIndex) return prev + 1;
+      return prev;
+    });
+
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
     setCorridorPngUrls({});
@@ -270,8 +365,11 @@ const App = () => {
         onPickModeChange={setPickMode}
         startPoint={startPoint}
         endPoint={endPoint}
+        stopPoints={stopPoints}
+        stopPickIndex={stopPickIndex}
         onStartPointChange={setStartPoint}
         onEndPointChange={setEndPoint}
+        onStopPointChange={handleStopPointChange}
         routeGeoJson={routeGeoJson}
         showCorridor={showCorridor}
         corridorPngUrl={corridorPngUrl}
@@ -295,6 +393,11 @@ const App = () => {
         onShowCorridorChange={setShowCorridor}
         corridorMode={corridorMode}
         onCorridorModeChange={setCorridorMode}
+        stopPoints={stopPoints}
+        onRequestAddStop={requestAddStop}
+        onRequestRepickStop={requestRepickStop}
+        onRemoveStop={removeStop}
+        onMoveStop={moveStop}
         onClearStart={clearStart}
         onClearEnd={clearEnd}
         onGenerate={handleGenerateRoute}

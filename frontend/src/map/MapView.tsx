@@ -19,7 +19,7 @@ import type { UserGeoJsonLayer, LatLng, PickMode } from "../types/mapTypes";
 
 import { getBasemap } from "../layers/basemaps";
 import { OVERLAYS } from "../layers/overlays";
-import { startIcon, endIcon } from "../ui/StartAndEndIcons";
+import { startIcon, endIcon, createStopIcon } from "../ui/StartAndEndIcons";
 
 import MapController from "./MapController";
 import BasemapControl from "./BasemapControl";
@@ -88,8 +88,11 @@ type MapViewProps = {
   onPickModeChange: (mode: PickMode) => void;
   startPoint: LatLng | null;
   endPoint: LatLng | null;
+  stopPoints: LatLng[];
+  stopPickIndex: number | null;
   onStartPointChange: (point: LatLng | null) => void;
   onEndPointChange: (point: LatLng | null) => void;
+  onStopPointChange: (point: LatLng, index: number | null) => void;
   routeGeoJson?: FeatureCollection | null;
   showCorridor: boolean;
   corridorPngUrl?: string | null;
@@ -121,8 +124,11 @@ const MapView = ({
   onPickModeChange,
   startPoint,
   endPoint,
+  stopPoints,
+  stopPickIndex,
   onStartPointChange,
   onEndPointChange,
+  onStopPointChange,
   routeGeoJson,
   showCorridor,
   corridorPngUrl,
@@ -256,13 +262,24 @@ const MapView = ({
             pane="markers"
           />
         )}
+        {stopPoints.map((stopPoint, index) => (
+          <DraggableMarker
+            key={`stop-${index}`}
+            position={stopPoint}
+            icon={createStopIcon(index)}
+            onPositionChange={(p) => onStopPointChange(p, index)}
+            pane="markers"
+          />
+        ))}
 
         {/* Picker layer */}
         <MapClickPicker
           pickMode={pickMode}
+          stopPickIndex={stopPickIndex}
           onPickModeChange={onPickModeChange}
           onStartPointChange={onStartPointChange}
           onEndPointChange={onEndPointChange}
+          onStopPointChange={onStopPointChange}
         />
 
         <MapController

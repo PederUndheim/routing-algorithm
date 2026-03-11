@@ -6,9 +6,11 @@ import json
 import secrets
 import geopandas as gpd
 import gpxpy
+import numpy as np
 import gpxpy.gpx
 from datetime import datetime, timezone
 from pathlib import Path
+import rasterio
 from threading import Lock
 from typing import List, Tuple
 from shapely.geometry import Point, box
@@ -21,6 +23,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from pyproj import Transformer
 
+from backend import config
 from backend.file_handler.area_context import load_area
 from backend.routing_algorithm.routing.core import init_grass, run_routing_for_tour
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
@@ -74,6 +77,18 @@ def _get_output_root() -> Path:
 
 def _export_wgs84_geojson(native_geojson_path: str | Path) -> dict:
     gdf = gpd.read_file(native_geojson_path)
+    if gdf.crs is None:
+        gdf = gdf.set_crs(NATIVE, allow_override=True)
+    else:
+        minx, miny, maxx, maxy = gdf.total_bounds
+        looks_like_lonlat = (
+            -180.0 <= minx <= 180.0
+            and -180.0 <= maxx <= 180.0
+            and -90.0 <= miny <= 90.0
+            and -90.0 <= maxy <= 90.0
+        )
+        if gdf.crs.to_string() == WGS84 and not looks_like_lonlat:
+            gdf = gdf.set_crs(NATIVE, allow_override=True)
     return gdf.to_crs(WGS84).__geo_interface__
 
 
@@ -87,20 +102,27 @@ def _geojson_to_gpx(geojson_dict: dict) -> str:
         if not features:
             raise ValueError("No features in GeoJSON")
         
-        geometry = features[0].get("geometry", {})
-        coords = geometry.get("coordinates", [])
-        
-        if not coords:
-            raise ValueError("No coordinates in feature")
-        
         # Create track segment
         track = gpxpy.gpx.GPXTrack()
         segment = gpxpy.gpx.GPXTrackSegment()
-        
-        for coord in coords:
-            if len(coord) >= 2:
-                lng, lat = coord[0], coord[1]
-                segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude=lat, longitude=lng))
+
+        for feature in features:
+            geometry = feature.get("geometry", {})
+            geom_type = geometry.get("type")
+            coords = geometry.get("coordinates", [])
+
+            if geom_type == "LineString":
+                lines = [coords]
+            elif geom_type == "MultiLineString":
+                lines = coords
+            else:
+                continue
+
+            for line in lines:
+                for coord in line:
+                    if len(coord) >= 2:
+                        lng, lat = coord[0], coord[1]
+                        segment.points.append(gpxpy.gpx.GPXTrackPoint(latitude=lat, longitude=lng))
         
         if segment.points:
             track.segments.append(segment)
@@ -144,6 +166,68 @@ def _areas_for_bbox(gdf: gpd.GeoDataFrame, start_xy, end_xy, buffer_m) -> List[s
     bbox_poly = gpd.GeoSeries([bbox_native], crs=NATIVE).to_crs(gdf.crs).iloc[0]
     hits = gdf[gdf.intersects(bbox_poly)]
     return sorted({str(x) for x in hits["area_id"].tolist()})
+
+
+def _areas_for_points_bbox(gdf: gpd.GeoDataFrame, points_xy: List[Tuple[float, float]], buffer_m: float) -> List[str]:
+    xs = [point[0] for point in points_xy]
+    ys = [point[1] for point in points_xy]
+    bbox_native = box(min(xs) - buffer_m, min(ys) - buffer_m, max(xs) + buffer_m, max(ys) + buffer_m)
+    bbox_poly = gpd.GeoSeries([bbox_native], crs=NATIVE).to_crs(gdf.crs).iloc[0]
+    hits = gdf[gdf.intersects(bbox_poly)]
+    return sorted({str(x) for x in hits["area_id"].tolist()})
+
+
+def _set_region_for_points(mosaic_raster: str, points_xy: List[Tuple[float, float]], buffer_m: float) -> None:
+    gs.run_command("g.region", raster=mosaic_raster, quiet=True)
+    xs = [point[0] for point in points_xy]
+    ys = [point[1] for point in points_xy]
+    gs.run_command(
+        "g.region",
+        n=max(ys) + buffer_m,
+        s=min(ys) - buffer_m,
+        e=max(xs) + buffer_m,
+        w=min(xs) - buffer_m,
+        quiet=True,
+    )
+
+
+def _merge_native_route_geojson(paths: List[Path], dst_path: Path) -> Path:
+    features: list[dict] = []
+    for path in paths:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        features.extend(data.get("features", []))
+
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    dst_path.write_text(json.dumps({"type": "FeatureCollection", "features": features}), encoding="utf-8")
+    return dst_path
+
+
+def _merge_corridor_tifs(src_paths: List[Path], dst_path: Path) -> Path:
+    if not src_paths:
+        raise ValueError("No corridor tif paths to merge")
+
+    with rasterio.open(src_paths[0]) as ref:
+        profile = ref.profile.copy()
+        nodata = ref.nodata if ref.nodata is not None else -9999.0
+        merged = np.full((ref.height, ref.width), nodata, dtype=np.float32)
+        any_valid = np.zeros((ref.height, ref.width), dtype=bool)
+
+    for path in src_paths:
+        with rasterio.open(path) as ds:
+            arr = ds.read(1).astype(np.float32)
+            if arr.shape != merged.shape:
+                raise ValueError("Corridor rasters must share the same shape for merging")
+
+            valid = np.isfinite(arr) & (~np.isclose(arr, nodata))
+            merged = np.where(valid & any_valid, np.maximum(merged, arr), merged)
+            merged = np.where(valid & (~any_valid), arr, merged)
+            any_valid |= valid
+
+    profile.update(dtype="float32", count=1, compress="deflate", nodata=nodata)
+    dst_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(dst_path, "w", **profile) as dst:
+        dst.write(merged.astype(np.float32), 1)
+    return dst_path
 
 
 
@@ -204,25 +288,42 @@ def route(req: RouteRequest, request: Request):
 
     sx, sy = _to_native.transform(req.start.lng, req.start.lat)
     ex, ey = _to_native.transform(req.end.lng, req.end.lat)
+    stop_xy = [
+        _to_native.transform(stop.lng, stop.lat)
+        for stop in req.stops
+    ]
 
     start_xy = (sx, sy)
     end_xy = (ex, ey)
+    all_points_xy = [start_xy, *stop_xy, end_xy]
 
     try:
         with _grass_lock:
             # NOTE: wipes all rasters in the current mapset
             gs.run_command("g.remove", type="raster", pattern="*", flags="f", quiet=True)
 
-            bbox_ids = _areas_for_bbox(areas_gdf, start_xy, end_xy, req.buffer_m)
+            bbox_ids = _areas_for_points_bbox(areas_gdf, all_points_xy, req.buffer_m)
             start_ids = _areas_containing_point(areas_gdf, start_xy)
             end_ids = _areas_containing_point(areas_gdf, end_xy)
+            stop_ids = [
+                _areas_containing_point(areas_gdf, xy)
+                for xy in stop_xy
+            ]
 
             if not start_ids:
                 raise HTTPException(422, "Start point is outside all available areas.")
             if not end_ids:
                 raise HTTPException(422, "End point is outside all available areas.")
+            for index, ids in enumerate(stop_ids, start=1):
+                if not ids:
+                    raise HTTPException(422, f"Stop {index} is outside all available areas.")
 
-            area_ids = sorted(set(bbox_ids) | set(start_ids) | set(end_ids))
+            area_ids = sorted(
+                set(bbox_ids)
+                | set(start_ids)
+                | set(end_ids)
+                | {area_id for ids in stop_ids for area_id in ids}
+            )
             if not area_ids:
                 raise HTTPException(422, "No areas selected for routing.")
 
@@ -236,27 +337,53 @@ def route(req: RouteRequest, request: Request):
                 track_influence_mode=req.track_influence_mode,
             )
 
-            set_region_local(cost_mosaic, start_xy, end_xy, req.buffer_m)
+            _set_region_for_points(cost_mosaic, all_points_xy, req.buffer_m)
 
             any_paths, any_inputs = load_area(area_ids[0])
 
             run_id = _new_run_id()
+            leg_route_paths: List[Path] = []
+            leg_corridor_tifs: dict[str, List[Path]] = {mode: [] for mode in config.CORRIDOR_MODE_PARAMS}
 
-            res = run_routing_for_tour(
-                paths=any_paths,
-                inputs=any_inputs,
-                tour_name=req.name or "adhoc",
-                start_coords=start_xy,
-                end_coords=end_xy,
-                lambda_weight=req.lambda_weight,
-                smooth_threshold=req.smooth_threshold,
-                corridor_mode=req.corridor_mode,
-                cost_surface_override=cost_mosaic,
-                dem_override=dem_mosaic,
-                output_mode="run",
-                run_id=run_id,
-                output_root=request.app.state.output_root,
-            )
+            leg_points = all_points_xy
+            for leg_index, (leg_start, leg_end) in enumerate(zip(leg_points[:-1], leg_points[1:]), start=1):
+                leg_res = run_routing_for_tour(
+                    paths=any_paths,
+                    inputs=any_inputs,
+                    tour_name=req.name or "adhoc",
+                    start_coords=leg_start,
+                    end_coords=leg_end,
+                    lambda_weight=req.lambda_weight,
+                    smooth_threshold=req.smooth_threshold,
+                    corridor_mode=req.corridor_mode,
+                    cost_surface_override=cost_mosaic,
+                    dem_override=dem_mosaic,
+                    output_mode="run",
+                    run_id=run_id,
+                    output_root=request.app.state.output_root,
+                    output_suffix=f"leg_{leg_index}",
+                )
+                leg_route_paths.append(Path(leg_res["path_geojson_native"]))
+                for mode_name, tif_path in leg_res.get("corridor_tifs", {}).items():
+                    leg_corridor_tifs.setdefault(mode_name, []).append(Path(tif_path))
+
+            output_base = Path(request.app.state.output_root).resolve() / "runs_output" / run_id
+            route_dir = output_base / "route"
+            corridor_dir = output_base / "corridor"
+
+            merged_route_path = _merge_native_route_geojson(leg_route_paths, route_dir / "path.geojson")
+            merged_corridor_tifs = {
+                mode_name: _merge_corridor_tifs(tif_paths, corridor_dir / f"corridor_{mode_name}.tif")
+                for mode_name, tif_paths in leg_corridor_tifs.items()
+                if tif_paths
+            }
+
+            res = {
+                "path_geojson_native": str(merged_route_path),
+                "corridor_tif": str(merged_corridor_tifs[req.corridor_mode]),
+                "corridor_tifs": {mode: str(path) for mode, path in merged_corridor_tifs.items()},
+                "legs": len(leg_route_paths),
+            }
 
     except HTTPException:
         raise

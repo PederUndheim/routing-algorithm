@@ -177,7 +177,9 @@ def compose_tracks_influence_for_request(
     if mode not in config.TRACK_INFLUENCE_PARAMS:
         raise ValueError(f"Unsupported track_influence_mode: {track_influence_mode}")
 
-    w_outside, w_forest = config.TRACK_INFLUENCE_PARAMS[mode]
+    mode_params = config.TRACK_INFLUENCE_PARAMS[mode]
+    w_outside = float(mode_params["w_outside"])
+    w_forest = float(mode_params["w_forest"])
     if w_outside <= 0.0 and w_forest <= 0.0:
         return base_cost_name
 

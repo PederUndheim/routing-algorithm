@@ -29,6 +29,11 @@ type SidebarProps = {
   onShowCorridorChange: (show: boolean) => void;
   corridorMode: CorridorMode;
   onCorridorModeChange: (mode: CorridorMode) => void;
+  stopPoints: LatLng[];
+  onRequestAddStop: () => void;
+  onRequestRepickStop: (index: number) => void;
+  onRemoveStop: (index: number) => void;
+  onMoveStop: (fromIndex: number, toIndex: number) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -38,6 +43,7 @@ type SidebarProps = {
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: "conservative" | "balanced" | "explorative";
+    stopPoints: LatLng[];
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -46,7 +52,7 @@ type SidebarProps = {
 
 const MIN_W = 280;
 const MAX_W = 1100;
-const DEFAULT_W = 360;
+const DEFAULT_W = 380;
 
 const Sidebar = ({
   open,
@@ -59,6 +65,11 @@ const Sidebar = ({
   onShowCorridorChange,
   corridorMode,
   onCorridorModeChange,
+  stopPoints,
+  onRequestAddStop,
+  onRequestRepickStop,
+  onRemoveStop,
+  onMoveStop,
   onClearStart,
   onClearEnd,
   onGenerate,
@@ -70,7 +81,9 @@ const Sidebar = ({
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const isLargeDesktop = useMediaQuery(theme.breakpoints.up("xl"));
   const [width, setWidth] = useState(DEFAULT_W);
+  const [isScrolling, setIsScrolling] = useState(false);
   const draggingRef = useRef(false);
+  const scrollTimeoutRef = useRef<number | null>(null);
   const desktopMaxWidth = Math.min(MAX_W, Math.floor(window.innerWidth * 0.58));
   const effectiveWidth = isMobile
     ? Math.min(window.innerWidth * 0.75, 420)
@@ -80,7 +93,7 @@ const Sidebar = ({
     if (isMobile) return;
     setWidth((prev) => {
       if (prev !== DEFAULT_W) return prev;
-      return isLargeDesktop ? 350 : 330;
+      return isLargeDesktop ? 380 : 360;
     });
   }, [isMobile, isLargeDesktop]);
 
@@ -103,6 +116,25 @@ const Sidebar = ({
       window.removeEventListener("mouseup", onUp);
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scrollTimeoutRef.current !== null) {
+        window.clearTimeout(scrollTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleScroll = () => {
+    setIsScrolling(true);
+    if (scrollTimeoutRef.current !== null) {
+      window.clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = window.setTimeout(() => {
+      setIsScrolling(false);
+      scrollTimeoutRef.current = null;
+    }, 700);
+  };
 
   return (
     <Drawer
@@ -177,6 +209,11 @@ const Sidebar = ({
           onShowCorridorChange={onShowCorridorChange}
           corridorMode={corridorMode}
           onCorridorModeChange={onCorridorModeChange}
+          stopPoints={stopPoints}
+          onRequestAddStop={onRequestAddStop}
+          onRequestRepickStop={onRequestRepickStop}
+          onRemoveStop={onRemoveStop}
+          onMoveStop={onMoveStop}
           onClearStart={onClearStart}
           onClearEnd={onClearEnd}
           onGenerate={onGenerate}

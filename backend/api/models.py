@@ -15,6 +15,7 @@ CorridorMode = Literal["conservative", "balanced", "explorative"]
 class RouteRequest(BaseModel):
     name: Optional[str] = "adhoc"
     start: LatLng
+    stops: list[LatLng] = Field(default_factory=list, max_length=3)
     end: LatLng
     buffer_m: float = Field(DEFAULT_BUFFER_M, ge=0.0, le=50000.0)
     lambda_weight: float = Field(ge=0.0, le=1.0)

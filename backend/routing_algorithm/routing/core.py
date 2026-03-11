@@ -135,12 +135,15 @@ def run_routing_for_tour(
     output_mode: OutputMode = "area",
     run_id: Optional[str] = None,
     output_root: Optional[Path] = None,
+    output_suffix: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Run the full GRASS routing for a single tour and export outputs.
     Returns a dict with output file paths.
     """
     slug = _safe_name(tour_name.lower())
+    if output_suffix:
+        slug = f"{slug}_{_safe_name(output_suffix.lower())}"
     start_vec = f"start_{slug}"
     end_vec = f"end_{slug}"
 
@@ -182,7 +185,7 @@ def run_routing_for_tour(
     route_dir.mkdir(parents=True, exist_ok=True)
 
     if output_mode == "run":
-        path_geojson = route_dir / "path.geojson"
+        path_geojson = route_dir / (f"path_{output_suffix}.geojson" if output_suffix else "path.geojson")
     else:
         path_geojson = route_dir / f"{slug}_path.geojson"
 
@@ -331,7 +334,10 @@ def run_routing_for_tour(
         gs.mapcalc(f"{corridor_f32} = float({corridor_score_gamma})", overwrite=True)
 
         if output_mode == "run":
-            corridor_tif = corridor_dir / f"corridor_{mode_name}.tif"
+            if output_suffix:
+                corridor_tif = corridor_dir / f"corridor_{mode_name}_{output_suffix}.tif"
+            else:
+                corridor_tif = corridor_dir / f"corridor_{mode_name}.tif"
         else:
             corridor_tif = corridor_dir / f"{slug}_{mode_name}_corridor.tif"
 
