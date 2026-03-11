@@ -10,6 +10,8 @@ DEM_SRC_NAME = "dem.tif"              # or "DEM.tif"
 COST_SRC_NAME = "cost_surface.tif"    # or your actual name
 LAKE_SRC_NAME = "lake.tif"
 GLACIER_SRC_NAME = "glacier.tif"
+TRACKS_SRC_NAME = "tracks.tif"
+FOREST_SRC_NAME = "forest.tif"
 
 
 def copy2(src: Path, dst: Path) -> None:
@@ -40,12 +42,16 @@ def main() -> None:
         cost_src = src_cost_surface_dir / COST_SRC_NAME
         lake_src = src_input_dir / LAKE_SRC_NAME
         glacier_src = src_input_dir / GLACIER_SRC_NAME
+        tracks_src = src_input_dir / TRACKS_SRC_NAME
+        forest_src = src_input_dir / FOREST_SRC_NAME
 
         dst_area_dir = runtime_root / area_id
         dem_dst = dst_area_dir / "dem.tif"
         cost_dst = dst_area_dir / "cost_surface.tif"
         lake_dst = dst_area_dir / "lake.tif"
         glacier_dst = dst_area_dir / "glacier.tif"
+        tracks_dst = dst_area_dir / "tracks.tif"
+        forest_dst = dst_area_dir / "forest.tif"
 
         if not dem_src.exists():
             print(f"Skip {area_id}: missing DEM {dem_src}")
@@ -67,12 +73,27 @@ def main() -> None:
             skipped += 1
             continue
 
+        if not tracks_src.exists():
+            print(f"Skip {area_id}: missing tracks raster {tracks_src}")
+            skipped += 1
+            continue
+
+        if not forest_src.exists():
+            print(f"Skip {area_id}: missing forest raster {forest_src}")
+            skipped += 1
+            continue
+
         copy2(dem_src, dem_dst)
         copy2(cost_src, cost_dst)
         copy2(lake_src, lake_dst)
         copy2(glacier_src, glacier_dst)
+        copy2(tracks_src, tracks_dst)
+        copy2(forest_src, forest_dst)
 
-        print(f"Exported {area_id}: dem.tif, cost_surface.tif, lake.tif, glacier.tif")
+        print(
+            f"Exported {area_id}: dem.tif, cost_surface.tif, lake.tif, glacier.tif, "
+            "tracks.tif, forest.tif"
+        )
         exported += 1
 
     print(f"\nDone. Exported {exported} areas. Skipped {skipped}.")

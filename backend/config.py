@@ -51,13 +51,6 @@ STEEP_AREA_PARAMS = {
     "max_penalty": 35.0,    # Max additive penalty
 }
 
-# Cliff buffer penalty parameters
-# CLIFF_BUFFER_PARAMS = {
-#     "steep_threshold": 60.0,    
-#     "max_dist": 20.0,          
-#     "penalty_cost": 10.0,      
-# }
-
 # Safe mask for where cost reductions are allowed
 SAFE_MASK_SOFT_PARAMS = {
     "slope_threshold": 30.0,      
@@ -66,15 +59,15 @@ SAFE_MASK_SOFT_PARAMS = {
     "pra_runout_combined_width": 1.5,
 }
 
-# Real tracks reduction parameters
-REAL_TRACKS_REDUCTION_PARAMS = {
-    "w_general_default": 0.2,      # default reduction fraction
-    "w_general_max": 0.4,           # max reduction fraction
-    "w_forest": 0.5,                # reduction fraction for mask where extra important, e.g., in forest
-    "gamma_default": 1.0,           # default gamma for constrast, >1 popular tracks emphasized more, <1 less used tracks matter more
-    "p_high_quantile": 0.995,       # percentile for high usage
-    "use_validity_w": False,          
-} 
+# Track influence modes: (w_outside, w_forest)
+# w_outside = weight applied to tracks outside forest
+# w_forest  = weight applied to tracks inside forest
+TRACK_INFLUENCE_PARAMS: dict[str, tuple[float, float]] = {
+    "off":         (0.0,  0.0),
+    "forest_only": (0.0,  0.5),
+    "balanced":    (0.2,  0.5),
+    "strong":      (0.35, 0.65),
+}
 
 
 # GRASS routing parameters

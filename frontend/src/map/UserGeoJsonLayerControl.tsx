@@ -59,7 +59,7 @@ const UserGeoJsonLayerControl = ({
   const effectiveVisible = geoJsonVisible && anySelectedVisible;
 
   return (
-    <Box sx={{ mt: 2, width: "100%" }}>
+    <Box sx={{ mt: { xs: 1.5, sm: 2 }, width: "100%" }}>
       <Typography sx={{ fontWeight: 600, fontSize: { xs: 16, sm: 18 }, color: "white", mb: 1 }}>
         GeoJSON
       </Typography>
@@ -67,24 +67,28 @@ const UserGeoJsonLayerControl = ({
       <Box
         sx={{
           display: "flex",
-          alignItems: "center",
-          gap: rowGap,
-          pl: contentInset,
-          pr: contentInset,
+          flexDirection: { xs: "column", sm: "row" },
+          alignItems: { xs: "stretch", sm: "center" },
+          gap: { xs: 1, sm: rowGap },
+          pl: { xs: 0.5, sm: contentInset },
+          pr: { xs: 0.5, sm: contentInset },
         }}
       >
         {/* Global toggle on/off for GeoJSON layers */}
         <Box
           sx={{
             display: "flex",
-            flexDirection: "column",
+            flexDirection: { xs: "row", sm: "column" },
             alignItems: "center",
+            justifyContent: { xs: "flex-start", sm: "center" },
+            gap: { xs: 1.2, sm: 0 },
           }}
         >
           <Box
             sx={{
               width: thumbSize,
               height: thumbSize,
+              ml: { xs: 0.5, sm: 0 },
               borderRadius: "50%",
               overflow: "hidden",
               border: "4px solid",
@@ -113,7 +117,12 @@ const UserGeoJsonLayerControl = ({
             <PolylineIcon sx={{ fontSize: thumbSize * 0.55, color: "white" }} />
           </Box>
           <Typography
-            sx={{ mt: 1, fontSize: { xs: 11, sm: 12 }, color: "rgba(255,255,255,0.65)" }}
+            sx={{
+              mt: { xs: 0, sm: 1 },
+              fontSize: { xs: 11, sm: 12 },
+              color: "rgba(255,255,255,0.65)",
+              whiteSpace: "nowrap",
+            }}
           >
             Toggle on/off
           </Typography>
@@ -122,7 +131,7 @@ const UserGeoJsonLayerControl = ({
         <Box
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
-          sx={{ flex: 1 }}
+          sx={{ flex: 1, minWidth: 0 }}
         >
           <Button
             variant="outlined"
@@ -155,7 +164,7 @@ const UserGeoJsonLayerControl = ({
               display: "flex",
               flexDirection: "column",
               gap: 0.5,
-              maxHeight: { xs: 190, sm: 250 },
+              maxHeight: { xs: "min(34dvh, 180px)", sm: 250 },
               width: "100%",
               overflowY: "auto",
               overflowX: "hidden",
@@ -191,9 +200,9 @@ const UserGeoJsonLayerControl = ({
                 sx={{
                   display: "flex",
                   alignItems: "center",
-                  gap: 1,
-                  px: 1,
-                  py: 0.6,
+                  gap: { xs: 0.6, sm: 1 },
+                  px: { xs: 0.8, sm: 1 },
+                  py: { xs: 0.45, sm: 0.6 },
                   borderRadius: 1.5,
                   background: l.visible
                     ? "rgba(54,126,152,0.18)"
@@ -219,8 +228,10 @@ const UserGeoJsonLayerControl = ({
                     fontSize: { xs: 12, sm: 13 },
                     flex: 1,
                     overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
+                    textOverflow: { xs: "clip", sm: "ellipsis" },
+                    whiteSpace: { xs: "normal", sm: "nowrap" },
+                    wordBreak: "break-word",
+                    lineHeight: 1.2,
                   }}
                 >
                   {l.name}

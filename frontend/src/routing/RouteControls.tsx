@@ -5,6 +5,8 @@ import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
+import Radio from "@mui/material/Radio";
+import RadioGroup from "@mui/material/RadioGroup";
 import Stack from "@mui/material/Stack";
 import Collapse from "@mui/material/Collapse";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
@@ -29,6 +31,7 @@ type RouteControlsProps = {
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -47,6 +50,21 @@ const marksSmoothingSlider = [
   { value: 0, label: "0 m" },
   { value: 100, label: "100 m" },
 ];
+
+type TrackInfluenceMode = "off" | "forest_only" | "balanced" | "strong";
+
+const compactRadioSx = {
+  p: 0.25,
+  mr: 0.10,
+  color: "rgba(255,255,255,0.55)",
+  "& .MuiSvgIcon-root": { fontSize: 18 },
+  "&.Mui-checked": { color: "#367E98" },
+};
+
+const compactLabelSx = {
+  m: 0.1,
+  "& .MuiFormControlLabel-label": { lineHeight: 1.1 },
+};
 
 const RouteControls = ({
   startPoint,
@@ -67,6 +85,7 @@ const RouteControls = ({
   const DEFAULT_SHOW_CORRIDOR = false;
   const DEFAULT_AVOID_LAKE = false;
   const DEFAULT_AVOID_GLACIER = false;
+  const DEFAULT_TRACK_INFLUENCE_MODE: TrackInfluenceMode = "balanced";
 
   const [lambdaWeight, setLambdaWeight] = useState(DEFAULT_LAMBDA_WEIGHT);
   const [smoothThreshold, setSmoothThreshold] = useState(
@@ -74,6 +93,8 @@ const RouteControls = ({
   );
   const [avoidLake, setAvoidLake] = useState(DEFAULT_AVOID_LAKE);
   const [avoidGlacier, setAvoidGlacier] = useState(DEFAULT_AVOID_GLACIER);
+  const [trackInfluenceMode, setTrackInfluenceMode] =
+    useState<TrackInfluenceMode>(DEFAULT_TRACK_INFLUENCE_MODE);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [routeInputsDirty, setRouteInputsDirty] = useState(false);
 
@@ -126,6 +147,7 @@ const RouteControls = ({
     setSmoothThreshold(DEFAULT_SMOOTH_THRESHOLD);
     setAvoidLake(DEFAULT_AVOID_LAKE);
     setAvoidGlacier(DEFAULT_AVOID_GLACIER);
+    setTrackInfluenceMode(DEFAULT_TRACK_INFLUENCE_MODE);
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
     onClearStart();
     onClearEnd();
@@ -284,6 +306,48 @@ const RouteControls = ({
       </Box>
 
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
+
+      <Box>
+        <Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "white", mb: { xs: 0.8, sm: 1 } }}>
+          Existing track data influence
+        </Typography>
+        <RadioGroup
+          row
+          value={trackInfluenceMode}
+          onChange={(e) => {
+            setRouteInputsDirty(true);
+            setTrackInfluenceMode(e.target.value as TrackInfluenceMode);
+          }}
+          sx={{ mb: 0.6, columnGap: { xs: 0.6, sm: 1 }, rowGap: 0.2, flexWrap: "wrap" }}
+        >
+          <FormControlLabel
+            value="off"
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Off</Typography>}
+            sx={compactLabelSx}
+          />
+          <FormControlLabel
+            value="forest_only"
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Forest only</Typography>}
+            sx={compactLabelSx}
+          />
+          <FormControlLabel
+            value="balanced"
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Balanced</Typography>}
+            sx={compactLabelSx}
+          />
+          <FormControlLabel
+            value="strong"
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Strong</Typography>}
+            sx={compactLabelSx}
+          />
+        </RadioGroup>
+      </Box>
+
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 }, mt: { xs: 0.5, sm: 2 } }} />
 
       <Box> 
         <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0, sm: 0.5 } }}>
@@ -489,6 +553,7 @@ const RouteControls = ({
               smoothThreshold,
               avoidLake,
               avoidGlacier,
+              trackInfluenceMode,
             });
           }}
           size="large"
@@ -559,6 +624,7 @@ const RouteControls = ({
             smoothThreshold === DEFAULT_SMOOTH_THRESHOLD &&
             avoidLake === DEFAULT_AVOID_LAKE &&
             avoidGlacier === DEFAULT_AVOID_GLACIER &&
+            trackInfluenceMode === DEFAULT_TRACK_INFLUENCE_MODE &&
             showCorridor === DEFAULT_SHOW_CORRIDOR
           }
           size="small"

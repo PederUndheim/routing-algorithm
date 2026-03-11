@@ -14,13 +14,13 @@ from backend.routing_algorithm.cost_surface.transforms import (
     smooth_gate_below
 )
 from backend.routing_algorithm.cost_surface.combine import weighted_sum, min_combine, max_combine, clip_round
-from backend.routing_algorithm.cost_surface.refinements import release_area_buffer_penalty, steep_area_penalty, real_tracks_modifier
+from backend.routing_algorithm.cost_surface.refinements import release_area_buffer_penalty, steep_area_penalty
 
 np.seterr(all='ignore')  # ignore warnings for NaNs
 
 
 
-def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: bool = True) -> Path:
+def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: bool) -> Path:
     """
     Creates and saves a cost surface from input rasters and masks.  
     In debug mode, it saves intermediate layers for tuning.
@@ -102,22 +102,6 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
     surface_sum = surface_sum + steep_penalty
 
 
-    # Cliff buffer penalty
-    # cliff_mask = slope_arr >= config.CLIFF_BUFFER_PARAMS["steep_threshold"]
-
-    # cliff_penalty = cliff_buffer_penalty(
-    #     cliff_mask=cliff_mask,
-    #     pixel_size_m=px,
-    #     max_dist=config.CLIFF_BUFFER_PARAMS["max_dist"],
-    #     penalty_cost=config.CLIFF_BUFFER_PARAMS["penalty_cost"],
-    # )
-    # if debug_mode:
-    #     debug_layer_save(cliff_penalty, "05b_cliff_buffer_penalty.tif", ref_profile)
-    
-    # surface_sum = surface_sum + cliff_penalty
-
-
-
     # -- Barriers and reductions --
 
     # Validity weights (kind of safe mask): where reductions are allowed
@@ -151,51 +135,6 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
 
     if debug_mode:
         debug_layer_save(with_reductions, "07_with_reductions.tif", ref_profile, paths.debug_cost_layer_dir)
-
-
-
-    # -- Final modification: Real tracks reduction --
-
-    # Use validity_w optionally --> must eventually change the validity_w to be less strict..!!
-    validity_w_tracks = validity_w if config.REAL_TRACKS_REDUCTION_PARAMS["use_validity_w"] else None
-
-    exclude_mask = None
-    only_mask = None
- 
-    tracks_arr, _ = read_raster(inputs["tracks"])
-    if tracks_arr.shape != with_reductions.shape:
-        raise ValueError("Tracks raster shape does not match cost surface shape")
-    
-    # Forest mask
-    forest_mask = None
-    forest_arr, _ = read_raster(inputs["forest"])
-    forest_mask = (forest_arr > 0).astype(np.float32)
-    if forest_mask.shape != with_reductions.shape:
-        raise ValueError("Forest raster shape does not match cost surface shape")
-
-
-    # Build spatial w map: strong in forest, user controller elsewhere
-    w_general = config.REAL_TRACKS_REDUCTION_PARAMS["w_general_default"]
-    w_forest = config.REAL_TRACKS_REDUCTION_PARAMS["w_forest"]
-    w_map = w_general + (w_forest - w_general) * forest_mask
-    
-    modifier = real_tracks_modifier(
-        tracks_arr=tracks_arr,
-        w=w_map,
-        p_high_quantile=config.REAL_TRACKS_REDUCTION_PARAMS["p_high_quantile"],
-        gamma=config.REAL_TRACKS_REDUCTION_PARAMS["gamma_default"],
-        validity_w=validity_w_tracks,
-        exclude_mask=exclude_mask,
-        only_mask=only_mask,
-        effect_weight=None      # Possibly make a more advanced effect weight later??
-    )
-    with_reductions = with_reductions * modifier
-    if debug_mode:
-        debug_layer_save(forest_mask, "08a_forest_mask.tif", ref_profile, paths.debug_cost_layer_dir)
-        debug_layer_save(w_map, "08b_tracks_w_map.tif", ref_profile, paths.debug_cost_layer_dir)
-        debug_layer_save(modifier, "08c_real_tracks_modifier.tif", ref_profile, paths.debug_cost_layer_dir)
-        debug_layer_save(with_reductions, "08d_with_real_tracks_mod.tif", ref_profile, paths.debug_cost_layer_dir)
-
 
 
     # Propagate nodata

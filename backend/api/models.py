@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 DEFAULT_BUFFER_M = 5000.0
@@ -7,6 +7,9 @@ DEFAULT_BUFFER_M = 5000.0
 class LatLng(BaseModel):
     lat: float
     lng: float
+
+
+TrackInfluenceMode = Literal["off", "forest_only", "balanced", "strong"]
 
 class RouteRequest(BaseModel):
     name: Optional[str] = "adhoc"
@@ -17,3 +20,4 @@ class RouteRequest(BaseModel):
     smooth_threshold: float = Field(ge=0.0, le=100.0)
     avoid_lake: bool = False
     avoid_glacier: bool = False
+    track_influence_mode: TrackInfluenceMode = "balanced"

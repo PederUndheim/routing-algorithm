@@ -33,6 +33,7 @@ type SidebarProps = {
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -139,7 +140,28 @@ const Sidebar = ({
 
       <Divider color="#EE7B04" variant="middle" />
 
-      <Box sx={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column" }}>
+      <Box
+        sx={{
+          flex: 1,
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          "&::-webkit-scrollbar": {
+            width: 6,
+          },
+          "&::-webkit-scrollbar-track": {
+            background: "rgba(255,255,255,0.06)",
+            borderRadius: 8,
+          },
+          "&::-webkit-scrollbar-thumb": {
+            backgroundColor: "#367E98",
+            borderRadius: 4,
+          },
+          "&::-webkit-scrollbar-thumb:hover": {
+            backgroundColor: "#2c657b",
+          },
+        }}
+      >
         <RouteControls
           startPoint={startPoint}
           endPoint={endPoint}

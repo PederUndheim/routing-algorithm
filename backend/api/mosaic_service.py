@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 import hashlib
 
 import rasterio
 
 from backend.file_handler.area_context import load_area
+from backend import config
 
 import grass.script as gs
 
@@ -14,6 +15,7 @@ import grass.script as gs
 WGS84 = "EPSG:4326"
 NATIVE = "EPSG:25833"
 OPTIONAL_MASK_KINDS = {"lake", "glacier"}
+OPTIONAL_TRACK_KINDS = {"tracks", "forest"}
 
 
 def safe_grass_name(s: str) -> str:
@@ -82,8 +84,8 @@ def _source_tif_for_kind(paths, inputs, kind: str) -> Path:
         return Path(paths.cost_surface)
     if kind == "dem":
         return Path(paths.dem) if getattr(paths, "dem", None) else Path(inputs["dem"])
-    if kind in OPTIONAL_MASK_KINDS:
-        # In prod we ship runtime data into the image, so prefer runtime masks.
+    if kind in OPTIONAL_MASK_KINDS | OPTIONAL_TRACK_KINDS:
+        # In prod we ship runtime data into the image, so prefer runtime rasters.
         runtime_mask = paths.runtime_area_root / f"{kind}.tif"
         if runtime_mask.exists():
             return runtime_mask
@@ -98,11 +100,13 @@ def _base_name_for_kind(area_id: str, kind: str) -> str:
 
 def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
     """
-    kind: "cost" | "dem" | "lake" | "glacier"
+    kind: "cost" | "dem" | "lake" | "glacier" | "tracks" | "forest"
     Returns a GRASS raster name.
     """
-    if kind not in {"cost", "dem", *OPTIONAL_MASK_KINDS}:
-        raise ValueError("kind must be 'cost', 'dem', 'lake' or 'glacier'")
+    if kind not in {"cost", "dem", *OPTIONAL_MASK_KINDS, *OPTIONAL_TRACK_KINDS}:
+        raise ValueError(
+            "kind must be 'cost', 'dem', 'lake', 'glacier', 'tracks' or 'forest'"
+        )
 
     if not area_ids:
         raise ValueError("area_ids is empty")
@@ -154,15 +158,71 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
     return mosaic
 
 
+def _raster_max(name: str) -> float:
+    txt = gs.read_command("r.univar", map=name, flags="g").strip().splitlines()
+    d = dict(line.split("=", 1) for line in txt if "=" in line)
+    n = float(d.get("n", "0") or "0")
+    if n <= 0:
+        return 0.0
+    return float(d.get("max", "0") or "0")
+
+
+def compose_tracks_influence_for_request(
+    area_ids: List[str],
+    *,
+    base_cost_name: str,
+    track_influence_mode: str,
+) -> str:
+    mode = track_influence_mode.lower()
+    if mode not in config.TRACK_INFLUENCE_PARAMS:
+        raise ValueError(f"Unsupported track_influence_mode: {track_influence_mode}")
+
+    w_outside, w_forest = config.TRACK_INFLUENCE_PARAMS[mode]
+    if w_outside <= 0.0 and w_forest <= 0.0:
+        return base_cost_name
+
+    tracks_name = build_or_get_mosaic(area_ids, kind="tracks")
+    forest_name = build_or_get_mosaic(area_ids, kind="forest")
+    tracks_max = _raster_max(tracks_name)
+
+    if tracks_max <= 0.0:
+        return base_cost_name
+
+    request_cost_name = mosaic_name(f"cost_tracks_{mode}", area_ids)
+
+    w_expr = (
+        f"({w_outside} + ({w_forest} - {w_outside}) * "
+        f"if(isnull({forest_name}), 0, if({forest_name} > 0, 1, 0)))"
+    )
+    t_expr = (
+        f"if(isnull({tracks_name}), 0, "
+        f"min(max({tracks_name}, 0) / {tracks_max:.6f}, 1))"
+    )
+
+    gs.mapcalc(
+        f"{request_cost_name} = max(1, min(99, {base_cost_name} * (1 - ({w_expr}) * ({t_expr}))))",
+        overwrite=True,
+    )
+
+    return request_cost_name
+
+
 def compose_cost_surface_for_request(
     area_ids: List[str],
     *,
     base_cost_name: str,
     avoid_lake: bool,
     avoid_glacier: bool,
+    track_influence_mode: str,
 ) -> str:
+    with_tracks = compose_tracks_influence_for_request(
+        area_ids,
+        base_cost_name=base_cost_name,
+        track_influence_mode=track_influence_mode,
+    )
+
     if not avoid_lake and not avoid_glacier:
-        return base_cost_name
+        return with_tracks
 
     mask_names: List[str] = []
     if avoid_lake:
@@ -176,7 +236,7 @@ def compose_cost_surface_for_request(
     request_cost_name = mosaic_name("cost_req", area_ids)
 
     gs.mapcalc(
-        f"{request_cost_name} = if(({combined_mask}) > 0, 99, {base_cost_name})",
+        f"{request_cost_name} = if(({combined_mask}) > 0, 99, {with_tracks})",
         overwrite=True,
     )
 

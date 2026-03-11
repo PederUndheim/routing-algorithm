@@ -110,11 +110,13 @@ const App = () => {
     smoothThreshold,
     avoidLake,
     avoidGlacier,
+    trackInfluenceMode,
   }: {
     lambdaWeight: number;
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
   }) => {
     if (!startPoint || !endPoint) return;
 
@@ -147,6 +149,7 @@ const App = () => {
           smooth_threshold: smoothThreshold,
           avoid_lake: avoidLake,
           avoid_glacier: avoidGlacier,
+          track_influence_mode: trackInfluenceMode,
         }),
       });
 

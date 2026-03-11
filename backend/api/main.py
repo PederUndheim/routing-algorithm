@@ -233,6 +233,7 @@ def route(req: RouteRequest, request: Request):
                 base_cost_name=base_cost_mosaic,
                 avoid_lake=req.avoid_lake,
                 avoid_glacier=req.avoid_glacier,
+                track_influence_mode=req.track_influence_mode,
             )
 
             set_region_local(cost_mosaic, start_xy, end_xy, req.buffer_m)
