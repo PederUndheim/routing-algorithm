@@ -31,6 +31,8 @@ type SidebarProps = {
   onGenerate: (params: {
     lambdaWeight: number;
     smoothThreshold: number;
+    avoidLake: boolean;
+    avoidGlacier: boolean;
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;

@@ -193,6 +193,8 @@ const MapView = ({
           })}
         </Pane>
 
+        <Pane name="corridor" style={{ zIndex: 350, pointerEvents: "none" }} />
+
         {geoJsonVisible &&
           userGeoJsonLayers?.some((layer) => layer.visible) && (
             <Pane name="user-geojson" style={{ zIndex: 400 }}>
@@ -226,7 +228,6 @@ const MapView = ({
           </Pane>
         )}
 
-        <Pane name="corridor" style={{ zIndex: 500, pointerEvents: "none" }} />
         <Pane name="markers" style={{ zIndex: 600, pointerEvents: "auto" }} />
 
         {corridorPngUrl && corridorBounds && showCorridor && (
@@ -234,7 +235,7 @@ const MapView = ({
             key={corridorPngUrl}
             pngUrl={corridorPngUrl}
             bounds={corridorBounds}
-            opacity={0.4}
+            opacity={0.3}
           />
         )}
 

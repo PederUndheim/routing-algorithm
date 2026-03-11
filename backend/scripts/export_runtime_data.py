@@ -8,6 +8,8 @@ from data_preprocessing.utils.iter_areas import iter_areas
 
 DEM_SRC_NAME = "dem.tif"              # or "DEM.tif"
 COST_SRC_NAME = "cost_surface.tif"    # or your actual name
+LAKE_SRC_NAME = "lake.tif"
+GLACIER_SRC_NAME = "glacier.tif"
 
 
 def copy2(src: Path, dst: Path) -> None:
@@ -36,10 +38,14 @@ def main() -> None:
         src_cost_surface_dir = cfg.areas_root / area_id / "output" / "cost_surface"
         dem_src = src_input_dir / DEM_SRC_NAME
         cost_src = src_cost_surface_dir / COST_SRC_NAME
+        lake_src = src_input_dir / LAKE_SRC_NAME
+        glacier_src = src_input_dir / GLACIER_SRC_NAME
 
         dst_area_dir = runtime_root / area_id
         dem_dst = dst_area_dir / "dem.tif"
         cost_dst = dst_area_dir / "cost_surface.tif"
+        lake_dst = dst_area_dir / "lake.tif"
+        glacier_dst = dst_area_dir / "glacier.tif"
 
         if not dem_src.exists():
             print(f"Skip {area_id}: missing DEM {dem_src}")
@@ -51,10 +57,22 @@ def main() -> None:
             skipped += 1
             continue
 
+        if not lake_src.exists():
+            print(f"Skip {area_id}: missing lake mask {lake_src}")
+            skipped += 1
+            continue
+
+        if not glacier_src.exists():
+            print(f"Skip {area_id}: missing glacier mask {glacier_src}")
+            skipped += 1
+            continue
+
         copy2(dem_src, dem_dst)
         copy2(cost_src, cost_dst)
+        copy2(lake_src, lake_dst)
+        copy2(glacier_src, glacier_dst)
 
-        print(f"Exported {area_id}: dem.tif and cost_surface.tif")
+        print(f"Exported {area_id}: dem.tif, cost_surface.tif, lake.tif, glacier.tif")
         exported += 1
 
     print(f"\nDone. Exported {exported} areas. Skipped {skipped}.")

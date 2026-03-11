@@ -17,6 +17,26 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Typography from "@mui/material/Typography";
 import Box from "@mui/material/Box";
 
+const formatApiErrorDetail = (detail: unknown): string => {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const first = detail[0];
+    if (first && typeof first === "object") {
+      const item = first as { msg?: unknown; loc?: unknown[] };
+      const msg = typeof item.msg === "string" ? item.msg : null;
+      const loc = Array.isArray(item.loc) ? item.loc.join(".") : null;
+      if (msg && loc) return `${loc}: ${msg}`;
+      if (msg) return msg;
+    }
+    return "Request validation failed.";
+  }
+  if (detail && typeof detail === "object") {
+    const maybeMessage = (detail as { message?: unknown }).message;
+    if (typeof maybeMessage === "string") return maybeMessage;
+  }
+  return "Failed to generate route.";
+};
+
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>("topo");
   const [overlays, setOverlays] = useState<Record<OverlayId, boolean>>({
@@ -88,9 +108,13 @@ const App = () => {
   const handleGenerateRoute = async ({
     lambdaWeight,
     smoothThreshold,
+    avoidLake,
+    avoidGlacier,
   }: {
     lambdaWeight: number;
     smoothThreshold: number;
+    avoidLake: boolean;
+    avoidGlacier: boolean;
   }) => {
     if (!startPoint || !endPoint) return;
 
@@ -116,11 +140,13 @@ const App = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          name: "run_" + runId,
           start: startPoint,
           end: endPoint,
           lambda_weight: lambdaWeight,
           smooth_threshold: smoothThreshold,
-          name: "run_" + runId,
+          avoid_lake: avoidLake,
+          avoid_glacier: avoidGlacier,
         }),
       });
 
@@ -128,7 +154,7 @@ const App = () => {
         let msg = "Failed to generate route.";
         try {
           const err = await res.json();
-          msg = err?.detail ?? msg;
+          msg = formatApiErrorDetail(err?.detail);
         } catch {
           msg = await res.text();
         }

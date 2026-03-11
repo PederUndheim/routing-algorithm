@@ -6,7 +6,10 @@ import Divider from "@mui/material/Divider";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Checkbox from "@mui/material/Checkbox";
 import Stack from "@mui/material/Stack";
+import Collapse from "@mui/material/Collapse";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 
 import { useEffect, useState } from "react";
 
@@ -24,6 +27,8 @@ type RouteControlsProps = {
   onGenerate: (params: {
     lambdaWeight: number;
     smoothThreshold: number;
+    avoidLake: boolean;
+    avoidGlacier: boolean;
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -57,14 +62,19 @@ const RouteControls = ({
   gpxDownloadUrl,
   geojsonDownloadUrl,
 }: RouteControlsProps) => {
-  const DEFAULT_LAMBDA_WEIGHT = 0.7;
+  const DEFAULT_LAMBDA_WEIGHT = 0.55;
   const DEFAULT_SMOOTH_THRESHOLD = 8;
   const DEFAULT_SHOW_CORRIDOR = false;
+  const DEFAULT_AVOID_LAKE = false;
+  const DEFAULT_AVOID_GLACIER = false;
 
   const [lambdaWeight, setLambdaWeight] = useState(DEFAULT_LAMBDA_WEIGHT);
   const [smoothThreshold, setSmoothThreshold] = useState(
     DEFAULT_SMOOTH_THRESHOLD
   );
+  const [avoidLake, setAvoidLake] = useState(DEFAULT_AVOID_LAKE);
+  const [avoidGlacier, setAvoidGlacier] = useState(DEFAULT_AVOID_GLACIER);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [routeInputsDirty, setRouteInputsDirty] = useState(false);
 
   useEffect(() => {
@@ -114,6 +124,8 @@ const RouteControls = ({
     setRouteInputsDirty(true);
     setLambdaWeight(DEFAULT_LAMBDA_WEIGHT);
     setSmoothThreshold(DEFAULT_SMOOTH_THRESHOLD);
+    setAvoidLake(DEFAULT_AVOID_LAKE);
+    setAvoidGlacier(DEFAULT_AVOID_GLACIER);
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
     onClearStart();
     onClearEnd();
@@ -273,91 +285,172 @@ const RouteControls = ({
 
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
 
-      <Box >
-        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
-          Choose lambda weight
-        </Typography>
-        <Typography
-          sx={{
-            ml: 0.8,
-            fontSize: {xs: 10, sm: 12},
-            color: "rgba(255,255,255,0.75)",
-          }}
-        >
-          More importance to cost friction vs distance.
-        </Typography>
-        <Box sx={{ px: 2 }}>
-          <Slider
-            value={lambdaWeight}
-            onChange={(_, val) => {
-              setRouteInputsDirty(true);
-              setLambdaWeight(val as number);
-            }}
-            valueLabelDisplay="auto"
-            min={0}
-            max={1}
-            step={0.01}
-            marks={marksLambdaSlider}
-            sx={{
-              color: "#367E98",
-              "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
-              "& .MuiSlider-mark": {
-                backgroundColor: "#367E98",
-              },
-
-              "& .MuiSlider-markLabel": {
-                top: 30,
-                color: "rgba(255,255,255,0.65)",
-                fontSize: {xs: 10, sm: 12},
-              },
-            }}
+      <Box> 
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0, sm: 0.5 } }}>
+          Make routing restrictions?
+        </Typography> 
+        <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+          <FormControlLabel
+            label={
+              <Typography
+                fontSize={{xs: 12, sm: 14}}
+                sx={{ color: "rgba(255,255,255,0.85)" }}
+              >
+                Avoid lakes
+              </Typography>
+            }
+            control={
+              <Checkbox
+                checked={avoidLake}
+                onChange={(e) => {
+                  setRouteInputsDirty(true);
+                  setAvoidLake(e.target.checked);
+                }}
+                sx={{
+                  color: "rgba(255,255,255,0.55)",
+                  "&.Mui-checked": { color: "#367E98" },
+                  pl: 0,
+                }}
+              />
+            }
+            sx={{ m: 0, flex: 1 }}
           />
-        </Box>
+
+          <FormControlLabel
+            label={
+              <Typography
+                fontSize={{xs: 12, sm: 14}}
+                sx={{ color: "rgba(255,255,255,0.85)" }}
+              >
+                Avoid glaciers
+              </Typography>
+            }
+            control={
+              <Checkbox
+                checked={avoidGlacier}
+                onChange={(e) => {
+                  setRouteInputsDirty(true);
+                  setAvoidGlacier(e.target.checked);
+                }}
+                sx={{
+                  color: "rgba(255,255,255,0.55)",
+                  "&.Mui-checked": { color: "#367E98" },
+                  pl: 0,
+                }}
+              />
+            }
+            sx={{ m: 0, flex: 1 }}
+          />
+        </Stack>
       </Box>
 
-      <Box>
-        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
-          Choose smoothing threshold
-        </Typography>
-        <Typography
-          sx={{
-            ml: 0.8,
-            fontSize: {xs: 10, sm: 12},
-            color: "rgba(255,255,255,0.75)",
-          }}
-        >
-          Max deviation [m] from route when simplifying.
-        </Typography>
-        <Box sx={{ px: 2 }}>
-          <Slider
-            value={smoothThreshold}
-            onChange={(_, val) => {
-              setRouteInputsDirty(true);
-              setSmoothThreshold(val as number);
-            }}
-            valueLabelDisplay="auto"
-            min={0}
-            max={100}
-            step={1}
-            marks={marksSmoothingSlider}
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 0.5, sm: 1 }, mt: { xs: 0, sm: 0.5 } }} />
+
+
+      <Button
+        variant="text"
+        onClick={() => setShowAdvancedSettings((prev) => !prev)}
+        startIcon={showAdvancedSettings ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+        sx={{
+          justifyContent: "flex-start",
+          color: "white",
+          textTransform: "none",
+          fontSize: { xs: 12, sm: 14 },
+          px: 0,
+          mb: 1,
+          "&:hover": {
+            backgroundColor: "transparent",
+          },
+        }}
+      >
+        Advanced routing settings
+      </Button>
+
+      <Collapse in={showAdvancedSettings} timeout="auto" unmountOnExit sx={{ mb: { xs: 1, sm: 2 } }}>
+        <Box>
+          <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
+            Choose lambda weight
+          </Typography>
+          <Typography
             sx={{
-              color: "#367E98",
-              "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
-              "& .MuiSlider-mark": {
-                backgroundColor: "#367E98",
-              },
-
-              "& .MuiSlider-markLabel": {
-                top: 34,
-                color: "rgba(255,255,255,0.65)",
-                fontSize: {xs: 10, sm: 12},
-              },
+              ml: 0.8,
+              fontSize: {xs: 10, sm: 12},
+              color: "rgba(255,255,255,0.75)",
             }}
-          />
+          >
+            More importance to cost friction vs distance.
+          </Typography>
+          <Box sx={{ px: 2 }}>
+            <Slider
+              value={lambdaWeight}
+              onChange={(_, val) => {
+                setRouteInputsDirty(true);
+                setLambdaWeight(val as number);
+              }}
+              valueLabelDisplay="auto"
+              min={0}
+              max={1}
+              step={0.01}
+              marks={marksLambdaSlider}
+              sx={{
+                color: "#367E98",
+                "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
+                "& .MuiSlider-mark": {
+                  backgroundColor: "#367E98",
+                },
+                "& .MuiSlider-markLabel": {
+                  top: 30,
+                  color: "rgba(255,255,255,0.65)",
+                  fontSize: {xs: 10, sm: 12},
+                },
+              }}
+            />
+          </Box>
         </Box>
-      </Box>
 
-      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: 1, mt: { xs: 0, sm: 1 } }} />
+        <Box>
+          <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: 0.3 }}>
+            Choose smoothing threshold
+          </Typography>
+          <Typography
+            sx={{
+              ml: 0.8,
+              fontSize: {xs: 10, sm: 12},
+              color: "rgba(255,255,255,0.75)",
+            }}
+          >
+            Max deviation [m] from route when simplifying.
+          </Typography>
+          <Box sx={{ px: 2 }}>
+            <Slider
+              value={smoothThreshold}
+              onChange={(_, val) => {
+                setRouteInputsDirty(true);
+                setSmoothThreshold(val as number);
+              }}
+              valueLabelDisplay="auto"
+              min={0}
+              max={100}
+              step={1}
+              marks={marksSmoothingSlider}
+              sx={{
+                color: "#367E98",
+                "& .MuiSlider-thumb": { width: { xs: 12, sm: 16 }, height: { xs: 12, sm: 16 } },
+                "& .MuiSlider-mark": {
+                  backgroundColor: "#367E98",
+                },
+                "& .MuiSlider-markLabel": {
+                  top: 34,
+                  color: "rgba(255,255,255,0.65)",
+                  fontSize: {xs: 10, sm: 12},
+                },
+              }}
+            />
+          </Box>
+        </Box>
+      </Collapse>
+
+      <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
 
       <FormControlLabel
         label={
@@ -391,7 +484,12 @@ const RouteControls = ({
           disabled={!startPoint || !endPoint || pickMode !== null}
           onClick={() => {
             setRouteInputsDirty(false);
-            onGenerate({ lambdaWeight, smoothThreshold });
+            onGenerate({
+              lambdaWeight,
+              smoothThreshold,
+              avoidLake,
+              avoidGlacier,
+            });
           }}
           size="large"
           sx={{
@@ -459,6 +557,8 @@ const RouteControls = ({
             endPoint === null &&
             lambdaWeight === DEFAULT_LAMBDA_WEIGHT &&
             smoothThreshold === DEFAULT_SMOOTH_THRESHOLD &&
+            avoidLake === DEFAULT_AVOID_LAKE &&
+            avoidGlacier === DEFAULT_AVOID_GLACIER &&
             showCorridor === DEFAULT_SHOW_CORRIDOR
           }
           size="small"

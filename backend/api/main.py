@@ -27,7 +27,7 @@ from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
 from backend.api.models import RouteRequest
 from backend.api.deps import get_corridor_storage
 from backend.api.runtime import get_settings
-from backend.api.mosaic_service import build_or_get_mosaic, set_region_local
+from backend.api.mosaic_service import build_or_get_mosaic, compose_cost_surface_for_request, set_region_local
 from backend.api.corridor_to_png import warp_tif_to_3857, corridor_tif_3857_to_png, tif_3857_bounds_wgs84
 
 setup_grass_python_path()
@@ -227,7 +227,13 @@ def route(req: RouteRequest, request: Request):
                 raise HTTPException(422, "No areas selected for routing.")
 
             dem_mosaic = build_or_get_mosaic(area_ids, kind="dem")
-            cost_mosaic = build_or_get_mosaic(area_ids, kind="cost")
+            base_cost_mosaic = build_or_get_mosaic(area_ids, kind="cost")
+            cost_mosaic = compose_cost_surface_for_request(
+                area_ids,
+                base_cost_name=base_cost_mosaic,
+                avoid_lake=req.avoid_lake,
+                avoid_glacier=req.avoid_glacier,
+            )
 
             set_region_local(cost_mosaic, start_xy, end_xy, req.buffer_m)
 

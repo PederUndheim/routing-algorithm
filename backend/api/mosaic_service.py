@@ -13,6 +13,7 @@ import grass.script as gs
 
 WGS84 = "EPSG:4326"
 NATIVE = "EPSG:25833"
+OPTIONAL_MASK_KINDS = {"lake", "glacier"}
 
 
 def safe_grass_name(s: str) -> str:
@@ -76,13 +77,32 @@ def mosaic_name(prefix: str, area_ids: List[str]) -> str:
     return f"{prefix}_mosaic_{h}"
 
 
+def _source_tif_for_kind(paths, inputs, kind: str) -> Path:
+    if kind == "cost":
+        return Path(paths.cost_surface)
+    if kind == "dem":
+        return Path(paths.dem) if getattr(paths, "dem", None) else Path(inputs["dem"])
+    if kind in OPTIONAL_MASK_KINDS:
+        # In prod we ship runtime data into the image, so prefer runtime masks.
+        runtime_mask = paths.runtime_area_root / f"{kind}.tif"
+        if runtime_mask.exists():
+            return runtime_mask
+        # Local fallback while developing before exporting runtime artifacts.
+        return paths.input / f"{kind}.tif"
+    raise ValueError(f"Unsupported mosaic kind: {kind}")
+
+
+def _base_name_for_kind(area_id: str, kind: str) -> str:
+    return f"{kind}__{safe_grass_name(area_id)}"
+
+
 def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
     """
-    kind: "cost" | "dem"
+    kind: "cost" | "dem" | "lake" | "glacier"
     Returns a GRASS raster name.
     """
-    if kind not in {"cost", "dem"}:
-        raise ValueError("kind must be 'cost' or 'dem'")
+    if kind not in {"cost", "dem", *OPTIONAL_MASK_KINDS}:
+        raise ValueError("kind must be 'cost', 'dem', 'lake' or 'glacier'")
 
     if not area_ids:
         raise ValueError("area_ids is empty")
@@ -94,12 +114,8 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
         area_id = area_ids[0]
         paths, inputs = load_area(area_id)
 
-        if kind == "cost":
-            tif_path = Path(paths.cost_surface)
-            base = f"cost__{safe_grass_name(area_id)}"
-        else:
-            tif_path = Path(paths.dem)
-            base = f"dem__{safe_grass_name(area_id)}"
+        tif_path = _source_tif_for_kind(paths, inputs, kind)
+        base = _base_name_for_kind(area_id, kind)
 
         ensure_raster_imported(tif_path, base)
         return base
@@ -116,12 +132,8 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
     for area_id in area_ids:
         paths, inputs = load_area(area_id)
 
-        if kind == "cost":
-            tif_path = Path(paths.cost_surface)
-            base = f"cost__{safe_grass_name(area_id)}"
-        else:
-            tif_path = Path(paths.dem) if getattr(paths, "dem", None) else Path(inputs["dem"])
-            base = f"dem__{safe_grass_name(area_id)}"
+        tif_path = _source_tif_for_kind(paths, inputs, kind)
+        base = _base_name_for_kind(area_id, kind)
 
         ensure_raster_imported(tif_path, base)
         input_maps.append(base)
@@ -140,6 +152,35 @@ def build_or_get_mosaic(area_ids: List[str], *, kind: str) -> str:
     )
 
     return mosaic
+
+
+def compose_cost_surface_for_request(
+    area_ids: List[str],
+    *,
+    base_cost_name: str,
+    avoid_lake: bool,
+    avoid_glacier: bool,
+) -> str:
+    if not avoid_lake and not avoid_glacier:
+        return base_cost_name
+
+    mask_names: List[str] = []
+    if avoid_lake:
+        mask_names.append(build_or_get_mosaic(area_ids, kind="lake"))
+    if avoid_glacier:
+        mask_names.append(build_or_get_mosaic(area_ids, kind="glacier"))
+
+    combined_mask = " + ".join(
+        f"if(isnull({name}), 0, {name})" for name in mask_names
+    )
+    request_cost_name = mosaic_name("cost_req", area_ids)
+
+    gs.mapcalc(
+        f"{request_cost_name} = if(({combined_mask}) > 0, 99, {base_cost_name})",
+        overwrite=True,
+    )
+
+    return request_cost_name
 
 
 def set_region_local(
