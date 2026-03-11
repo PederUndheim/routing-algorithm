@@ -10,6 +10,7 @@ class LatLng(BaseModel):
 
 
 TrackInfluenceMode = Literal["off", "forest_only", "balanced", "strong"]
+CorridorMode = Literal["conservative", "balanced", "explorative"]
 
 class RouteRequest(BaseModel):
     name: Optional[str] = "adhoc"
@@ -21,3 +22,4 @@ class RouteRequest(BaseModel):
     avoid_lake: bool = False
     avoid_glacier: bool = False
     track_influence_mode: TrackInfluenceMode = "balanced"
+    corridor_mode: CorridorMode = "balanced"

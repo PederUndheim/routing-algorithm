@@ -16,6 +16,7 @@ import LogoVarsom from "../assets/logos/varsom.png";
 
 import RouteControls from "./RouteControls";
 import type { LatLng, PickMode } from "../types/mapTypes";
+import type { CorridorMode } from "../types/corridor";
 
 type SidebarProps = {
   open: boolean;
@@ -26,6 +27,8 @@ type SidebarProps = {
   onPickModeChange: (mode: PickMode) => void;
   showCorridor: boolean;
   onShowCorridorChange: (show: boolean) => void;
+  corridorMode: CorridorMode;
+  onCorridorModeChange: (mode: CorridorMode) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -34,6 +37,7 @@ type SidebarProps = {
     avoidLake: boolean;
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
+    corridorMode: "conservative" | "balanced" | "explorative";
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -53,6 +57,8 @@ const Sidebar = ({
   onPickModeChange,
   showCorridor,
   onShowCorridorChange,
+  corridorMode,
+  onCorridorModeChange,
   onClearStart,
   onClearEnd,
   onGenerate,
@@ -169,6 +175,8 @@ const Sidebar = ({
           onPickModeChange={onPickModeChange}
           showCorridor={showCorridor}
           onShowCorridorChange={onShowCorridorChange}
+          corridorMode={corridorMode}
+          onCorridorModeChange={onCorridorModeChange}
           onClearStart={onClearStart}
           onClearEnd={onClearEnd}
           onGenerate={onGenerate}

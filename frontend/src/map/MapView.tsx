@@ -235,7 +235,7 @@ const MapView = ({
             key={corridorPngUrl}
             pngUrl={corridorPngUrl}
             bounds={corridorBounds}
-            opacity={0.38}
+            opacity={0.7}
           />
         )}
 

@@ -5,7 +5,7 @@ import type { BasemapId } from "./layers/basemaps";
 import type { MapApi } from "./map/MapView";
 import type { OverlayId } from "./layers/overlays";
 import type { LatLng, PickMode, UserGeoJsonLayer } from "./types/mapTypes";
-import type { CorridorBounds } from "./types/corridor";
+import type { CorridorBounds, CorridorMode, CorridorVariantUrls } from "./types/corridor";
 
 import MapView from "./map/MapView";
 import Sidebar from "./routing/Sidebar";
@@ -69,7 +69,9 @@ const App = () => {
     null
   );
   const [showCorridor, setShowCorridor] = useState(false);
+  const [corridorMode, setCorridorMode] = useState<CorridorMode>("balanced");
   const [corridorPngUrl, setCorridorPngUrl] = useState<string | null>(null);
+  const [corridorPngUrls, setCorridorPngUrls] = useState<CorridorVariantUrls>({});
   const [corridorBounds, setCorridorBounds] = useState<CorridorBounds | null>(
     null
   );
@@ -111,12 +113,14 @@ const App = () => {
     avoidLake,
     avoidGlacier,
     trackInfluenceMode,
+    corridorMode,
   }: {
     lambdaWeight: number;
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
+    corridorMode: CorridorMode;
   }) => {
     if (!startPoint || !endPoint) return;
 
@@ -128,6 +132,7 @@ const App = () => {
     const runId = crypto.randomUUID().replaceAll("-", "_");
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
+    setCorridorPngUrls({});
     setGpxDownloadUrl(null);
     setGeojsonDownloadUrl(null);
     setIsRouting(true);
@@ -150,6 +155,7 @@ const App = () => {
           avoid_lake: avoidLake,
           avoid_glacier: avoidGlacier,
           track_influence_mode: trackInfluenceMode,
+          corridor_mode: corridorMode,
         }),
       });
 
@@ -167,7 +173,8 @@ const App = () => {
 
       const data = await res.json();
       setRouteGeoJson(data.route);
-      setCorridorPngUrl(data.corridor?.png_url ?? null);
+      setCorridorPngUrls((data.corridor?.png_urls ?? {}) as CorridorVariantUrls);
+      setCorridorPngUrl((data.corridor?.png_urls?.[corridorMode] ?? data.corridor?.png_url) ?? null);
       setCorridorBounds(data.corridor?.bounds ?? null);
       setActiveRunId(data.run_id ?? null);
       setGpxDownloadUrl(data.downloads?.gpx_url ?? null);
@@ -181,6 +188,7 @@ const App = () => {
     setStartPoint(null);
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
+    setCorridorPngUrls({});
     setCorridorBounds(null);
     setGpxDownloadUrl(null);
     setGeojsonDownloadUrl(null);
@@ -190,6 +198,7 @@ const App = () => {
     setEndPoint(null);
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
+    setCorridorPngUrls({});
     setCorridorBounds(null);
     setGpxDownloadUrl(null);
     setGeojsonDownloadUrl(null);
@@ -215,11 +224,16 @@ const App = () => {
     if (!startPoint || !endPoint) {
       setRouteGeoJson(null);
       setCorridorPngUrl(null);
+      setCorridorPngUrls({});
       setCorridorBounds(null);
       setGpxDownloadUrl(null);
       setGeojsonDownloadUrl(null);
     }
   }, [startPoint, endPoint]);
+
+  useEffect(() => {
+    setCorridorPngUrl(corridorPngUrls[corridorMode] ?? null);
+  }, [corridorMode, corridorPngUrls]);
 
   const addGeoJsonLayer = (name: string, data: FeatureCollection) => {
     setUserGeoJsonLayers((prev) => [
@@ -279,6 +293,8 @@ const App = () => {
         onPickModeChange={setPickMode}
         showCorridor={showCorridor}
         onShowCorridorChange={setShowCorridor}
+        corridorMode={corridorMode}
+        onCorridorModeChange={setCorridorMode}
         onClearStart={clearStart}
         onClearEnd={clearEnd}
         onGenerate={handleGenerateRoute}

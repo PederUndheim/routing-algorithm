@@ -69,6 +69,13 @@ TRACK_INFLUENCE_PARAMS: dict[str, tuple[float, float]] = {
     "strong":      (0.35, 0.65),
 }
 
+# Corridor rendering modes: controls corridor width and contrast
+CORRIDOR_MODE_PARAMS: dict[str, dict[str, float]] = {
+    "conservative": {"slack": 0.1, "gamma": 6.0},
+    "balanced": {"slack": 0.2, "gamma": 4.0},
+    "explorative": {"slack": 0.3, "gamma": 2.5},
+}
+
 
 # GRASS routing parameters
 ROUTING_SETTINGS = {

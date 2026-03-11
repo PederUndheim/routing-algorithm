@@ -250,6 +250,7 @@ def route(req: RouteRequest, request: Request):
                 end_coords=end_xy,
                 lambda_weight=req.lambda_weight,
                 smooth_threshold=req.smooth_threshold,
+                corridor_mode=req.corridor_mode,
                 cost_surface_override=cost_mosaic,
                 dem_override=dem_mosaic,
                 output_mode="run",
@@ -281,21 +282,37 @@ def route(req: RouteRequest, request: Request):
     route_gpx_path.write_text(_geojson_to_gpx(geojson), encoding="utf-8")
 
     # Corridor outputs
-    corridor_tif = Path(res["corridor_tif"])
-    corridor_dir = corridor_tif.parent
+    corridor_tifs = {
+        mode: Path(path_str)
+        for mode, path_str in res.get("corridor_tifs", {}).items()
+    }
+    selected_mode = req.corridor_mode
 
-    corridor_tif_3857 = corridor_dir / "corridor_3857.tif"
-    corridor_png = corridor_dir / "corridor.png"
+    corridor_png_urls: dict[str, str] = {}
+    corridor_tif_urls: dict[str, str | None] = {}
+    bounds = None
 
-    # 1) generate png from tif
-    warp_tif_to_3857(corridor_tif, corridor_tif_3857)
-    corridor_tif_3857_to_png(corridor_tif_3857, corridor_png)
-    bounds = tif_3857_bounds_wgs84(corridor_tif_3857)
+    # 1) generate all png variants from their tif outputs
+    for mode, corridor_tif in corridor_tifs.items():
+        corridor_dir = corridor_tif.parent
+        corridor_tif_3857 = corridor_dir / f"corridor_{mode}_3857.tif"
+        corridor_png = corridor_dir / f"corridor_{mode}.png"
+
+        warp_tif_to_3857(corridor_tif, corridor_tif_3857)
+        corridor_tif_3857_to_png(corridor_tif_3857, corridor_png)
+
+        if bounds is None:
+            bounds = tif_3857_bounds_wgs84(corridor_tif_3857)
+
+        corridor_png_urls[mode] = str(corridor_png)
 
     # 2) store
     storage = get_corridor_storage(request)
 
-    png_url = storage.put_corridor_png(run_id=run_id, png_path=corridor_png)
+    corridor_png_urls = {
+        mode: storage.put_corridor_png(run_id=run_id, png_path=Path(png_path))
+        for mode, png_path in corridor_png_urls.items()
+    }
     route_geojson_url = storage.put_route_geojson(
         run_id=run_id,
         geojson_path=route_geojson_wgs84_path,
@@ -305,22 +322,25 @@ def route(req: RouteRequest, request: Request):
         gpx_path=route_gpx_path,
     )
 
-    tif_url = None
     if get_settings().env == "local":
-        tif_url = storage.put_corridor_tif(run_id=run_id, tif_path=corridor_tif)
+        corridor_tif_urls = {
+            mode: storage.put_corridor_tif(run_id=run_id, tif_path=corridor_tif)
+            for mode, corridor_tif in corridor_tifs.items()
+        }
     else:
-        # skipping uploading tif in prod mode
-        # tif_url = storage.put_corridor_tif(run_id=run_id, tif_path=corridor_tif)
-        tif_url = None
+        corridor_tif_urls = {mode: None for mode in corridor_tifs}
 
 
     return {
         "run_id": run_id,
         "route": geojson,
         "corridor": {
-            "png_url": png_url,
+            "mode": selected_mode,
+            "png_url": corridor_png_urls.get(selected_mode),
+            "png_urls": corridor_png_urls,
             "bounds": bounds,
-            "tif_url": tif_url,  # optional
+            "tif_url": corridor_tif_urls.get(selected_mode),
+            "tif_urls": corridor_tif_urls,
         },
         "downloads": {
             "geojson_url": route_geojson_url,
@@ -332,6 +352,7 @@ def route(req: RouteRequest, request: Request):
             "cost_mosaic_raster": cost_mosaic,
             "start_native": start_xy,
             "end_native": end_xy,
+            "selected_corridor_mode": selected_mode,
             "outputs": {k: str(v) for k, v in res.items()},
         },
     }

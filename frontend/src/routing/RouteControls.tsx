@@ -16,6 +16,7 @@ import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 import { useEffect, useState } from "react";
 
 import type { LatLng, PickMode } from "../types/mapTypes";
+import type { CorridorMode } from "../types/corridor";
 
 type RouteControlsProps = {
   startPoint: LatLng | null;
@@ -24,6 +25,8 @@ type RouteControlsProps = {
   onPickModeChange: (mode: PickMode) => void;
   showCorridor: boolean;
   onShowCorridorChange: (show: boolean) => void;
+  corridorMode: CorridorMode;
+  onCorridorModeChange: (mode: CorridorMode) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: (params: {
@@ -32,6 +35,7 @@ type RouteControlsProps = {
     avoidLake: boolean;
     avoidGlacier: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
+    corridorMode: "conservative" | "balanced" | "explorative";
   }) => void;
   runId: string | null;
   gpxDownloadUrl: string | null;
@@ -52,7 +56,6 @@ const marksSmoothingSlider = [
 ];
 
 type TrackInfluenceMode = "off" | "forest_only" | "balanced" | "strong";
-
 const compactRadioSx = {
   p: 0.25,
   mr: 0.10,
@@ -73,6 +76,8 @@ const RouteControls = ({
   onPickModeChange,
   showCorridor,
   onShowCorridorChange,
+  corridorMode,
+  onCorridorModeChange,
   onClearStart,
   onClearEnd,
   onGenerate,
@@ -86,6 +91,7 @@ const RouteControls = ({
   const DEFAULT_AVOID_LAKE = false;
   const DEFAULT_AVOID_GLACIER = false;
   const DEFAULT_TRACK_INFLUENCE_MODE: TrackInfluenceMode = "balanced";
+  const DEFAULT_CORRIDOR_MODE: CorridorMode = "balanced";
 
   const [lambdaWeight, setLambdaWeight] = useState(DEFAULT_LAMBDA_WEIGHT);
   const [smoothThreshold, setSmoothThreshold] = useState(
@@ -148,6 +154,7 @@ const RouteControls = ({
     setAvoidLake(DEFAULT_AVOID_LAKE);
     setAvoidGlacier(DEFAULT_AVOID_GLACIER);
     setTrackInfluenceMode(DEFAULT_TRACK_INFLUENCE_MODE);
+    onCorridorModeChange(DEFAULT_CORRIDOR_MODE);
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
     onClearStart();
     onClearEnd();
@@ -541,6 +548,51 @@ const RouteControls = ({
         sx={{ m: 0 }}
       />
 
+      <Box
+        sx={{
+          ml: { xs: 0.5, sm: 1 },
+          mt: 0.2,
+          mb: 0.8,
+          opacity: showCorridor ? 1 : 0.45,
+          pointerEvents: showCorridor ? "auto" : "none",
+          transition: "opacity 0.15s ease",
+        }}
+      >
+        <Typography fontSize={{ xs: 11, sm: 13 }} sx={{ color: "rgba(255,255,255,0.80)", mb: 0.4 }}>
+          Corridor style
+        </Typography>
+        <RadioGroup
+          row
+          value={corridorMode}
+          onChange={(e) => {
+            onCorridorModeChange(e.target.value as CorridorMode);
+          }}
+          sx={{ mt: 0.2, columnGap: { xs: 0.6, sm: 1 }, rowGap: 0.2, flexWrap: "wrap" }}
+        >
+          <FormControlLabel
+            value="conservative"
+            disabled={!showCorridor}
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Conservative</Typography>}
+            sx={compactLabelSx}
+          />
+          <FormControlLabel
+            value="balanced"
+            disabled={!showCorridor}
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Balanced</Typography>}
+            sx={compactLabelSx}
+          />
+          <FormControlLabel
+            value="explorative"
+            disabled={!showCorridor}
+            control={<Radio size="small" sx={compactRadioSx} />}
+            label={<Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "rgba(255,255,255,0.85)" }}>Explorative</Typography>}
+            sx={compactLabelSx}
+          />
+        </RadioGroup>
+      </Box>
+
       <Box sx={{ display: "flex", mb: { xs: 1, sm: 1.5 }, mt: "auto" }}>
         <Button
           variant="contained"
@@ -554,6 +606,7 @@ const RouteControls = ({
               avoidLake,
               avoidGlacier,
               trackInfluenceMode,
+              corridorMode,
             });
           }}
           size="large"
@@ -625,6 +678,7 @@ const RouteControls = ({
             avoidLake === DEFAULT_AVOID_LAKE &&
             avoidGlacier === DEFAULT_AVOID_GLACIER &&
             trackInfluenceMode === DEFAULT_TRACK_INFLUENCE_MODE &&
+            corridorMode === DEFAULT_CORRIDOR_MODE &&
             showCorridor === DEFAULT_SHOW_CORRIDOR
           }
           size="small"

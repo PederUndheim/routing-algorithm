@@ -2,6 +2,7 @@ from pathlib import Path
 import subprocess
 import os
 from typing import Tuple, Dict, Any, Optional, Literal
+from backend import config
 from backend.file_handler.area_paths import AreaPaths
 
 from backend.routing_algorithm.routing.grass_env import setup_grass_python_path, GRASS_DB, GRASS_LOCATION, GRASS_MAPSET
@@ -127,6 +128,7 @@ def run_routing_for_tour(
     *,
     lambda_weight: float,
     smooth_threshold: float,
+    corridor_mode: Literal["conservative", "balanced", "explorative"] = "balanced",
     multi_routing: bool = False,
     cost_surface_override: Optional[str] = None,
     dem_override: Optional[str] = None,
@@ -144,23 +146,12 @@ def run_routing_for_tour(
 
     cum_start = f"cum_start_{slug}"
     cum_end = f"cum_end_{slug}"
+    sym_cum_start = f"sym_cum_start_{slug}"
+    sym_cum_end = f"sym_cum_end_{slug}"
     direction_rast = f"dir_start_{slug}"
     corridor_rast = f"corridor_{slug}"
     optimal_path = f"path_{slug}"
     smooth_path = f"path_smooth_{slug}"
-
-
-    ###### Debugging
-    def _stat(p: Path) -> str:
-        try:
-            s = p.stat()
-            return f"exists size={s.st_size} bytes"
-        except FileNotFoundError:
-            return "MISSING"
-
-    print("DEM:", paths.dem, _stat(paths.dem))
-    print("COST:", paths.cost_surface, _stat(paths.cost_surface))
-    ########
 
     if dem_override is not None and cost_surface_override is not None:
         dem_name = dem_override
@@ -191,10 +182,8 @@ def run_routing_for_tour(
     route_dir.mkdir(parents=True, exist_ok=True)
 
     if output_mode == "run":
-        corridor_tif = corridor_dir / "corridor.tif"
         path_geojson = route_dir / "path.geojson"
     else:
-        corridor_tif = corridor_dir / f"{slug}_corridor.tif"
         path_geojson = route_dir / f"{slug}_path.geojson"
 
 
@@ -250,45 +239,50 @@ def run_routing_for_tour(
     )
 
     # 3) Corridor
-    print(f"[{tour_name}] Computing corridor...")
+    # Use symmetric accumulated friction for corridor membership.
+    # r.walk is directional and good for the route itself, but not for the
+    # "near-optimal alternatives" corridor because start->x plus end->x is not
+    # the same as start->x plus x->end.
+    print(f"[{tour_name}] Computing corridor with r.cost...")
+
+    gs.run_command(
+        "r.cost",
+        input=cost_name,
+        start_points=start_vec,
+        output=sym_cum_start,
+        overwrite=True,
+    )
+
+    gs.run_command(
+        "r.cost",
+        input=cost_name,
+        start_points=end_vec,
+        output=sym_cum_end,
+        overwrite=True,
+    )
 
     # Sum corridor (optional, good for debugging)
-    gs.mapcalc(f"{corridor_rast} = {cum_start} + {cum_end}", overwrite=True)
+    gs.mapcalc(f"{corridor_rast} = {sym_cum_start} + {sym_cum_end}", overwrite=True)
 
-    # Optimal cost from start to end
-    C_opt = _sample_raster_at_point(cum_start, end_vec)
+    # Optimal symmetric cost from start to end
+    C_opt = _sample_raster_at_point(sym_cum_start, end_vec)
 
-    # Extra cost (gap) relative to optimal path cost
+    # Extra cost (gap) relative to optimal symmetric path cost
     corridor_gap = f"corridor_gap_{slug}"
-    gs.mapcalc(f"{corridor_gap} = ({cum_start} + {cum_end}) - {C_opt}", overwrite=True)
+    gs.mapcalc(f"{corridor_gap} = ({sym_cum_start} + {sym_cum_end}) - {C_opt}", overwrite=True)
 
-    # Tuning knobs
-    SLACK = 0.03   # corridor width as fraction of C_opt (0.01 to 0.03 typical)
-    GAMMA = 3.0    # contrast (2 to 6 typical). Higher makes center pop more.
-
-    MAX_GAP = C_opt * SLACK
+    selected_mode_key = corridor_mode.lower()
+    if selected_mode_key not in config.CORRIDOR_MODE_PARAMS:
+        raise ValueError(f"Unsupported corridor_mode: {corridor_mode}")
 
     # Clamp negatives and remove NULL influence
     corridor_gap_pos = f"corridor_gap_pos_{slug}"
     gs.mapcalc(
-        f"{corridor_gap_pos} = if(isnull({cum_start}) || isnull({cum_end}), null(), if({corridor_gap} < 0, 0, {corridor_gap}))",
+        f"{corridor_gap_pos} = if(isnull({sym_cum_start}) || isnull({sym_cum_end}), null(), if({corridor_gap} < 0, 0, {corridor_gap}))",
         overwrite=True
     )
 
-    # Fix 1: linear corridor score (interpretable and not all 0.98)
-    # 1 at optimal, 0 at MAX_GAP boundary
-    corridor_score = f"corridor_score_{slug}"
-    gs.mapcalc(
-        f"{corridor_score} = if({corridor_gap_pos} <= {MAX_GAP}, 1 - ({corridor_gap_pos} / {MAX_GAP}), null())",
-        overwrite=True
-    )
-
-    # Optional gamma contrast
-    corridor_score_gamma = f"corridor_score_gamma_{slug}"
-    gs.mapcalc(
-        f"{corridor_score_gamma} = pow({corridor_score}, {GAMMA})",
-        overwrite=True
-    )
+    corridor_tifs: Dict[str, str] = {}
 
 
 
@@ -314,20 +308,45 @@ def run_routing_for_tour(
         overwrite=True
     )
 
-    # 5) Export: corridor GeoTIFF + path as Shapefile (native CRS) + GeoJSON (native CRS)
-    print(f"[{tour_name}] Exporting corridor and vector path...")
-    corridor_f32 = f"{corridor_score_gamma}_f32"
-    gs.mapcalc(f"{corridor_f32} = float({corridor_score_gamma})", overwrite=True)
-    gs.run_command(
-        "r.out.gdal",
-        input=corridor_f32,
-        output=str(corridor_tif),
-        format="GTiff",
-        flags="c",
-        type="Float32",
-        nodata=-9999,
-        overwrite=True,
-    )
+    # 5) Export corridor variants + path GeoJSON (native CRS)
+    print(f"[{tour_name}] Exporting corridor variants and vector path...")
+    for mode_name, corridor_params in config.CORRIDOR_MODE_PARAMS.items():
+        slack = float(corridor_params["slack"])
+        gamma = float(corridor_params["gamma"])
+        max_gap = C_opt * slack
+
+        corridor_score = f"corridor_score_{slug}_{mode_name}"
+        gs.mapcalc(
+            f"{corridor_score} = if({corridor_gap_pos} <= {max_gap}, 1 - ({corridor_gap_pos} / {max_gap}), null())",
+            overwrite=True,
+        )
+
+        corridor_score_gamma = f"corridor_score_gamma_{slug}_{mode_name}"
+        gs.mapcalc(
+            f"{corridor_score_gamma} = pow({corridor_score}, {gamma})",
+            overwrite=True,
+        )
+
+        corridor_f32 = f"{corridor_score_gamma}_f32"
+        gs.mapcalc(f"{corridor_f32} = float({corridor_score_gamma})", overwrite=True)
+
+        if output_mode == "run":
+            corridor_tif = corridor_dir / f"corridor_{mode_name}.tif"
+        else:
+            corridor_tif = corridor_dir / f"{slug}_{mode_name}_corridor.tif"
+
+        gs.run_command(
+            "r.out.gdal",
+            input=corridor_f32,
+            output=str(corridor_tif),
+            format="GTiff",
+            flags="c",
+            type="Float32",
+            nodata=-9999,
+            overwrite=True,
+        )
+        corridor_tifs[mode_name] = str(corridor_tif)
+
     gs.run_command(
         "v.out.ogr",
         input=smooth_path,
@@ -338,6 +357,7 @@ def run_routing_for_tour(
 
 
     return {
-        "corridor_tif": str(corridor_tif),
+        "corridor_tif": corridor_tifs[selected_mode_key],
+        "corridor_tifs": corridor_tifs,
         "path_geojson_native": str(path_geojson)
     }
