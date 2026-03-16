@@ -22,5 +22,6 @@ class RouteRequest(BaseModel):
     smooth_threshold: float = Field(ge=0.0, le=100.0)
     avoid_lake: bool = False
     avoid_glacier: bool = False
+    avoid_river: bool = True
     track_influence_mode: TrackInfluenceMode = "balanced"
     corridor_mode: CorridorMode = "balanced"

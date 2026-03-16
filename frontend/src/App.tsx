@@ -116,6 +116,7 @@ const App = () => {
     smoothThreshold,
     avoidLake,
     avoidGlacier,
+    avoidRiver,
     trackInfluenceMode,
     corridorMode,
     stopPoints,
@@ -124,6 +125,7 @@ const App = () => {
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    avoidRiver: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: CorridorMode;
     stopPoints: LatLng[];
@@ -161,6 +163,7 @@ const App = () => {
           smooth_threshold: smoothThreshold,
           avoid_lake: avoidLake,
           avoid_glacier: avoidGlacier,
+          avoid_river: avoidRiver,
           track_influence_mode: trackInfluenceMode,
           corridor_mode: corridorMode,
         }),

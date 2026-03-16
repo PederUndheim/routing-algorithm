@@ -1,15 +1,18 @@
 # Constants
-RIVER_BARRIER_VALUE = 99.0
-OCEAN_BARRIER_VALUE = 99.0
+from typing import Union
+
+
+RIVER_BARRIER_VALUE = 200.0
+OCEAN_BARRIER_VALUE = 5000.0
 
 ROADS_REDUCTION_VALUE = 1.0 
 TRACTOROADS_TRAILS_REDUCTION_VALUE = 2.0
 BRIDGES_REDUCTION_VALUE = 1.0     
 
 MIN_COST = 1
-MAX_COST = 99
+MAX_COST = 5000
 
-NODATA_VALUE = 255
+NODATA_VALUE = 65535
 
 # PRA runout combined parameters
 PRA_RUNOUT_COMBINED_PARAMS = {
@@ -44,11 +47,19 @@ RELEASE_BUFFER_PARAMS = {
     "mode": "exp",        
 }
 
-# Steep area penalty parameters
+# Steep area penalty parameters (smooth ramp into the hard barrier below)
 STEEP_AREA_PARAMS = {
-    "start_deg": 50.0,      # Start penalty at this slope
-    "full_deg": 65.0,       # Full penalty at this slope
+    "start_deg": 45.0,      # Start penalty at this slope
+    "full_deg": 50.0,       # Full penalty at this slope
     "max_penalty": 35.0,    # Max additive penalty
+}
+
+# Extreme steep barrier: hard step above this threshold, applied via max_combine.
+# Breaks the normal 1-99 ceiling so thin cliff bands (few pixels) cannot be
+# cheaply traversed. Threshold should sit at or just above STEEP_AREA_PARAMS full_deg.
+EXTREME_STEEP_PARAMS = {
+    "threshold_deg": 50.0,    # At or above this slope → barrier cost
+    "barrier_value": 1500.0,
 }
 
 # Safe mask for where cost reductions are allowed
@@ -61,10 +72,19 @@ SAFE_MASK_SOFT_PARAMS = {
 
 # Track influence modes: named parameters for readability.
 TRACK_INFLUENCE_PARAMS: dict[str, dict[str, float]] = {
-    "off": {"w_outside": 0.0, "w_forest": 0.0},
-    "forest_only": {"w_outside": 0.0, "w_forest": 0.5},
-    "balanced": {"w_outside": 0.2, "w_forest": 0.5},
-    "strong": {"w_outside": 0.35, "w_forest": 0.65},
+    "off": {"w_outside": 0.0, "w_forest": 0.0, "track_power": 1.0},
+    "forest_only": {"w_outside": 0.0, "w_forest": 0.35, "track_power": 1.4},
+    "balanced": {"w_outside": 0.1, "w_forest": 0.3, "track_power": 1.6},
+    "strong": {"w_outside": 0.2, "w_forest": 0.45, "track_power": 1.4},
+}
+
+# Request-time tracks normalization settings.
+# method:
+# - "max": scale by max(log1p(tracks)) over request mosaic
+# - "percentile": scale by percentile(log1p(tracks)) to reduce hotspot dominance
+TRACK_NORMALIZATION = {
+    "method": "percentile",
+    "percentile": 95.0,
 }
 
 # Corridor rendering modes: controls corridor width and contrast
@@ -79,6 +99,17 @@ CORRIDOR_MODE_PARAMS: dict[str, dict[str, float]] = {
 ROUTING_SETTINGS = {
     "lambda_weight": 0.55,
     "smooth_threshold": 7.5,
+    "region_buffer_m": 5000.0,
+    "grass_memory_mb": 2500,
+}
+
+# Debug script parameters for backend.scripts.run_routing
+RUN_DEBUG_ROUTING_PARAMS: dict[str, Union[str, bool]] = {
+    "track_influence_mode": "balanced",
+    "corridor_mode": "balanced",
+    "avoid_lake": False,
+    "avoid_glacier": False,
+    "avoid_river": False,
 }
 
 MULTIROUTING = False

@@ -26,4 +26,4 @@ def min_combine(*arrays: np.ndarray) -> np.ndarray:
 
 def clip_round(cost: np.ndarray, min_cost=1.0, max_cost=99.0) -> np.ndarray:
     out = np.clip(cost, min_cost, max_cost)
-    return np.round(out).astype(np.uint8, copy=False)
+    return np.round(out).astype(np.uint16, copy=False)

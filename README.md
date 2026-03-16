@@ -19,6 +19,18 @@ source .venv/bin/activate
 from root: python -m uvicorn backend.api.main:app --reload --port 8000  
 from frontend: npm run dev
 
+python -m backend.scripts.run_full_pipeline --area jotunheimen_01    
+python -m backend.scripts.run_full_pipeline --area isfjorden_01
+
+python -m backend.scripts.run_routing --area jotunheimen_01                  
+python -m backend.scripts.run_routing --area isfjorden_01
+
+python -m backend.scripts.run_full_pipeline --area isfjorden_01
+python -m backend.scripts.run_routing --area isfjorden_01
+
+python -m backend.scripts.run_full_pipeline --area jotunheimen_01 
+python -m backend.scripts.run_routing --area jotunheimen_01 
+
 ## Docker commands
 
 set -euo pipefail

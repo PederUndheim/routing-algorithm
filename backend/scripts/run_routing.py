@@ -13,6 +13,12 @@ from backend import config
 from backend.file_handler.area_context import load_area
 from backend.routing_algorithm.routing.core import init_grass, run_routing_for_tour
 from backend.routing_algorithm.tours.load_tours import load_tours_json, Tour
+from backend.routing_algorithm.routing.grass_mosaic import build_or_get_mosaic
+from backend.routing_algorithm.routing.cost_surface_request import compose_cost_surface_for_request, set_region_local
+
+from backend.routing_algorithm.routing.grass_env import setup_grass_python_path
+setup_grass_python_path()
+import grass.script as gs
 
 
 Coord = Tuple[float, float]
@@ -39,7 +45,14 @@ def export_wgs84_geojson(native_geojson_path: Union[str, Path], out_basename: st
     return out_path
 
 
-def run(area_id: str, tours: Optional[List[Tour]] = None) -> None:
+def run(
+    area_id: str,
+    tours: Optional[List[Tour]] = None,
+    track_influence_mode: str = config.RUN_DEBUG_ROUTING_PARAMS["track_influence_mode"],
+    avoid_lake: bool =config.RUN_DEBUG_ROUTING_PARAMS["avoid_lake"],
+    avoid_glacier: bool = config.RUN_DEBUG_ROUTING_PARAMS["avoid_glacier"],
+    avoid_river: bool = config.RUN_DEBUG_ROUTING_PARAMS["avoid_river"],
+) -> None:
     tours_by_area = load_tours_json(TOURS_JSON)
     if tours is None:
         if area_id not in tours_by_area:
@@ -56,11 +69,39 @@ def run(area_id: str, tours: Optional[List[Tour]] = None) -> None:
             f"Build it first for area '{area_id}'."
         )
 
+    # Import rasters into GRASS and compose request-cost exactly like frontend API.
+    # Force import so updated cost_surface.tif is always picked up in script runs.
+    print(f"\n[{area_id}] Importing rasters into GRASS and applying track influence ({track_influence_mode})...")
+    dem_grass = build_or_get_mosaic([area_id], kind="dem", force_import=True)
+    cost_grass = build_or_get_mosaic([area_id], kind="cost", force_import=True)
+    gs.run_command("g.region", raster=dem_grass, flags="a", quiet=True)
+    cost_with_tracks = compose_cost_surface_for_request(
+        area_ids=[area_id],
+        base_cost_name=cost_grass,
+        avoid_lake=avoid_lake,
+        avoid_glacier=avoid_glacier,
+        avoid_river=avoid_river,
+        track_influence_mode=track_influence_mode,
+    )
+
+    if not paths.cost_surface.exists():
+        raise FileNotFoundError(
+            f"Cost surface not found at {paths.cost_surface}. "
+            f"Build it first for area '{area_id}'."
+        )
+
     print(f"\n=== Area: {area_id} ===")
     final_outputs: Dict[str, Dict] = {}
 
     for tour in tours:
         print(f"\n--- Tour: {tour.name} ---")
+
+        set_region_local(
+            cost_with_tracks,
+            start_xy=tour.start,
+            end_xy=tour.end,
+            buffer_m=float(config.ROUTING_SETTINGS["region_buffer_m"]),
+        )
 
         res = run_routing_for_tour(
             paths=paths,
@@ -71,7 +112,9 @@ def run(area_id: str, tours: Optional[List[Tour]] = None) -> None:
             lambda_weight=config.ROUTING_SETTINGS["lambda_weight"],
             smooth_threshold=config.ROUTING_SETTINGS["smooth_threshold"],
             multi_routing=config.MULTIROUTING,
-            multi_routing_params=config.MULTIROUTING_PARAMS,
+            cost_surface_override=cost_with_tracks,
+            dem_override=dem_grass,
+            preserve_region=True,
             output_mode="area"
         )
 
@@ -82,13 +125,13 @@ def run(area_id: str, tours: Optional[List[Tour]] = None) -> None:
             wgs84_geojson = export_wgs84_geojson(
                 native_geojson_path=res["path_geojson_native"],
                 out_basename=f"{slug}_wgs84",
-                out_dir=paths.routes_geojson_wgs84,
+                out_dir=paths.route_wgs84,
             )
             res["path_geojson_wgs84"] = str(wgs84_geojson)
 
         # Multi-route WGS84 export
         if "multi_routing_routes_geojson" in res:
-            out_dir = paths.multirouting_geojson_wgs84 / slug
+            out_dir = paths.multirouting_wgs84 / slug
             out_dir.mkdir(parents=True, exist_ok=True)
 
             wgs84_multi: List[str] = []

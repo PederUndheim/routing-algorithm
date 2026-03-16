@@ -43,6 +43,7 @@ type RouteControlsProps = {
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    avoidRiver: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: "conservative" | "balanced" | "explorative";
     stopPoints: LatLng[];
@@ -107,6 +108,7 @@ const RouteControls = ({
   const DEFAULT_SHOW_CORRIDOR = false;
   const DEFAULT_AVOID_LAKE = false;
   const DEFAULT_AVOID_GLACIER = false;
+  const DEFAULT_AVOID_RIVER = true;
   const DEFAULT_TRACK_INFLUENCE_MODE: TrackInfluenceMode = "balanced";
   const DEFAULT_CORRIDOR_MODE: CorridorMode = "balanced";
 
@@ -116,6 +118,7 @@ const RouteControls = ({
   );
   const [avoidLake, setAvoidLake] = useState(DEFAULT_AVOID_LAKE);
   const [avoidGlacier, setAvoidGlacier] = useState(DEFAULT_AVOID_GLACIER);
+  const [avoidRiver, setAvoidRiver] = useState(DEFAULT_AVOID_RIVER);
   const [trackInfluenceMode, setTrackInfluenceMode] =
     useState<TrackInfluenceMode>(DEFAULT_TRACK_INFLUENCE_MODE);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
@@ -171,6 +174,7 @@ const RouteControls = ({
     setSmoothThreshold(DEFAULT_SMOOTH_THRESHOLD);
     setAvoidLake(DEFAULT_AVOID_LAKE);
     setAvoidGlacier(DEFAULT_AVOID_GLACIER);
+    setAvoidRiver(DEFAULT_AVOID_RIVER);
     setTrackInfluenceMode(DEFAULT_TRACK_INFLUENCE_MODE);
     onCorridorModeChange(DEFAULT_CORRIDOR_MODE);
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
@@ -511,7 +515,34 @@ const RouteControls = ({
         <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0, sm: 0.5 } }}>
           Make routing restrictions?
         </Typography> 
-        <Stack direction="row" sx={{ mb: 1 }}>
+        <Stack sx={{ mb: 1 }}>
+          <FormControlLabel
+            label={
+              <Typography
+                fontSize={{xs: 12, sm: 14}}
+                sx={{ color: "rgba(255,255,255,0.85)" }}
+              >
+                Avoid rivers (soft constraint)
+              </Typography>
+            }
+            control={
+              <Checkbox
+                checked={avoidRiver}
+                onChange={(e) => {
+                  setRouteInputsDirty(true);
+                  setAvoidRiver(e.target.checked);
+                }}
+                sx={{
+                  color: "rgba(255,255,255,0.55)",
+                  "&.Mui-checked": { color: "#367E98" },
+                  pl: 0,
+                }}
+              />
+            }
+            sx={{ m: 0 }}
+          />
+
+          <Stack direction="row">
           <FormControlLabel
             label={
               <Typography
@@ -563,6 +594,8 @@ const RouteControls = ({
             }
             sx={{ m: 0, flex: 1 }}
           />
+
+          </Stack>
         </Stack>
       </Box>
 
@@ -756,6 +789,7 @@ const RouteControls = ({
               smoothThreshold,
               avoidLake,
               avoidGlacier,
+              avoidRiver,
               trackInfluenceMode,
               corridorMode,
               stopPoints,
@@ -829,6 +863,7 @@ const RouteControls = ({
             smoothThreshold === DEFAULT_SMOOTH_THRESHOLD &&
             avoidLake === DEFAULT_AVOID_LAKE &&
             avoidGlacier === DEFAULT_AVOID_GLACIER &&
+            avoidRiver === DEFAULT_AVOID_RIVER &&
             trackInfluenceMode === DEFAULT_TRACK_INFLUENCE_MODE &&
             corridorMode === DEFAULT_CORRIDOR_MODE &&
             stopPoints.length === 0 &&

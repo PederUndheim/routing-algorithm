@@ -132,6 +132,7 @@ def run_routing_for_tour(
     multi_routing: bool = False,
     cost_surface_override: Optional[str] = None,
     dem_override: Optional[str] = None,
+    preserve_region: bool = False,
     output_mode: OutputMode = "area",
     run_id: Optional[str] = None,
     output_root: Optional[Path] = None,
@@ -163,7 +164,13 @@ def run_routing_for_tour(
         dem_name, cost_name = ensure_base_rasters(paths)
 
 
-    gs.run_command("g.region", raster=dem_name, flags="a")
+    if preserve_region:
+        gs.run_command("g.region", align=dem_name, quiet=True)
+    else:
+        gs.run_command("g.region", raster=dem_name, flags="a")
+
+    grass_memory_mb = int(config.ROUTING_SETTINGS.get("grass_memory_mb", 0) or 0)
+    walk_kwargs = {"memory": grass_memory_mb} if grass_memory_mb > 0 else {}
 
     # Ensure output dirs
     if output_mode == "run":
@@ -227,6 +234,7 @@ def run_routing_for_tour(
         output=cum_start,
         outdir=direction_rast,
         lambda_=lambda_weight,
+        **walk_kwargs,
         overwrite=True
     )
 
@@ -238,6 +246,7 @@ def run_routing_for_tour(
         start_points=end_vec,
         output=cum_end,
         lambda_=lambda_weight,
+        **walk_kwargs,
         overwrite=True
     )
 
@@ -253,6 +262,7 @@ def run_routing_for_tour(
         input=cost_name,
         start_points=start_vec,
         output=sym_cum_start,
+        **walk_kwargs,
         overwrite=True,
     )
 
@@ -261,6 +271,7 @@ def run_routing_for_tour(
         input=cost_name,
         start_points=end_vec,
         output=sym_cum_end,
+        **walk_kwargs,
         overwrite=True,
     )
 

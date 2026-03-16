@@ -20,6 +20,10 @@ class AreaPaths:
     @property
     def cost_surface(self) -> Path:
         return self.runtime_area_root / "cost_surface.tif"
+
+    @property
+    def cost_surface_output(self) -> Path:
+        return self.cost_surface_dir / "cost_surface.tif"
     
     @property
     def dem(self) -> Path:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import Request
 
-from backend.api.runtime import get_settings
+from backend.api.env_settings import get_settings
 from backend.storage.base import CorridorStorage
 from backend.storage.local_outputs import LocalOutputsStorage
 from backend.storage.prod_outputs import AzureBlobStorage

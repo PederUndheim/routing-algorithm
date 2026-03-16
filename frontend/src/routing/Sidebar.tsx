@@ -41,6 +41,7 @@ type SidebarProps = {
     smoothThreshold: number;
     avoidLake: boolean;
     avoidGlacier: boolean;
+    avoidRiver: boolean;
     trackInfluenceMode: "off" | "forest_only" | "balanced" | "strong";
     corridorMode: "conservative" | "balanced" | "explorative";
     stopPoints: LatLng[];

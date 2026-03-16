@@ -44,8 +44,6 @@ def release_area_buffer_penalty(
         return penalty
 
 
-
-
 def steep_area_penalty(
         slope_arr: np.ndarray,
         start_deg: float,
@@ -71,98 +69,23 @@ def steep_area_penalty(
         return (w * max_penalty).astype(np.float32, copy=False)
 
 
-
-
-def real_tracks_modifier(
-        tracks_arr: np.ndarray,
-        w: Union[float, np.ndarray],
-        p_high_quantile: float,
-        gamma: float,
-        validity_w: Optional[np.ndarray] = None,
-        exclude_mask: Optional[np.ndarray] = None,
-        only_mask: Optional[np.ndarray] = None,
-        effect_weight: Optional[np.ndarray] = None,     # Possibly make a more advanced effect weight later??
+def extreme_steep_barrier(
+        slope_arr: np.ndarray,
+        threshold_deg: float,
+        barrier_value: float,
 ) -> np.ndarray:
         """
-        Returns a multiplicative modifier in [1-w, 1].
-        1 means no change.
-        1-w means strongest reduction (most travelled cells).
+        Hard barrier for extreme slopes. Returns barrier_value where slope >= threshold_deg,
+        0 elsewhere. Apply via max_combine so it overrides the normal 1-99 cost ceiling.
 
-        strava_count can have NaN (NoData). NaN is treated as 0 density (neutral).
+        This addresses narrow cliff bands: even 2-3 pixels at barrier_value (e.g. 200)
+        make traversal far more expensive than routing around, unlike the 99 ceiling where
+        a thin cliff may still be cheaper than a long detour.
         """
-        tracks = tracks_arr.astype(np.float32, copy=False)
-        # Treat NaN as 0 density (neutral)
-        tracks = np.where(np.isnan(tracks), 0.0, tracks)
-        # Log transform to reduce skew
-        tracks = np.log1p(np.maximum(tracks, 0.0))
-
-        # Robust scalinf to [0,1] using a high quantile
-        finite = tracks[np.isfinite(tracks)]
-        if finite.size == 0:
-                p = np.zeros_like(tracks, dtype=np.float32)
-        else:
-                q = np.quantile(finite, float(p_high_quantile))
-                if q <= 0.0:
-                        p = np.zeros_like(tracks, dtype=np.float32)
-                else:
-                        p = tracks / float(q)
-                        p = np.clip(p, 0.0, 1.0).astype(np.float32)
-
-        # Contrast control: major-only vs all tracks
-        gamma = float(max(gamma, 1e-6))
-        p = p ** gamma
-
-        # Apply validity mask if provided
-        if validity_w is not None:
-                p = p * validity_w.astype(np.float32, copy=False)
-
-        if effect_weight is not None:
-                ew = effect_weight.astype(np.float32, copy=False)
-                ew = np.clip(np.where(np.isnan(ew), 1.0, ew), 0.0, 1.0)
-                p = p * ew
-        
-        # Apply exclude/only masks if provided
-        if exclude_mask is not None:
-                p = p * (~exclude_mask).astype(bool)
-        if only_mask is not None:
-                p = p * only_mask.astype(bool)
-
-        if np.isscalar(w):
-                w_arr = np.full_like(p, float(w), dtype=np.float32)
-        else:
-                w_arr = w.astype(np.float32, copy=False)
-                if w_arr.shape != p.shape:
-                        raise ValueError("w raster shape must match")
-        
-        w_arr = np.clip(w_arr, 0.0, 0.9).astype(np.float32, copy=False)
-        
-        # Convert to modifier
-        modifier = (1.0 - w_arr * p).astype(np.float32)
-
-        return modifier
+        s = slope_arr.astype(np.float32, copy=False)
+        out = np.where(s >= float(threshold_deg), float(barrier_value), 0.0)
+        return out.astype(np.float32)
 
 
 
 
-# def cliff_buffer_penalty(
-#         cliff_mask: np.ndarray,
-#         pixel_size_m: float,
-#         max_dist: float,
-#         penalty_cost: float,
-# ) -> np.ndarray:
-#         """Build a penalty buffer layer very close to steep cliffs."""
-#         cliff_mask = cliff_mask.astype(bool)
-
-#         # Compute distance to nearest steep pixel, then find distance in meters
-#         dist_px = distance_transform_edt(~cliff_mask)
-#         dist_m = dist_px.astype(np.float32) * float(pixel_size_m)
-
-#         # Find pixels in buffer zone
-#         outside = ~cliff_mask
-#         in_buffer = (dist_m <= max_dist)
-        
-#         # Penalize every pixel in the buffer with fixed penalty cost
-#         penalty = np.full(cliff_mask.shape, 0, dtype=np.float32)
-#         penalty[in_buffer] = penalty_cost
-
-#         return penalty

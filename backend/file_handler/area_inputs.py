@@ -17,6 +17,7 @@ def get_input_rasters(p: AreaPaths) -> dict[str, Path]:
         "tractorroad_trail": p.input / "tractorroad_trail.tif",                             # 1 where tractor roads or trails
         "tractorroad_trail_forest": p.input / "tractorroad_trail_in_forest.tif",            # 1 where tractor roads or trails in forest
         "river": p.input / "river.tif",                                                     # 1 where rivers
+        "river_with_bridge": p.input / "river_with_bridge.tif",                             # 1 where river, 2 where bridge-over-river
         "ocean": p.input / "ocean.tif",                                                     # 1 where ocean
         "lake": p.input / "lake.tif",                                                       # 1 where lakes
         "glacier": p.input / "glacier.tif",                                                 # 1 where glaciers
