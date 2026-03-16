@@ -164,17 +164,6 @@ def get_output(relpath: str):
     return resp
 
 
-@app.delete("/runs_output/{run_id}")
-def delete_run(run_id: str, request: Request):
-    storage = get_corridor_storage(request)
-
-    try:
-        storage.delete_run(run_id=run_id)
-    except Exception as e:
-        return {"ok": False, "run_id": run_id, "error": str(e)}
-
-    return {"ok": True, "run_id": run_id}
-
 
 @app.post("/route")
 def route(req: RouteRequest, request: Request):

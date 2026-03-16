@@ -39,9 +39,3 @@ class LocalOutputsStorage(CorridorStorage):
     def get_route_gpx_url(self, *, run_id: str) -> str:
         rel = quote(f"runs_output/{run_id}/route/route.gpx")
         return f"{self.base_url}/outputs/{rel}"
-    
-    def delete_run(self, *, run_id: str) -> None:
-        run_dir = (self.output_root / "runs_output" / run_id).resolve()
-        if self.output_root not in run_dir.parents:
-            return
-        shutil.rmtree(run_dir, ignore_errors=True)

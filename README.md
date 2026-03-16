@@ -41,7 +41,7 @@ export APP_NAME="api-routing-algorithm"
 export IMAGE_REPO="image-routing-algorithm"
 export APP_FQDN="api-routing-algorithm.mangohill-479de517.swedencentral.azurecontainerapps.io"
 
-export TAG="$(date -u +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
+export TAG="$(TZ=Europe/Oslo date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD 2>/dev/null || echo manual)"
 export IMAGE="$ACR_NAME.azurecr.io/$IMAGE_REPO:$TAG"
 
 az acr login -n "$ACR_NAME"

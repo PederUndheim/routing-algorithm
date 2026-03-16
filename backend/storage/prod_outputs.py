@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 
 from backend.storage.base import CorridorStorage
-from backend.storage.blob_helpers import upload_file, delete_prefix, get_blob_url
+from backend.storage.blob_helpers import upload_file, get_blob_url
+from backend.api.env_settings import get_settings
 
 class AzureBlobStorage(CorridorStorage):
     def __init__(self, *, container: str | None = None):
@@ -57,7 +58,3 @@ class AzureBlobStorage(CorridorStorage):
     def get_route_gpx_url(self, *, run_id: str) -> str:
         blob_name = f"runs_output/{run_id}/route.gpx"
         return get_blob_url(container=self.container, blob_name=blob_name)
-
-    def delete_run(self, *, run_id: str) -> None:
-        # delete everything under runs_output/<run_id>/
-        delete_prefix(container=self.container, prefix=f"runs_output/{run_id}/")

@@ -19,26 +19,6 @@ import Box from "@mui/material/Box";
 
 const MAX_STOPS = 3;
 
-const formatApiErrorDetail = (detail: unknown): string => {
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    const first = detail[0];
-    if (first && typeof first === "object") {
-      const item = first as { msg?: unknown; loc?: unknown[] };
-      const msg = typeof item.msg === "string" ? item.msg : null;
-      const loc = Array.isArray(item.loc) ? item.loc.join(".") : null;
-      if (msg && loc) return `${loc}: ${msg}`;
-      if (msg) return msg;
-    }
-    return "Request validation failed.";
-  }
-  if (detail && typeof detail === "object") {
-    const maybeMessage = (detail as { message?: unknown }).message;
-    if (typeof maybeMessage === "string") return maybeMessage;
-  }
-  return "Failed to generate route.";
-};
-
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>("topo");
   const [overlays, setOverlays] = useState<Record<OverlayId, boolean>>({
@@ -133,11 +113,9 @@ const App = () => {
     if (!startPoint || !endPoint) return;
 
     if (activeRunId) {
-      await deleteRun(activeRunId);
       setActiveRunId(null);
     }
 
-    const runId = crypto.randomUUID().replaceAll("-", "_");
     setRouteGeoJson(null);
     setCorridorPngUrl(null);
     setCorridorPngUrls({});
@@ -155,7 +133,6 @@ const App = () => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: "run_" + runId,
           start: startPoint,
           stops: stopPoints,
           end: endPoint,
@@ -173,7 +150,7 @@ const App = () => {
         let msg = "Failed to generate route.";
         try {
           const err = await res.json();
-          msg = formatApiErrorDetail(err?.detail);
+          msg = err.message || msg; 
         } catch {
           msg = await res.text();
         }
@@ -311,11 +288,6 @@ const App = () => {
   };
   const removeGeoJsonLayer = (id: string) => {
     setUserGeoJsonLayers((prev) => prev.filter((layer) => layer.id !== id));
-  };
-
-  const deleteRun = async (runId: string) => {
-    const API = import.meta.env.VITE_API_BASE_URL;
-    await fetch(`${API}/runs_output/${runId}`, { method: "DELETE" });
   };
 
   useEffect(() => {

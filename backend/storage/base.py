@@ -28,7 +28,3 @@ class CorridorStorage(ABC):
     def get_route_gpx_url(self, *, run_id: str) -> str:
         raise NotImplementedError
     
-    @abstractmethod
-    def delete_run(self, *, run_id: str) -> None:
-        """Best effort delete."""
-        raise NotImplementedError

@@ -40,26 +40,3 @@ def upload_file(
 def get_blob_url(*, container: str, blob_name: str) -> str:
     client = _bsc().get_blob_client(container=container, blob=blob_name)
     return client.url
-
-def delete_prefix(*, container: str, prefix: str) -> int:
-    cc = _bsc().get_container_client(container)
-    deleted = 0
-    batch: list[str] = []
-
-    for b in cc.list_blobs(name_starts_with=prefix):
-        batch.append(b.name)
-        if len(batch) >= 256:
-            try:
-                cc.delete_blobs(*batch)
-                deleted += len(batch)
-            finally:
-                batch = []
-
-    if batch:
-        try:
-            cc.delete_blobs(*batch)
-            deleted += len(batch)
-        finally:
-            batch = []
-
-    return deleted

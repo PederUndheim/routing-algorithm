@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import List, Tuple
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import geopandas as gpd
 import numpy as np
@@ -28,9 +29,14 @@ import grass.script as gs
 
 NATIVE = "EPSG:25833"
 
+try:
+    RUN_ID_TIMEZONE = ZoneInfo("Europe/Oslo")
+except ZoneInfoNotFoundError:
+    RUN_ID_TIMEZONE = timezone.utc
+
 
 def _new_run_id() -> str:
-    ts = datetime.now(timezone.utc).strftime("%d%m%Y_%H%M%S")
+    ts = datetime.now(RUN_ID_TIMEZONE).strftime("%d%m%Y_%H%M%S")
     suffix = secrets.token_hex(2)
     return f"{ts}_{suffix}"
 
