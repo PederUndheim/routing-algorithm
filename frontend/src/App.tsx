@@ -191,6 +191,20 @@ const App = () => {
     setGeojsonDownloadUrl(null);
   };
 
+  const clearStops = () => {
+    setStopPoints([]);
+    setStopPickIndex(null);
+    if (pickMode === "stop") {
+      setPickMode(null);
+    }
+    setRouteGeoJson(null);
+    setCorridorPngUrl(null);
+    setCorridorPngUrls({});
+    setCorridorBounds(null);
+    setGpxDownloadUrl(null);
+    setGeojsonDownloadUrl(null);
+  };
+
   const handleStopPointChange = (point: LatLng, index: number | null) => {
     setStopPoints((prev) => {
       if (index === null || index < 0 || index >= prev.length) {
@@ -375,6 +389,7 @@ const App = () => {
         onMoveStop={moveStop}
         onClearStart={clearStart}
         onClearEnd={clearEnd}
+        onClearStops={clearStops}
         onGenerate={handleGenerateRoute}
         runId={activeRunId}
         gpxDownloadUrl={gpxDownloadUrl}

@@ -38,6 +38,7 @@ type RouteControlsProps = {
   onMoveStop: (fromIndex: number, toIndex: number) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
+  onClearStops: () => void;
   onGenerate: (params: {
     lambdaWeight: number;
     smoothThreshold: number;
@@ -98,6 +99,7 @@ const RouteControls = ({
   onMoveStop,
   onClearStart,
   onClearEnd,
+  onClearStops,
   onGenerate,
   runId,
   gpxDownloadUrl,
@@ -180,6 +182,7 @@ const RouteControls = ({
     onShowCorridorChange(DEFAULT_SHOW_CORRIDOR);
     onClearStart();
     onClearEnd();
+    onClearStops();
   };
 
   return (

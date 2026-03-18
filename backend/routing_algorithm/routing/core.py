@@ -109,7 +109,7 @@ def _sample_raster_at_point(raster: str, vector_point: str) -> float:
         raise RuntimeError(
             f"Raster '{raster}' is NULL at point '{vector_point}'. "
             "Start and end may be disconnected, outside valid cost area, "
-            "or DEM/cost has NULL there."
+            f"or DEM/cost has NULL there. r.what='{out}'"
         )
 
     try:
@@ -142,9 +142,12 @@ def run_routing_for_tour(
     Run the full GRASS routing for a single tour and export outputs.
     Returns a dict with output file paths.
     """
-    slug = _safe_name(tour_name.lower())
+    slug_parts = [_safe_name(tour_name.lower())]
+    if run_id:
+        slug_parts.append(_safe_name(run_id.lower()))
     if output_suffix:
-        slug = f"{slug}_{_safe_name(output_suffix.lower())}"
+        slug_parts.append(_safe_name(output_suffix.lower()))
+    slug = "_".join(part for part in slug_parts if part)
     start_vec = f"start_{slug}"
     end_vec = f"end_{slug}"
 

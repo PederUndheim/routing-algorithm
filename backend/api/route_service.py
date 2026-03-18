@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import traceback
 import secrets
 from datetime import datetime, timezone
@@ -122,7 +123,12 @@ def run_route_request(
 ) -> dict:
     try:
         with grass_lock:
+            run_id = _new_run_id()
+            print(f"[route] run_id={run_id} pid={os.getpid()} request_start")
+
+            gs.run_command("g.remove", type="raster", name="MASK", flags="f", quiet=True)
             gs.run_command("g.remove", type="raster", pattern="*", flags="f", quiet=True)
+            gs.run_command("g.remove", type="vector", pattern="*", flags="f", quiet=True)
 
             bbox_ids = _areas_for_points_bbox(areas_gdf, all_points_xy, req.buffer_m)
             start_ids = _areas_containing_point(areas_gdf, start_xy)
@@ -161,7 +167,6 @@ def run_route_request(
 
             any_paths, any_inputs = load_area(area_ids[0])
 
-            run_id = _new_run_id()
             leg_route_paths: List[Path] = []
             leg_corridor_tifs: dict[str, List[Path]] = {mode: [] for mode in config.CORRIDOR_MODE_PARAMS}
 

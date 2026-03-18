@@ -109,7 +109,7 @@ RUN_DEBUG_ROUTING_PARAMS: dict[str, Union[str, bool]] = {
     "corridor_mode": "balanced",
     "avoid_lake": False,
     "avoid_glacier": False,
-    "avoid_river": False,
+    "avoid_river": True,
 }
 
 MULTIROUTING = False

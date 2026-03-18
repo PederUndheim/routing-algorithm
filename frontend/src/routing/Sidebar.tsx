@@ -36,6 +36,7 @@ type SidebarProps = {
   onMoveStop: (fromIndex: number, toIndex: number) => void;
   onClearStart: () => void;
   onClearEnd: () => void;
+  onClearStops: () => void;
   onGenerate: (params: {
     lambdaWeight: number;
     smoothThreshold: number;
@@ -73,6 +74,7 @@ const Sidebar = ({
   onMoveStop,
   onClearStart,
   onClearEnd,
+  onClearStops,
   onGenerate,
   runId,
   gpxDownloadUrl,
@@ -197,6 +199,7 @@ const Sidebar = ({
           onClearStart={onClearStart}
           onClearEnd={onClearEnd}
           onGenerate={onGenerate}
+          onClearStops={onClearStops}
           runId={runId}
           gpxDownloadUrl={gpxDownloadUrl}
           geojsonDownloadUrl={geojsonDownloadUrl}
