@@ -126,6 +126,8 @@ def compose_cost_surface_for_request(
     avoid_river: bool,
     track_influence_mode: str,
 ) -> str:
+    gs.run_command("g.region", raster=base_cost_name, quiet=True)
+
     with_tracks = compose_tracks_influence_for_request(
         area_ids,
         base_cost_name=base_cost_name,

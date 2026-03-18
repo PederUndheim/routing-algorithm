@@ -92,12 +92,18 @@ def _merge_corridor_tifs(src_paths: List[Path], dst_path: Path) -> Path:
         nodata = ref.nodata if ref.nodata is not None else -9999.0
         merged = np.full((ref.height, ref.width), nodata, dtype=np.float32)
         any_valid = np.zeros((ref.height, ref.width), dtype=bool)
+        ref_crs = ref.crs
+        ref_transform = ref.transform
 
     for path in src_paths:
         with rasterio.open(path) as ds:
             arr = ds.read(1).astype(np.float32)
             if arr.shape != merged.shape:
                 raise ValueError("Corridor rasters must share the same shape for merging")
+            if ds.crs != ref_crs:
+                raise ValueError("Corridor rasters must share the same CRS for merging")
+            if ds.transform != ref_transform:
+                raise ValueError("Corridor rasters must share the same transform for merging")
 
             valid = np.isfinite(arr) & (~np.isclose(arr, nodata))
             merged = np.where(valid & any_valid, np.maximum(merged, arr), merged)
@@ -169,8 +175,12 @@ def run_route_request(
 
             leg_route_paths: List[Path] = []
             leg_corridor_tifs: dict[str, List[Path]] = {mode: [] for mode in config.CORRIDOR_MODE_PARAMS}
+            total_legs = len(all_points_xy) - 1
+            single_leg = total_legs == 1
+            single_leg_res: dict | None = None
 
             for leg_index, (leg_start, leg_end) in enumerate(zip(all_points_xy[:-1], all_points_xy[1:]), start=1):
+                output_suffix = None if single_leg else f"leg_{leg_index}"
                 leg_res = run_routing_for_tour(
                     paths=any_paths,
                     inputs=any_inputs,
@@ -186,22 +196,35 @@ def run_route_request(
                     output_mode="run",
                     run_id=run_id,
                     output_root=output_root,
-                    output_suffix=f"leg_{leg_index}",
+                    output_suffix=output_suffix,
                 )
-                leg_route_paths.append(Path(leg_res["path_geojson_native"]))
-                for mode_name, tif_path in leg_res.get("corridor_tifs", {}).items():
-                    leg_corridor_tifs.setdefault(mode_name, []).append(Path(tif_path))
+                if single_leg:
+                    single_leg_res = leg_res
+                else:
+                    leg_route_paths.append(Path(leg_res["path_geojson_native"]))
+                    for mode_name, tif_path in leg_res.get("corridor_tifs", {}).items():
+                        leg_corridor_tifs.setdefault(mode_name, []).append(Path(tif_path))
 
             output_base = Path(output_root).resolve() / "runs_output" / run_id
             route_dir = output_base / "route"
             corridor_dir = output_base / "corridor"
 
-            merged_route_path = _merge_native_route_geojson(leg_route_paths, route_dir / "path.geojson")
-            merged_corridor_tifs = {
-                mode_name: _merge_corridor_tifs(tif_paths, corridor_dir / f"corridor_{mode_name}.tif")
-                for mode_name, tif_paths in leg_corridor_tifs.items()
-                if tif_paths
-            }
+            if single_leg:
+                if single_leg_res is None:
+                    raise RuntimeError("Single-leg routing produced no result")
+
+                merged_route_path = Path(single_leg_res["path_geojson_native"])
+                merged_corridor_tifs = {
+                    mode_name: Path(path)
+                    for mode_name, path in single_leg_res.get("corridor_tifs", {}).items()
+                }
+            else:
+                merged_route_path = _merge_native_route_geojson(leg_route_paths, route_dir / "path.geojson")
+                merged_corridor_tifs = {
+                    mode_name: _merge_corridor_tifs(tif_paths, corridor_dir / f"corridor_{mode_name}.tif")
+                    for mode_name, tif_paths in leg_corridor_tifs.items()
+                    if tif_paths
+                }
 
             res = {
                 "path_geojson_native": str(merged_route_path),
