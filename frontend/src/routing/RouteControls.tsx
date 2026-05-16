@@ -105,12 +105,12 @@ const RouteControls = ({
   gpxDownloadUrl,
   geojsonDownloadUrl,
 }: RouteControlsProps) => {
-  const DEFAULT_LAMBDA_WEIGHT = 0.55;
-  const DEFAULT_SMOOTH_THRESHOLD = 8;
+  const DEFAULT_LAMBDA_WEIGHT = 0.6;
+  const DEFAULT_SMOOTH_THRESHOLD = 7.5;
   const DEFAULT_SHOW_CORRIDOR = false;
   const DEFAULT_AVOID_LAKE = false;
   const DEFAULT_AVOID_GLACIER = false;
-  const DEFAULT_AVOID_RIVER = true;
+  const DEFAULT_AVOID_RIVER = false;
   const DEFAULT_TRACK_INFLUENCE_MODE: TrackInfluenceMode = "balanced";
   const DEFAULT_CORRIDOR_MODE: CorridorMode = "balanced";
 
@@ -473,9 +473,18 @@ const RouteControls = ({
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 } }} />
 
       <Box>
-        <Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "white", mb: { xs: 0.8, sm: 1 } }}>
-          Existing track data influence
+        <Typography fontSize={{ xs: 12, sm: 14 }} sx={{ color: "white", mb: { xs: 0.2, sm: 0.3 } }}>
+          Choose track influence mode
         </Typography>
+        <Typography
+            sx={{
+              ml: 0.8, mb: { xs: 0.8, sm: 1 },
+              fontSize: {xs: 10, sm: 12},
+              color: "rgba(255,255,255,0.75)",
+            }}
+          >
+            In what degree existing track data reduce cost
+          </Typography>
         <RadioGroup
           row
           value={trackInfluenceMode}
@@ -515,17 +524,28 @@ const RouteControls = ({
       <Divider sx={{ borderColor: "rgba(255,255,255,0.12)", mb: { xs: 1.5, sm: 2 }, mt: { xs: 0.5, sm: 2 } }} />
 
       <Box> 
-        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0, sm: 0.5 } }}>
+        <Typography fontSize={{xs: 12, sm: 14}} sx={{ color: "white", mb: { xs: 0.2, sm: 0.3 } }}>
           Make routing restrictions?
         </Typography> 
+        <Typography
+            sx={{
+              ml: 0.8, mb: { xs: 0.3, sm: 0.4 },
+              fontSize: {xs: 10, sm: 12},
+              color: "rgba(255,255,255,0.75)",
+            }}
+          >
+            Optionally avoid routing through certain terrain
+          </Typography>
         <Stack sx={{ mb: 1 }}>
-          <FormControlLabel
+
+          <Stack direction="row">
+             <FormControlLabel
             label={
               <Typography
                 fontSize={{xs: 12, sm: 14}}
                 sx={{ color: "rgba(255,255,255,0.85)" }}
               >
-                Avoid rivers (soft constraint)
+                Avoid river
               </Typography>
             }
             control={
@@ -542,17 +562,15 @@ const RouteControls = ({
                 }}
               />
             }
-            sx={{ m: 0 }}
+            sx={{ m: 0, flex: 1 }}
           />
-
-          <Stack direction="row">
           <FormControlLabel
             label={
               <Typography
                 fontSize={{xs: 12, sm: 14}}
                 sx={{ color: "rgba(255,255,255,0.85)" }}
               >
-                Avoid lakes
+                Avoid lake
               </Typography>
             }
             control={
@@ -578,7 +596,7 @@ const RouteControls = ({
                 fontSize={{xs: 12, sm: 14}}
                 sx={{ color: "rgba(255,255,255,0.85)" }}
               >
-                Avoid glaciers
+                Avoid glacier
               </Typography>
             }
             control={
@@ -716,7 +734,7 @@ const RouteControls = ({
             fontSize={{xs: 12, sm: 14}}
             sx={{ color: "rgba(255,255,255,0.85)" }}
           >
-            Show area of possible route choices
+            Show area of near-optimal routes (corridor)
           </Typography>
         }
         control={
@@ -746,7 +764,7 @@ const RouteControls = ({
         }}
       >
         <Typography fontSize={{ xs: 11, sm: 13 }} sx={{ color: "rgba(255,255,255,0.80)", mb: 0.4 }}>
-          Corridor style
+          Corridor mode
         </Typography>
         <RadioGroup
           row

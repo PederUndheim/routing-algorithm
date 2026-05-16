@@ -94,7 +94,7 @@ const Sidebar = ({
     if (isMobile) return;
     setWidth((prev) => {
       if (prev !== DEFAULT_W) return prev;
-      return isLargeDesktop ? 380 : 360;
+      return isLargeDesktop ? 400 : 380;
     });
   }, [isMobile, isLargeDesktop]);
 

@@ -43,7 +43,7 @@ export const OVERLAYS: OverlayDef[] = [
     label: "Slope",
     type: "wms",
     wmsUrl:
-      "https://nve.geodataonline.no/arcgis/services/Bratthet/MapServer/WmsServer",
+      "https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_2024/MapServer",
     layers: "Bratthet_snoskred",
     opacityDefault: 0.55,
     thumbUrl: slopeThumb,

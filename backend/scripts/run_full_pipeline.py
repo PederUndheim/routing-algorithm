@@ -15,14 +15,14 @@ def run_pipeline_for_area(area_id: str) -> None:
     print("\n====================================")
     print(f"=== Area: {area_id} ===")
 
-    # print("\n=== Step 1: Making input layers ===")
-    # run_inputs(area_id)
+    print("\n=== Step 1: Making input layers ===")
+    run_inputs(area_id)
 
     print("\n=== Step 2: Building cost surface ===")
     run_cost(area_id, debug_mode=True)
 
-    print("\n=== Step 3: Routing ===")
-    run_routing(area_id)
+    # print("\n=== Step 3: Routing ===")
+    # run_routing(area_id)
 
 
 def main():

@@ -1,8 +1,6 @@
 import numpy as np
 from backend import config
 
-EPS = 1e-9
-
 # --- Mathematical transforms ---
 
 def _as_float(a: np.ndarray) -> np.ndarray:
@@ -33,27 +31,46 @@ def hyperbolic_tangent(x: np.ndarray, *, x0: float, k: float) -> np.ndarray:
     y = np.clip(y, 0.0, 1.0)
     return y.astype(np.float32)
 
+def threshold_jump_slope(
+    slope: np.ndarray,
+    *,
+    threshold: float = 30.0,
+    low_max: float = 0.05,
+    low_power: float = 3.0,
+    jump_start: float = 29.0,
+    jump_end: float = 30.0,
+    jump_to: float = 0.35,
+    tail_end: float = 45.0,
+) -> np.ndarray:
+    if jump_end <= jump_start:
+        raise ValueError("jump_end must be greater than jump_start")
+    if tail_end <= jump_end:
+        raise ValueError("tail_end must be greater than jump_end")
 
-def to_cost_x_y(unit_0_to_1: np.ndarray, min_cost=config.MIN_COST, max_cost=config.MAX_COST) -> np.ndarray:
+    s = slope.astype(np.float32, copy=False)
+
+    # Gentle increase below the rapid threshold ramp.
+    below = low_max * np.clip(s / threshold, 0.0, 1.0) ** low_power
+    jump_start_value = low_max * np.clip(jump_start / threshold, 0.0, 1.0) ** low_power
+
+    # Sharp linear ramp into the 30-degree threshold, then a slower linear climb.
+    jump_t = np.clip((s - jump_start) / (jump_end - jump_start), 0.0, 1.0)
+    jump_ramp = jump_start_value + (jump_to - jump_start_value) * jump_t
+
+    tail_t = np.clip((s - jump_end) / (tail_end - jump_end), 0.0, 1.0)
+    linear_tail = jump_to + (1.0 - jump_to) * tail_t
+
+    u = np.where(s < jump_start, below, jump_ramp)
+    u = np.where(s < jump_end, u, linear_tail)
+    return np.clip(u, 0.0, 1.0).astype(np.float32)
+
+
+def to_cost_x_y(unit_0_to_1: np.ndarray, min_cost=config.MIN_COST, max_cost=config.BASE_MAX_COST) -> np.ndarray:
     """
     Map a [0,1] unit value to [min_cost, max_cost].
     """
     out = min_cost + unit_0_to_1 * (max_cost - min_cost)
     return out.astype(np.float32, copy=False)
-
-def smooth_gate_below(x: np.ndarray, threshold: float, width: float) -> np.ndarray:
-    """
-    Returns weight in [0,1]:
-      ~1 well below threshold
-      ~0 well above threshold
-    width controls how gradual the transition is (bigger = softer).
-    """
-    x = x.astype(np.float32, copy=False)
-    # Logistic centered at threshold, flipped so "below" gives high weight
-    k = 6.0 / float(width)
-    return (1.0 / (1.0 + np.exp(k * (x - threshold)))).astype(np.float32)
-
-
 
 # --- Terrain transforms ---
 def slope_cost(transform: str, slope: np.ndarray, *, min_cost: float, max_cost: float, **params) -> np.ndarray:
@@ -63,63 +80,13 @@ def slope_cost(transform: str, slope: np.ndarray, *, min_cost: float, max_cost: 
         u = richards_curve(slope, **params)
     elif transform == "hyperbolic":
         u = hyperbolic_tangent(slope, **params)
+    elif transform == "threshold_jump":
+        u = threshold_jump_slope(slope, **params)
     else:
         raise ValueError(f"Unknown slope transform: {transform}")
     return to_cost_x_y(u, min_cost=min_cost, max_cost=max_cost)
 
-def curvature_cost(curvature: np.ndarray, x0: float, k: float, min_cost: float, max_cost: float) -> np.ndarray:
-    u = logistic(curvature, x0=x0, k=k)
+
+def windshelter_cost(windshelter: np.ndarray, x0: float, k: float, min_cost: float, max_cost: float) -> np.ndarray:
+    u = logistic(windshelter, x0=x0, k=k)
     return to_cost_x_y(u, min_cost=min_cost, max_cost=max_cost)
-
-# def curvature_cost_with_neutral(
-#     curvature: np.ndarray,
-#     t: float,               # values in [-t, t] are neutral
-#     x0: float,              # midpoint for logistic
-#     k: float,               # steepness for logistic      
-#     min_cost: float,
-#     max_cost: float
-# ) -> np.ndarray:
-#     c = _as_float(curvature)
-#     if not (0.0 <= t < 1.0):
-#         raise ValueError("Parameter t must be in [0, 1).")
-#     denom = max(EPS, 1.0 - t)
-
-#     c2 = np.zeros_like(c, dtype=np.float32)
-#     mask_pos = c > t
-#     mask_neg = c < -t
-#     c2[mask_pos] = (c[mask_pos] - t) / denom
-#     c2[mask_neg] = (c[mask_neg] + t) / denom
-#     c2 = np.clip(c2, -1.0, 1.0)
-
-#     u = logistic(c2, x0=x0, k=k)
-
-#     return to_cost_x_y(u, min_cost=min_cost, max_cost=max_cost)
-
-
-
-
-# --- Layer builder for MIN/MAX-logic ---
-
-def barrier_layer_from_mask(mask: np.ndarray, barrier_value: float, min_cost: float) -> np.ndarray:
-    """
-    Build a 'barrier' layer that is 1 everywhere, barrier_value where mask is True.
-    Intended for MAX combine so barriers trump.
-    """
-    mask = _as_float(mask)
-    layer = np.full_like(mask, min_cost, dtype=np.float32)
-    layer[mask.astype(bool)] = barrier_value
-    return layer
-
-def reduction_layer_from_mask_soft(mask: np.ndarray, validity_weight: np.ndarray, low_value: float, elsewhere_value: float) -> np.ndarray:
-    """
-    Build a 'reduction' layer that is low_value on mask (roads/tracks) if in validity mask (ex. not in avalanche danger), high elsewhere.
-    Soft gate based on validity weight in [0,1].
-    Intended for MIN combine so tracks lower the cost.
-    """
-    mask = mask.astype(bool)
-    validity_weight = np.clip(validity_weight, 0.0, 1.0).astype(np.float32, copy=False)
-
-    out = np.full(mask.shape, elsewhere_value, dtype=np.float32)
-    blended = elsewhere_value - validity_weight * (elsewhere_value - low_value)
-    out[mask] = blended[mask]
-    return out

@@ -7,7 +7,7 @@ def get_input_rasters(p: AreaPaths) -> dict[str, Path]:
 
         "slope": p.input / "slope.tif",                                                     # degrees (0-90)
         "curvature": p.input / "windshelter.tif",                                           # curvature (-1, 1), (from "ridges" to "bowls")
-        "pra_runout_combined": p.input / "pra_runout_combined.tif",                         # avalance cost raster with runout (1-7.2) and release (7.2-99)
+        "pra_runout_combined": p.input / "pra_runout_combined.tif",                         # avalanche cost raster with runout (1-7.2) and release (7.2-100)
 
         "travel_distance": p.input / "travel_distance.tif",                              # for building pra_runout_combined
         "pra_raw": p.input / "pra_raw.tif",                                                 # for building pra_runout_combined
@@ -25,4 +25,3 @@ def get_input_rasters(p: AreaPaths) -> dict[str, Path]:
 
         "tracks": p.input / f"tracks.tif",                                                  # real tracks usage raster
     }
-

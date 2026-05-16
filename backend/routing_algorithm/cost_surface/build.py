@@ -8,39 +8,57 @@ from pathlib import Path
 from backend import config  
 from backend.file_handler.area_paths import AreaPaths
 from backend.routing_algorithm.cost_surface.raster_helpers import read_raster, read_mask, debug_layer_save                        
-from backend.routing_algorithm.cost_surface.transforms import (                       
-    slope_cost,
-    curvature_cost,
+from backend.routing_algorithm.cost_surface.transforms import slope_cost, windshelter_cost
+from backend.routing_algorithm.cost_surface.layers import (
     barrier_layer_from_mask,
     reduction_layer_from_mask_soft,
-    smooth_gate_below
+    smooth_gate_below,
+    steep_slope_barrier,
 )
 from backend.routing_algorithm.cost_surface.combine import weighted_sum, min_combine, max_combine, clip_round
-from backend.routing_algorithm.cost_surface.refinements import release_area_buffer_penalty, steep_area_penalty, extreme_steep_barrier
 
 np.seterr(all='ignore')  # ignore warnings for NaNs
 
 
 def _normalize_tracks_like_request(tracks_arr: np.ndarray) -> np.ndarray:
-    """Normalize tracks to [0, 1] with log1p compression.
-    
-    Used for debug layers to mirror request-time track influence shaping.
-    This does not overwrite input tracks.tif; routing applies normalization
-    dynamically on the request mosaic.
-    """
+    """Normalize tracks to [0, 1], mirroring request-time track shaping."""
     tracks = tracks_arr.astype(np.float32, copy=False)
     tracks = np.where(np.isnan(tracks), 0.0, tracks)
     tracks = np.maximum(tracks, 0.0)
-    
-    # Log transform to compress skew
-    tracks = np.log1p(tracks)
-    
-    finite = tracks[np.isfinite(tracks)]
-    if finite.size == 0:
-        return np.zeros_like(tracks, dtype=np.float32)
 
     norm_cfg = getattr(config, "TRACK_NORMALIZATION", {}) or {}
+    transform = str(norm_cfg.get("transform", "linear")).lower()
+    if transform == "log1p":
+        tracks_transformed = np.log1p(tracks).astype(np.float32, copy=False)
+    elif transform == "linear":
+        tracks_transformed = tracks
+    else:
+        raise ValueError(f"Unsupported TRACK_NORMALIZATION transform: {transform}")
+
+    finite = tracks_transformed[np.isfinite(tracks_transformed)]
+    positive = tracks_transformed[np.isfinite(tracks_transformed) & (tracks > 0)]
+    if finite.size == 0 or positive.size == 0:
+        return np.zeros_like(tracks, dtype=np.float32)
+
     method = str(norm_cfg.get("method", "max")).lower()
+    if method == "positive_percentile_range":
+        lower_pct = float(norm_cfg.get("lower_percentile", 60.0))
+        upper_pct = float(norm_cfg.get("upper_percentile", 98.0))
+        lower_pct = max(0.0, min(100.0, lower_pct))
+        upper_pct = max(0.0, min(100.0, upper_pct))
+        if upper_pct <= lower_pct:
+            raise ValueError("TRACK_NORMALIZATION upper_percentile must be greater than lower_percentile")
+
+        tracks_low = float(np.nanpercentile(positive, lower_pct))
+        tracks_high = float(np.nanpercentile(positive, upper_pct))
+        if tracks_high <= tracks_low:
+            return np.zeros_like(tracks, dtype=np.float32)
+
+        return np.clip(
+            (tracks_transformed - tracks_low) / (tracks_high - tracks_low),
+            0.0,
+            1.0,
+        ).astype(np.float32, copy=False)
 
     if method == "percentile":
         pct = float(norm_cfg.get("percentile", 95.0))
@@ -52,7 +70,7 @@ def _normalize_tracks_like_request(tracks_arr: np.ndarray) -> np.ndarray:
     if tracks_scale <= 0.0:
         return np.zeros_like(tracks, dtype=np.float32)
 
-    return np.clip(tracks / tracks_scale, 0.0, 1.0).astype(np.float32, copy=False)
+    return np.clip(tracks_transformed / tracks_scale, 0.0, 1.0).astype(np.float32, copy=False)
 
 
 def _apply_track_influence_like_request(
@@ -61,19 +79,22 @@ def _apply_track_influence_like_request(
     forest_mask: np.ndarray,
     mode_params: dict[str, float],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    w_outside = float(mode_params["w_outside"])
-    w_forest = float(mode_params["w_forest"])
+    max_reduction_outside = float(mode_params["max_reduction_outside"])
+    max_reduction_forest = float(mode_params["max_reduction_forest"])
     track_power = float(mode_params.get("track_power", 1.0))
     if track_power <= 0.0:
         raise ValueError("track_power must be > 0")
 
     forest_arr = forest_mask.astype(np.float32, copy=False)
-    weight_arr = (w_outside + (w_forest - w_outside) * forest_arr).astype(np.float32, copy=False)
+    max_reduction_arr = (
+        max_reduction_outside
+        + (max_reduction_forest - max_reduction_outside) * forest_arr
+    ).astype(np.float32, copy=False)
     tracks_shaped_arr = np.power(tracks_norm_arr, track_power).astype(np.float32, copy=False)
-    modifier_arr = (1.0 - weight_arr * tracks_shaped_arr).astype(np.float32, copy=False)
-    cost_with_tracks = np.maximum(float(config.MIN_COST), base_cost_arr * modifier_arr).astype(np.float32, copy=False)
+    cost_reduction_arr = (max_reduction_arr * tracks_shaped_arr).astype(np.float32, copy=False)
+    cost_with_tracks = np.maximum(float(config.MIN_COST), base_cost_arr - cost_reduction_arr).astype(np.float32, copy=False)
 
-    return weight_arr, modifier_arr, cost_with_tracks
+    return max_reduction_arr, cost_reduction_arr, cost_with_tracks
 
 
 def _save_track_debug_layers(
@@ -87,15 +108,21 @@ def _save_track_debug_layers(
     tracks_arr, _ = read_raster(inputs["tracks"])
     forest_mask = read_mask(inputs["forest"])
 
+    tracks_debug_arr = np.where(nodata_mask, np.nan, tracks_arr).astype(np.float32, copy=False)
     tracks_norm_arr = _normalize_tracks_like_request(tracks_arr)
     tracks_norm_arr = np.where(nodata_mask, np.nan, tracks_norm_arr).astype(np.float32, copy=False)
-    forest_debug_arr = np.where(nodata_mask, np.nan, forest_mask.astype(np.float32)).astype(np.float32, copy=False)
 
-    debug_layer_save(tracks_norm_arr, "08a_tracks_normalized.tif", profile, output_dir)
-    debug_layer_save(forest_debug_arr, "08b_tracks_forest_mask.tif", profile, output_dir)
+    debug_layer_save(tracks_debug_arr, "09a_tracks.tif", profile, output_dir)
+    debug_layer_save(tracks_norm_arr, "09b_tracks_normalized.tif", profile, output_dir)
 
-    for mode_name, mode_params in config.TRACK_INFLUENCE_PARAMS.items():
-        weight_arr, modifier_arr, cost_with_tracks = _apply_track_influence_like_request(
+    debug_modes = [
+        ("forest_only", "1"),
+        ("balanced", "2"),
+        ("strong", "3"),
+    ]
+    for mode_name, mode_number in debug_modes:
+        mode_params = config.TRACK_INFLUENCE_PARAMS[mode_name]
+        max_reduction_arr, _, cost_with_tracks = _apply_track_influence_like_request(
             base_cost_arr=base_cost_arr,
             tracks_norm_arr=tracks_norm_arr,
             forest_mask=forest_mask,
@@ -104,15 +131,12 @@ def _save_track_debug_layers(
 
         delta_arr = (base_cost_arr - cost_with_tracks).astype(np.float32, copy=False)
 
-        weight_arr = np.where(nodata_mask, np.nan, weight_arr).astype(np.float32, copy=False)
-        modifier_arr = np.where(nodata_mask, np.nan, modifier_arr).astype(np.float32, copy=False)
+        max_reduction_arr = np.where(nodata_mask, np.nan, max_reduction_arr).astype(np.float32, copy=False)
         delta_arr = np.where(nodata_mask, np.nan, delta_arr).astype(np.float32, copy=False)
         cost_with_tracks = np.where(nodata_mask, np.nan, cost_with_tracks).astype(np.float32, copy=False)
 
-        debug_layer_save(weight_arr, f"09a_tracks_weight_{mode_name}.tif", profile, output_dir)
-        debug_layer_save(modifier_arr, f"09b_tracks_modifier_{mode_name}.tif", profile, output_dir)
-        debug_layer_save(delta_arr, f"09c_tracks_delta_{mode_name}.tif", profile, output_dir)
-        debug_layer_save(cost_with_tracks, f"09d_cost_with_tracks_{mode_name}.tif", profile, output_dir)
+        debug_layer_save(delta_arr, f"10b{mode_number}_tracks_delta_{mode_name}.tif", profile, output_dir)
+        debug_layer_save(cost_with_tracks, f"10c{mode_number}_cost_with_tracks_{mode_name}.tif", profile, output_dir)
 
 
 
@@ -132,31 +156,32 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
 
     # Load input rasters
     slope_arr, _ = read_raster(inputs["slope"])
-    curvature_arr, _ = read_raster(inputs["curvature"])
-    curvature_arr = np.nan_to_num(curvature_arr, nan=0.0)
+    windshelter_arr, _ = read_raster(inputs["curvature"])
+    windshelter_arr = np.nan_to_num(windshelter_arr, nan=0.0)
     pra_runout_combined_arr, _ = read_raster(inputs["pra_runout_combined"])
 
     # Verify shapes
-    for arr in [curvature_arr, pra_runout_combined_arr]:
+    for arr in [windshelter_arr, pra_runout_combined_arr]:
         if arr.shape != slope_arr.shape:
             raise ValueError("Input rasters must have the same shape")
 
     # NODATA-policies
     pra_runout_combined_arr = np.where(
     np.isnan(pra_runout_combined_arr), 1, pra_runout_combined_arr).astype(np.float32, copy=False) # treat NoData (neither release nor runout) as low cost (1)
+    
 
     # Terrain transforms
     slope_cost_arr = slope_cost(config.SLOPE_TRANSFORM, slope_arr, **config.TRANSFORM_PARAMS[f"slope_{config.SLOPE_TRANSFORM}"])
-    curvature_cost_arr = curvature_cost(curvature_arr, **config.TRANSFORM_PARAMS["curvature"])
-    pra_runout_combined_cost_arr = pra_runout_combined_arr  # direct use, already in [1,99]
+    windshelter_cost_arr = windshelter_cost(windshelter_arr, **config.TRANSFORM_PARAMS["windshelter"])
+    pra_runout_combined_cost_arr = pra_runout_combined_arr  # direct use, already in configured cost range
 
     if debug_mode:
         debug_layer_save(slope_cost_arr, "01_slope_cost.tif", ref_profile, paths.debug_cost_layer_dir)
-        debug_layer_save(curvature_cost_arr, "02_curvature_cost.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(windshelter_cost_arr, "02_windshelter_cost.tif", ref_profile, paths.debug_cost_layer_dir)
         debug_layer_save(pra_runout_combined_cost_arr, "03_pra_runout_combined_cost.tif", ref_profile, paths.debug_cost_layer_dir)
 
     # Combine layers: weighted sum
-    layers = {"slope": slope_cost_arr, "curvature": curvature_cost_arr, "pra_runout_combined": pra_runout_combined_cost_arr}
+    layers = {"slope": slope_cost_arr, "windshelter": windshelter_cost_arr, "pra_runout_combined": pra_runout_combined_cost_arr}
     surface_sum = weighted_sum(layers, config.WEIGHTS_TERRAIN)
 
     if debug_mode:
@@ -165,53 +190,8 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
 
 
 
-    # -- Refinements and softer transitions--
 
-    # Release area buffer penalty
-    pra_raw_arr, _ = read_raster(inputs["pra_raw"])
-    release_mask = pra_raw_arr >= 0.15  # release areas defined as PRA raw >= 0.15
-    px = abs(ref_profile['transform'][0])  # pixel size in meters
-
-    release_buffer_penalty = release_area_buffer_penalty(
-        release_area_mask=release_mask,
-        pixel_size_m=px,
-        max_dist=config.RELEASE_BUFFER_PARAMS["max_dist"],       
-        max_cost=config.RELEASE_BUFFER_PARAMS["max_cost"],
-        exp_scale=config.RELEASE_BUFFER_PARAMS["exp_scale"],
-        mode=config.RELEASE_BUFFER_PARAMS["mode"],
-    )
-    if debug_mode:
-        debug_layer_save(release_buffer_penalty, "05a_release_area_buffer_penalty.tif", ref_profile, paths.debug_cost_layer_dir)
-
-    surface_sum = surface_sum + release_buffer_penalty
-
-
-    # Steep area penalty
-    steep_penalty = steep_area_penalty(
-        slope_arr=slope_arr,
-        start_deg=config.STEEP_AREA_PARAMS["start_deg"],
-        full_deg=config.STEEP_AREA_PARAMS["full_deg"],
-        max_penalty=config.STEEP_AREA_PARAMS["max_penalty"],
-    )
-    if debug_mode:
-        debug_layer_save(steep_penalty, "05c_steep_area_penalty.tif", ref_profile, paths.debug_cost_layer_dir)
-
-    surface_sum = surface_sum + steep_penalty
-
-
-    # Extreme steep barrier: hard step above threshold, breaks the 99 ceiling
-    extreme_barrier = extreme_steep_barrier(
-        slope_arr=slope_arr,
-        threshold_deg=config.EXTREME_STEEP_PARAMS["threshold_deg"],
-        barrier_value=config.EXTREME_STEEP_PARAMS["barrier_value"],
-    )
-    if debug_mode:
-        debug_layer_save(extreme_barrier, "05d_extreme_steep_barrier.tif", ref_profile, paths.debug_cost_layer_dir)
-
-    surface_sum = max_combine(surface_sum, extreme_barrier)
-
-
-    # -- Barriers and reductions --
+    # --- Barriers and reductions ---
 
     # Validity weights (kind of safe mask): where reductions are allowed
     slope_w = smooth_gate_below(slope_arr, threshold=config.SAFE_MASK_SOFT_PARAMS["slope_threshold"], width=config.SAFE_MASK_SOFT_PARAMS["slope_width"])
@@ -224,40 +204,67 @@ def create_cost_surface(paths: AreaPaths, inputs: Dict[str, Path], debug_mode: b
     tractorroads_trails_forest_mask = read_mask(inputs["tractorroad_trail_forest"])
     bridges_mask = read_mask(inputs["bridge"])
 
-    ocean_barrier = barrier_layer_from_mask(ocean_mask, barrier_value=config.OCEAN_BARRIER_VALUE, min_cost=config.MIN_COST)
-    roads_reduction = reduction_layer_from_mask_soft(roads_mask, validity_w, low_value=config.ROADS_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
-    tractorroads_trails_forest_reduction = reduction_layer_from_mask_soft(tractorroads_trails_forest_mask, validity_w, low_value=config.TRACTOROADS_TRAILS_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
+    ocean_barrier = barrier_layer_from_mask(ocean_mask, barrier_value=config.BARRIER_COST, min_cost=config.MIN_COST)
+    steep_barrier = None
+    steep_barrier_params = config.STEEP_SLOPE_BARRIER_PARAMS
+    if bool(steep_barrier_params["enabled"]):
+        steep_barrier = steep_slope_barrier(
+            slope_arr=slope_arr,
+            start_deg=float(steep_barrier_params["start_deg"]),
+            full_deg=float(steep_barrier_params["full_deg"]),
+            start_value=float(steep_barrier_params["start_value"]),
+            barrier_value=float(steep_barrier_params["barrier_value"]),
+            power=float(steep_barrier_params["power"]),
+        )
+
+    roads_reduction = reduction_layer_from_mask_soft(roads_mask, validity_w, low_value=config.ROAD_TRAIL_COST, elsewhere_value=config.BASE_MAX_COST)
+    tractorroads_trails_forest_reduction = reduction_layer_from_mask_soft(tractorroads_trails_forest_mask, validity_w, low_value=config.ROAD_TRAIL_COST, elsewhere_value=config.BASE_MAX_COST)
     bridge_validity_w = np.where(bridges_mask.astype(bool), 1.0, validity_w).astype(np.float32, copy=False)
-    bridges_reduction = reduction_layer_from_mask_soft(bridges_mask, bridge_validity_w, low_value=config.BRIDGES_REDUCTION_VALUE, elsewhere_value=config.MAX_COST)
+    bridges_reduction = reduction_layer_from_mask_soft(bridges_mask, bridge_validity_w, low_value=config.MIN_COST, elsewhere_value=config.BASE_MAX_COST)
 
     # MAX for barriers, MIN for reductions
     with_barriers = surface_sum
     with_barriers = max_combine(with_barriers, ocean_barrier)
+    if steep_barrier is not None:
+        with_barriers = max_combine(with_barriers, steep_barrier)
     
     if debug_mode:
-        debug_layer_save(with_barriers, "06_with_barriers.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(ocean_barrier, "05a_ocean_barriers.tif", ref_profile, paths.debug_cost_layer_dir)
+        if steep_barrier is not None:
+            debug_layer_save(steep_barrier, "05b_steep_slope_barrier.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(with_barriers, "05c_with_barriers.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(validity_w, "06_safe_mask_for_reductions.tif", ref_profile, paths.debug_cost_layer_dir)
 
     reduction_layers = [arr for arr in [roads_reduction, tractorroads_trails_forest_reduction, bridges_reduction] if arr is not None]
     with_reductions = with_barriers
     with_reductions = min_combine(with_barriers, *reduction_layers)
 
     if debug_mode:
-        debug_layer_save(with_reductions, "07_with_reductions.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(roads_reduction, "07a_road_reduction.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(tractorroads_trails_forest_reduction, "07b_tractorroads_trails_reduction.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(bridges_reduction, "07c_bridge_reduction.tif", ref_profile, paths.debug_cost_layer_dir)
+        debug_layer_save(with_reductions, "07d_with_reductions.tif", ref_profile, paths.debug_cost_layer_dir)
 
+    final_surface = with_reductions
+    if steep_barrier is not None:
+        final_surface = max_combine(final_surface, steep_barrier)
+
+    if debug_mode:
+        debug_layer_save(final_surface, "08_final_cost_surface.tif", ref_profile, paths.debug_cost_layer_dir)
 
     nodata_mask = np.isnan(slope_arr)
 
     if debug_mode:
         _save_track_debug_layers(
             inputs=inputs,
-            base_cost_arr=with_reductions,
+            base_cost_arr=final_surface,
             nodata_mask=nodata_mask,
             profile=ref_profile,
             output_dir=paths.debug_cost_layer_dir,
         )
 
     # Propagate nodata
-    surface_u16 = clip_round(with_reductions, min_cost=1.0, max_cost=float(config.MAX_COST))
+    surface_u16 = clip_round(final_surface, min_cost=1.0, max_cost=float(config.MAX_COST))
     surface_u16[nodata_mask] = config.NODATA_VALUE
 
 

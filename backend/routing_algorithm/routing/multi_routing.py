@@ -10,9 +10,6 @@ import grass.script.setup as gsetup
 
 from backend import config
 
-DEM_BASE = "dem_base"
-COST_BASE = "cost_base"
-
 
 def run_multi_routing_for_tour(
     paths: AreaPaths,    
@@ -23,12 +20,14 @@ def run_multi_routing_for_tour(
     direction_rast: str,
     lambda_weight: float,
     smooth_threshold: float,
+    dem_name: str,
+    cost_name: str,
 ) -> Dict[str, Any]:
     
     # Output dirs
-    routes_geojson_native_dir = paths.multirouting_geojson_native
+    routes_geojson_native_dir = paths.multirouting_native / "geojson"
     slug_geojson_native_dir = routes_geojson_native_dir / slug
-    routes_shp_dir = paths.multirouting_shp
+    routes_shp_dir = paths.multirouting_native / "shapefiles"
     slug_shp_dir = routes_shp_dir / slug
     heatmap_dir = paths.multirouting_heatmap
 
@@ -79,8 +78,8 @@ def run_multi_routing_for_tour(
     dir0 = f"multi_dir0_{slug}"
     gs.run_command(
         "r.walk",
-        elevation=DEM_BASE,
-        friction=COST_BASE,
+        elevation=dem_name,
+        friction=cost_name,
         start_points=start_vec,
         output=cum0,
         outdir=dir0,
@@ -97,14 +96,14 @@ def run_multi_routing_for_tour(
 
         # Build modifies cost surface with penalties from previous routes
         cost_iter = f"multi_cost_{slug}_{idx}"
-        gs.mapcalc(f"{cost_iter} = {COST_BASE} + {penalty_rast}", overwrite=True)
+        gs.mapcalc(f"{cost_iter} = {cost_name} + {penalty_rast}", overwrite=True)
 
         # Run r.walk
         cum_iter = f"multi_cum_{slug}_{idx}"
         dir_iter = f"multi_dir_{slug}_{idx}"
         gs.run_command(
             "r.walk",
-            elevation=DEM_BASE,
+            elevation=dem_name,
             friction=cost_iter,
             start_points=start_vec,
             output=cum_iter,
@@ -116,8 +115,8 @@ def run_multi_routing_for_tour(
         # DEBUG
         print("cost_iter at end:", gs.read_command("r.what", map=cost_iter, coordinates=END_XY).strip())
         print("cum_iter at end:", gs.read_command("r.what", map=cum_iter, coordinates=END_XY).strip())
-        print("cost_base at end:", gs.read_command("r.what", map=COST_BASE, coordinates=END_XY).strip())
-        print("dem_base at end:", gs.read_command("r.what", map=DEM_BASE, coordinates=END_XY).strip())
+        print("cost_base at end:", gs.read_command("r.what", map=cost_name, coordinates=END_XY).strip())
+        print("dem_base at end:", gs.read_command("r.what", map=dem_name, coordinates=END_XY).strip())
 
 
 

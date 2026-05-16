@@ -1,6 +1,7 @@
 from pathlib import Path
 import subprocess
 import os
+import socket
 from typing import Tuple, Dict, Any, Optional, Literal
 from backend import config
 from backend.file_handler.area_paths import AreaPaths
@@ -68,6 +69,10 @@ def init_grass():
         epsg = os.environ.get("GRASS_EPSG", "25833")
         print(f"GRASS location missing. Creating: {location_path} (EPSG:{epsg})")
         subprocess.check_call(["grass", "-c", f"EPSG:{epsg}", "-e", location_path])
+
+    tmp_root = os.path.join(location_path, GRASS_MAPSET, ".tmp")
+    os.makedirs(tmp_root, exist_ok=True)
+    os.makedirs(os.path.join(tmp_root, socket.gethostname()), exist_ok=True)
 
     gsetup.init(GRASS_DB, GRASS_LOCATION, GRASS_MAPSET)
     print(f"GRASS initialized: db={GRASS_DB}, location={GRASS_LOCATION}, mapset={GRASS_MAPSET}")
@@ -220,6 +225,8 @@ def run_routing_for_tour(
             direction_rast=direction_rast,
             lambda_weight=lambda_weight,
             smooth_threshold=smooth_threshold,
+            dem_name=dem_name,
+            cost_name=cost_name,
         )
         return {
             "multi_routing_heatmap_tif": str(multi_routing_out["heatmap_tif"]),

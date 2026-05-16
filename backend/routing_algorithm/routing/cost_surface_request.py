@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import List, Tuple
 import math
+import uuid
 
 import grass.script as gs
 
@@ -23,7 +24,7 @@ def _raster_percentile(name: str, percentile: float) -> float:
     txt = gs.read_command(
         "r.univar",
         map=name,
-        flags="g",
+        flags="ge",
         percentile=pct,
     ).strip().splitlines()
     d = dict(line.split("=", 1) for line in txt if "=" in line)
@@ -50,7 +51,7 @@ def _raster_percentile(name: str, percentile: float) -> float:
     return 0.0
 
 
-def _tracks_log_scale_value(name: str) -> float:
+def _tracks_legacy_scale_value(name: str, transform: str) -> float:
     norm_cfg = getattr(config, "TRACK_NORMALIZATION", {}) or {}
     method = str(norm_cfg.get("method", "max")).lower()
 
@@ -58,14 +59,48 @@ def _tracks_log_scale_value(name: str) -> float:
         pct = float(norm_cfg.get("percentile", 95.0))
         raw_scale = _raster_percentile(name, pct)
         if raw_scale > 0.0:
-            log_scale = float(math.log1p(raw_scale))
-            if log_scale > 0.0:
-                return log_scale
+            if transform == "log1p":
+                return float(math.log1p(raw_scale))
+            return raw_scale
 
     raw_max = _raster_max(name)
     if raw_max <= 0.0:
         return 0.0
-    return float(math.log1p(raw_max))
+    if transform == "log1p":
+        return float(math.log1p(raw_max))
+    return raw_max
+
+
+def _tracks_positive_percentile_range(name: str, transform: str) -> tuple[float, float]:
+    norm_cfg = getattr(config, "TRACK_NORMALIZATION", {}) or {}
+    lower_pct = float(norm_cfg.get("lower_percentile", 60.0))
+    upper_pct = float(norm_cfg.get("upper_percentile", 98.0))
+    lower_pct = max(0.0, min(100.0, lower_pct))
+    upper_pct = max(0.0, min(100.0, upper_pct))
+    if upper_pct <= lower_pct:
+        raise ValueError("TRACK_NORMALIZATION upper_percentile must be greater than lower_percentile")
+
+    if transform == "log1p":
+        value_expr = f"log(1 + max({name}, 0))"
+    elif transform == "linear":
+        value_expr = f"max({name}, 0)"
+    else:
+        raise ValueError(f"Unsupported TRACK_NORMALIZATION transform: {transform}")
+
+    tmp_name = f"tmp_tracks_positive_{uuid.uuid4().hex[:12]}"
+    gs.mapcalc(
+        f"{tmp_name} = if(isnull({name}), null(), if({name} <= 0, null(), {value_expr}))",
+        overwrite=True,
+    )
+    try:
+        low = _raster_percentile(tmp_name, lower_pct)
+        high = _raster_percentile(tmp_name, upper_pct)
+    finally:
+        gs.run_command("g.remove", type="raster", name=tmp_name, flags="f", quiet=True)
+
+    if high <= low:
+        return 0.0, 0.0
+    return low, high
 
 
 def compose_tracks_influence_for_request(
@@ -79,38 +114,58 @@ def compose_tracks_influence_for_request(
         raise ValueError(f"Unsupported track_influence_mode: {track_influence_mode}")
 
     mode_params = config.TRACK_INFLUENCE_PARAMS[mode]
-    w_outside = float(mode_params["w_outside"])
-    w_forest = float(mode_params["w_forest"])
+    max_reduction_outside = float(mode_params["max_reduction_outside"])
+    max_reduction_forest = float(mode_params["max_reduction_forest"])
     track_power = float(mode_params.get("track_power", 1.0))
-    if w_outside <= 0.0 and w_forest <= 0.0:
+    if max_reduction_outside <= 0.0 and max_reduction_forest <= 0.0:
         return base_cost_name
     if track_power <= 0.0:
         raise ValueError(f"track_power must be > 0 for mode: {track_influence_mode}")
 
     tracks_name = build_or_get_mosaic(area_ids, kind="tracks")
     forest_name = build_or_get_mosaic(area_ids, kind="forest")
-    tracks_log_scale = _tracks_log_scale_value(tracks_name)
-    if tracks_log_scale <= 0.0:
-        return base_cost_name
+    norm_cfg = getattr(config, "TRACK_NORMALIZATION", {}) or {}
+    normalization_method = str(norm_cfg.get("method", "max")).lower()
+    normalization_transform = str(norm_cfg.get("transform", "linear")).lower()
 
     request_cost_name = mosaic_name(f"cost_tracks_{mode}", area_ids)
 
-    w_expr = (
-        f"({w_outside} + ({w_forest} - {w_outside}) * "
+    max_reduction_expr = (
+        f"({max_reduction_outside} + ({max_reduction_forest} - {max_reduction_outside}) * "
         f"if(isnull({forest_name}), 0, if({forest_name} > 0, 1, 0)))"
     )
     t_raw_expr = (
         f"if(isnull({tracks_name}), 0, "
         f"max({tracks_name}, 0))"
     )
-    t_norm_expr = f"min(max(log(1 + ({t_raw_expr})) / {tracks_log_scale}, 0), 1)"
+    if normalization_transform == "log1p":
+        t_value_expr = f"log(1 + ({t_raw_expr}))"
+    elif normalization_transform == "linear":
+        t_value_expr = t_raw_expr
+    else:
+        raise ValueError(f"Unsupported TRACK_NORMALIZATION transform: {normalization_transform}")
+
+    if normalization_method == "positive_percentile_range":
+        tracks_low, tracks_high = _tracks_positive_percentile_range(
+            tracks_name,
+            normalization_transform,
+        )
+        if tracks_high <= tracks_low:
+            return base_cost_name
+        t_norm_expr = f"min(max(({t_value_expr} - {tracks_low}) / ({tracks_high} - {tracks_low}), 0), 1)"
+    else:
+        tracks_scale = _tracks_legacy_scale_value(tracks_name, normalization_transform)
+        if tracks_scale <= 0.0:
+            return base_cost_name
+        t_norm_expr = f"min(max(({t_value_expr}) / {tracks_scale}, 0), 1)"
+
     if abs(track_power - 1.0) < 1e-9:
         t_expr = t_norm_expr
     else:
         t_expr = f"pow({t_norm_expr}, {track_power})"
 
     gs.mapcalc(
-        f"{request_cost_name} = max(1, {base_cost_name} * (1 - ({w_expr}) * ({t_expr})))",
+        f"{request_cost_name} = max({float(config.MIN_COST)}, {base_cost_name} - ({max_reduction_expr}) * ({t_expr}))",
         overwrite=True,
     )
 
@@ -151,15 +206,15 @@ def compose_cost_surface_for_request(
             river_name = build_or_get_mosaic(area_ids, kind="river_with_bridge")
             river_mask_expr = f"if(isnull({river_name}), 0, {river_name})"
             request_expr = (
-                f"if(({river_mask_expr}) == 2, {float(config.BRIDGES_REDUCTION_VALUE)}, "
-                f"if(({river_mask_expr}) == 1, max({with_tracks}, {float(config.RIVER_BARRIER_VALUE)}), {request_expr}))"
+                f"if(({river_mask_expr}) == 2, {float(config.MIN_COST)}, "
+                f"if(({river_mask_expr}) == 1, max({with_tracks}, {float(config.BARRIER_COST)}), {request_expr}))"
             )
         except FileNotFoundError:
             river_name = build_or_get_mosaic(area_ids, kind="river")
             river_mask_expr = f"if(isnull({river_name}), 0, {river_name})"
             request_expr = (
                 f"if(({river_mask_expr}) > 0, "
-                f"max({with_tracks}, {float(config.RIVER_BARRIER_VALUE)}), {request_expr})"
+                f"max({with_tracks}, {float(config.BARRIER_COST)}), {request_expr})"
             )
 
     if hard_barrier_masks:
@@ -167,7 +222,7 @@ def compose_cost_surface_for_request(
             f"if(isnull({name}), 0, {name})" for name in hard_barrier_masks
         )
         request_expr = (
-            f"if(({hard_barrier_mask_expr}) > 0, {float(config.MAX_COST)}, {request_expr})"
+            f"if(({hard_barrier_mask_expr}) > 0, {float(config.BARRIER_COST)}, {request_expr})"
         )
 
     gs.mapcalc(
