@@ -16,6 +16,11 @@ type OverlayBase = {
   thumbUrl: string;
 };
 
+export type WmtsOverlay = OverlayBase & {
+  type: "wmts";
+  tileUrl: string;
+};
+
 export type WmsOverlay = OverlayBase & {
   type: "wms";
   wmsUrl: string;
@@ -27,7 +32,7 @@ export type GeoJsonOverlay = OverlayBase & {
   data: FeatureCollection;
 };
 
-export type OverlayDef = WmsOverlay | GeoJsonOverlay;
+export type OverlayDef = WmtsOverlay | WmsOverlay | GeoJsonOverlay;
 
 export const OVERLAYS: OverlayDef[] = [
   {
@@ -41,20 +46,18 @@ export const OVERLAYS: OverlayDef[] = [
   {
     id: "slope",
     label: "Slope",
-    type: "wms",
-    wmsUrl:
-      "https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_2024/MapServer",
-    layers: "Bratthet_snoskred",
+    type: "wmts",
+    tileUrl:
+      "https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png",
     opacityDefault: 0.55,
     thumbUrl: slopeThumb,
   },
   {
     id: "slope_runout",
-    label: "Runout",
-    type: "wms",
-    wmsUrl:
-      "https://gis3.nve.no/arcgis/services/wmts/Bratthet_med_utlop_2024/MapServer/WMSServer",
-    layers: "9,6,7,8",
+    label: "Slope and runout",
+    type: "wmts",
+    tileUrl:
+      "https://gis3.nve.no/arcgis/rest/services/wmts/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png",
     opacityDefault: 0.38,
     thumbUrl: runoutThumb,
   },

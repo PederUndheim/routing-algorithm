@@ -169,6 +169,17 @@ const MapView = ({
 
             const opacity = overlayOpacity[o.id] ?? o.opacityDefault;
 
+            if (o.type === "wmts") {
+              return (
+                <TileLayer
+                  key={o.id}
+                  url={o.tileUrl}
+                  opacity={opacity}
+                  pane="overlays"
+                />
+              );
+            }
+
             if (o.type === "wms") {
               return (
                 <WMSTileLayer
@@ -178,6 +189,7 @@ const MapView = ({
                   opacity={opacity}
                   transparent
                   format="image/png"
+                  pane="overlays"
                 />
               );
             }
@@ -187,6 +199,7 @@ const MapView = ({
                 <GeoJSON
                   key={o.id}
                   data={o.data}
+                  pane="overlays"
                   style={() => ({
                     weight: 3,
                     opacity: opacity,
@@ -196,6 +209,8 @@ const MapView = ({
                 />
               );
             }
+
+            return null;
           })}
         </Pane>
 
