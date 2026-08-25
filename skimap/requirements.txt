@@ -1,0 +1,14 @@
+# Everything here ships with the QGIS-bundled Python, so on a QGIS machine
+# there is nothing to install - run with:
+#   & "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m skimap.cli <stage>
+#
+# Listed for a non-QGIS environment. GDAL must be the same build as the
+# `osgeo` bindings, which is why it is not a plain pip install.
+numpy
+geopandas
+shapely
+gdal        # osgeo.gdal/ogr/osr, plus the gdal* command line tools on PATH
+
+# Routing additionally needs GRASS 8.5 with r.walk, r.cost, r.path and
+# v.generalize. skimap.routing finds the QGIS-bundled one automatically;
+# set GISBASE to override.

@@ -54,9 +54,22 @@ PUBLICATION_TEXT = {
     "annotation": 14,
 }
 SIMILARITY_HEATMAP_TEXT = {
-    "title": 19,
-    "tick_label": 17,
-    "annotation": 17,
+    "title": 23,
+    "axis_label": 22,
+    "tick_label": 21,
+    "annotation": 26,
+}
+SIMILARITY_SHORT_LABELS = {
+    "Very high similarity": "Very high",
+    "High similarity": "High",
+    "Moderate similarity": "Moderate",
+    "Low similarity": "Low",
+}
+INSPECTION_SHORT_LABELS = {
+    "Good route": "Good",
+    "Acceptable route": "Acceptable",
+    "Problematic route": "Problematic",
+    "Clear route failure": "Failure",
 }
 
 
@@ -913,26 +926,32 @@ def _plot_similarity_vs_manual_inspection(rows: list[dict[str, Any]]) -> Path:
         matrices[mode] = matrix
 
     fig, axes = plt.subplots(1, 2, figsize=(14.0, 10.4), constrained_layout=False)
-    fig.subplots_adjust(left=0.13, right=0.99, bottom=0.29, top=0.84, wspace=0.22)
+    fig.subplots_adjust(left=0.15, right=0.99, bottom=0.33, top=0.84, wspace=0.08)
     mode_titles = {
-        "off": "No track reduction (off)",
-        "balanced": "With track cost reduction (balanced)",
+        "off": "Without track cost reduction",
+        "balanced": "With track cost reduction",
     }
     for index, (ax, mode) in enumerate(zip(axes, MODE_ORDER)):
         matrix = matrices[mode]
         ax.imshow(matrix, cmap="Blues", vmin=0, vmax=max_count, aspect="equal")
         ax.set_title(mode_titles[mode], fontsize=SIMILARITY_HEATMAP_TEXT["title"], fontweight="bold", pad=14)
-        ax.set_xticks(range(len(INSPECTION_ORDER)), INSPECTION_ORDER)
+        ax.set_xticks(
+            range(len(INSPECTION_ORDER)),
+            [INSPECTION_SHORT_LABELS[label] for label in INSPECTION_ORDER],
+        )
         ax.set_yticks(
             range(len(SIMILARITY_ORDER)),
-            SIMILARITY_ORDER if index == 0 else [],
+            [SIMILARITY_SHORT_LABELS[label] for label in SIMILARITY_ORDER] if index == 0 else [],
         )
         ax.tick_params(axis="x", rotation=35, labelsize=SIMILARITY_HEATMAP_TEXT["tick_label"])
-        ax.tick_params(axis="y", labelsize=SIMILARITY_HEATMAP_TEXT["tick_label"])
+        ax.tick_params(axis="y", labelsize=SIMILARITY_HEATMAP_TEXT["tick_label"], pad=10)
         ax.set_xticks([x - 0.5 for x in range(1, len(INSPECTION_ORDER))], minor=True)
         ax.set_yticks([y - 0.5 for y in range(1, len(SIMILARITY_ORDER))], minor=True)
         ax.grid(which="minor", color="white", linewidth=2)
         ax.tick_params(which="minor", bottom=False, left=False)
+        ax.set_xlabel("Route quality", fontsize=SIMILARITY_HEATMAP_TEXT["axis_label"], labelpad=10)
+        if index == 0:
+            ax.set_ylabel("Geometric similarity", fontsize=SIMILARITY_HEATMAP_TEXT["axis_label"], labelpad=10)
         for y, row_values in enumerate(matrix):
             for x, count in enumerate(row_values):
                 color = "white" if count > max_count * 0.55 else "#243447"
@@ -948,6 +967,7 @@ def _plot_similarity_vs_manual_inspection(rows: list[dict[str, Any]]) -> Path:
 
     out = FIGURE_DIR / "similarity_vs_manual_inspection.pdf"
     fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     return out
 
@@ -1004,6 +1024,7 @@ def _plot_manual_label_distribution(rows: list[dict[str, Any]]) -> Path:
 
     out = FIGURE_DIR / "manual_inspection_label_distribution.pdf"
     fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     return out
 
@@ -1108,6 +1129,7 @@ def _plot_manual_inspection_by_area_and_mode(rows: list[dict[str, Any]]) -> Path
 
     out = FIGURE_DIR / "manual_inspection_by_area_track_mode.pdf"
     fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     return out
 

@@ -81,3 +81,19 @@ tmp/
 *_tmp/
 *_temp/
 *.log
+
+# skimap: data is ignored, but the source-data contract is tracked
+!skimap/data/
+skimap/data/*
+!skimap/data/national/
+skimap/data/national/*
+!skimap/data/national/README.md
+
+# tours.gpkg is the one input that is not reproducible - every other file
+# under data/ rebuilds from the national sources, but the tours are hand
+# digitized. It is small, so it is tracked despite the blanket *.gpkg rule.
+# Each directory has to be re-included before the file can be: git will not
+# re-include a file whose parent directory is excluded.
+!skimap/data/tours/
+skimap/data/tours/*
+!skimap/data/tours/tours.gpkg

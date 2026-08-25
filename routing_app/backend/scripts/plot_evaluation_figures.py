@@ -184,6 +184,7 @@ def plot_track_mode_effect() -> Path:
     out = FIGURE_DIR / "track_mode_effect.pdf"
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     return out
 
@@ -239,6 +240,7 @@ def plot_similarity_distribution_off() -> Path:
     out = FIGURE_DIR / "similarity_label_distribution_off.pdf"
     FIGURE_DIR.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=300, bbox_inches="tight")
+    fig.savefig(out.with_suffix(".png"), dpi=300, bbox_inches="tight")
     plt.close(fig)
     return out
 
