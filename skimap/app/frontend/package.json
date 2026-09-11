@@ -7,7 +7,8 @@
     "dev": "node scripts/vite.mjs",
     "build": "tsc -b && node scripts/vite.mjs build",
     "preview": "node scripts/vite.mjs preview",
-    "typecheck": "tsc -b"
+    "typecheck": "tsc -b",
+    "test": "node scripts/vite.mjs vitest run"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -25,7 +26,9 @@
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "jsdom": "^30.0.1",
     "typescript": "~5.9.3",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vitest": "^5.0.0"
   }
 }

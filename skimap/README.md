@@ -20,7 +20,8 @@ no `PYTHONPATH` workaround worth using here - `python-qgis.bat` calls
 skimap/            <- cd here
   skimap/          the package: config, cli, cost_surface/, data_preprocessing/
   data/            everything on disk, see below
-  app/             a local browser front end for one route at a time
+  app/             a local browser front end: routes, uploads, cruxes
+  tests/           unittest suite for skimap.crux, on synthetic rasters
   README.md
   requirements.txt
 ```
@@ -29,9 +30,18 @@ There is nothing to install - see `requirements.txt`. Add `-h` to any stage
 for its flags.
 
 `app/` is a test app, not part of the pipeline: click two points on a map and
-see the line between them. It reads the same surface through the same
+see the line between them, or upload a GPX/GeoJSON of your own, and ask the
+Crux Identifier (`skimap.crux`) where along a route the avalanche and fall
+hazards begin. It reads the same surface through the same
 `routing.route_one`, takes no parameters and writes nothing you keep. See
 [app/README.md](app/README.md).
+
+`tests/` holds the one automated suite, for `skimap.crux`. It needs none of
+the national data - each test writes its own tiny rasters:
+
+```powershell
+& "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m unittest discover -s tests -t . -v
+```
 
 ## Corridor review
 

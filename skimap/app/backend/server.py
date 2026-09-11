@@ -1,8 +1,8 @@
 r"""The local HTTP server behind the skimap test app.
 
 Standard library only. The QGIS-bundled Python has no FastAPI and, like the
-rest of skimap, this should run with nothing to install. Two endpoints is
-not enough to earn a dependency.
+rest of skimap, this should run with nothing to install. A handful of
+endpoints is not enough to earn a dependency.
 
 Run it from the project directory - `skimap/`, the one holding `skimap/`,
 `app/` and `data/`:
@@ -14,6 +14,9 @@ Run it from the project directory - `skimap/`, the one holding `skimap/`,
                               -> the line as WGS84 GeoJSON, its length and
                                  cost, and where to fetch its corridor
     GET  /corridor/<id>.png   that corridor, as an overlay for the map
+    POST /crux                {"route": <GeoJSON LineString, WGS84>}
+                              -> its Danger zones and Cruxes - see
+                                 skimap.crux for the shape
 
 Errors come back as {"message": ...} with a 4xx, which is what the front end
 puts in its error toast.
@@ -28,10 +31,15 @@ import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from app.backend import service
+from skimap import crux
 
 # A start/end pair is a couple of hundred bytes. Anything larger is not ours,
 # and reading it would only be a way to be handed an unbounded body.
-MAX_BODY_BYTES = 8 * 1024
+MAX_ROUTE_BODY_BYTES = 8 * 1024
+
+# A route to find cruxes on is a whole line, and an uploaded Route recorded
+# over a long day is tens of thousands of points - around a megabyte as GeoJSON.
+MAX_CRUX_BODY_BYTES = 4 * 1024 * 1024
 
 # Anchored and hex-only, so nothing that reaches the filesystem can contain a
 # separator or a "..". The whole path is matched, not searched.
@@ -82,12 +90,16 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_POST(self) -> None:
-        if self.path != "/route":
+        if self.path == "/route":
+            self._post_route()
+        elif self.path == "/crux":
+            self._post_crux()
+        else:
             self._send(404, {"message": f"No such endpoint: POST {self.path}"})
-            return
 
+    def _post_route(self) -> None:
         try:
-            payload = self._read_json()
+            payload = self._read_json(MAX_ROUTE_BODY_BYTES, "a start and an end")
             start = _point(payload, "start")
             end = _point(payload, "end")
         except ValueError as exc:
@@ -103,6 +115,24 @@ class Handler(BaseHTTPRequestHandler):
             traceback.print_exc()
             self._send(400, {"message": f"{type(exc).__name__}: {exc}"})
 
+    def _post_crux(self) -> None:
+        """The Crux Identifier on one line.
+
+        Outside service's GRASS lock: it only reads rasters, so it can run
+        while a route is being computed rather than queue behind it.
+        """
+        try:
+            payload = self._read_json(MAX_CRUX_BODY_BYTES, "a route")
+            result = crux.identify(payload.get("route"))
+        except ValueError as exc:
+            self._send(400, {"message": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - reported, the server stays up
+            traceback.print_exc()
+            self._send(400, {"message": f"{type(exc).__name__}: {exc}"})
+            return
+        self._send(200, result)
+
     def do_OPTIONS(self) -> None:
         # Preflight for the POST: the dev server is a different origin.
         self.send_response(204)
@@ -112,13 +142,19 @@ class Handler(BaseHTTPRequestHandler):
 
     # --- plumbing ---
 
-    def _read_json(self) -> dict:
+    def _read_json(self, max_bytes: int, holding: str) -> dict:
         try:
             length = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             length = -1
-        if length <= 0 or length > MAX_BODY_BYTES:
-            raise ValueError("Expected a JSON body holding a start and an end.")
+        if length <= 0 or length > max_bytes:
+            # The body stays unread, so whatever comes next on this
+            # connection would be parsed starting inside it. Close instead.
+            self.close_connection = True
+            if length > max_bytes:
+                raise ValueError(f"Body too large: this endpoint takes at most "
+                                 f"{_size(max_bytes)}.")
+            raise ValueError(f"Expected a JSON body holding {holding}.")
         try:
             payload = json.loads(self.rfile.read(length))
         except json.JSONDecodeError as exc:
@@ -146,6 +182,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt: str, *args) -> None:
         print(f"  {fmt % args}", flush=True)
+
+
+def _size(n_bytes: int) -> str:
+    if n_bytes >= 1024 * 1024:
+        return f"{n_bytes / (1024 * 1024):g} MB"
+    return f"{n_bytes / 1024:g} KB"
 
 
 def _point(payload: dict, key: str) -> tuple[float, float]:

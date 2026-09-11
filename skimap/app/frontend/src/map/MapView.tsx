@@ -1,16 +1,19 @@
-import { useMemo, useRef } from "react";
-import { GeoJSON, MapContainer, Marker, Pane, TileLayer } from "react-leaflet";
-import type { FeatureCollection } from "geojson";
+import { useMemo, useRef, useState } from "react";
+import { MapContainer, Marker, Pane, TileLayer } from "react-leaflet";
 import type { DivIcon, Marker as LeafletMarker } from "leaflet";
 
 import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
+import useMediaQuery from "@mui/material/useMediaQuery";
+import { useTheme } from "@mui/material/styles";
 
 import { getBasemap } from "../layers/basemaps";
 import type { BasemapId } from "../layers/basemaps";
 import { OVERLAYS } from "../layers/overlays";
 import type { OverlayId } from "../layers/overlays";
-import type { Corridor, LatLng, PickMode } from "../types";
-import { COLORS } from "../theme";
+import type { Route } from "../routes/routeList";
+import type { Corridor, LatLng, MapFocus, PickMode } from "../types";
+import { COLORS, PANEL_WIDTH } from "../theme";
 
 import { endIcon, startIcon } from "../ui/MarkerIcons";
 import CursorCoords from "../ui/CursorCoords";
@@ -19,9 +22,12 @@ import RoutingButton from "../ui/RoutingButton";
 import ScaleBar from "../ui/ScaleBar";
 
 import CorridorOverlay from "./CorridorOverlay";
+import CruxMarkers from "./CruxMarkers";
+import FocusController from "./FocusController";
 import LayerControl from "./LayerControl";
 import MapActions from "./MapActions";
 import MapController from "./MapController";
+import RouteLines from "./RouteLines";
 
 /** Romsdalen. Somewhere with mountains, so an empty map is not an empty map. */
 const CENTER: [number, number] = [62.63, 7.896];
@@ -68,11 +74,60 @@ type MapViewProps = {
   endPoint: LatLng | null;
   onStartPointChange: (point: LatLng) => void;
   onEndPointChange: (point: LatLng) => void;
-  routeGeoJson: FeatureCollection | null;
+  routes: readonly Route[];
+  selectedId: string | null;
+  onSelectRoute: (id: string) => void;
+  focus: MapFocus | null;
+  onDropFiles: (files: File[]) => void;
   corridor: Corridor | null;
   showCorridor: boolean;
   corridorOpacity: number;
 };
+
+/** Covers the map while files are dragged over it, and takes the drop.
+ *
+ * Only there while dragging, and covering everything, so its own dragleave
+ * fires only when the files really leave - not every time the pointer
+ * crosses from one map element to the next. */
+const DropOverlay = ({ onDrop, onLeave }: { onDrop: (files: File[]) => void; onLeave: () => void }) => (
+  <Box
+    onDragOver={(e) => e.preventDefault()}
+    onDragLeave={onLeave}
+    onDrop={(e) => {
+      // Without this the browser opens the file in place of the app.
+      e.preventDefault();
+      onLeave();
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) onDrop(files);
+    }}
+    sx={{
+      position: "absolute",
+      inset: 0,
+      zIndex: 1250,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(54,126,152,0.25)",
+      border: `3px dashed ${COLORS.teal}`,
+      boxSizing: "border-box",
+    }}
+  >
+    <Typography
+      sx={{
+        pointerEvents: "none",
+        color: "white",
+        fontSize: 18,
+        fontWeight: 600,
+        px: 2,
+        py: 1,
+        borderRadius: 2,
+        backgroundColor: COLORS.panel,
+      }}
+    >
+      Drop GPX/GeoJSON files to add them as routes
+    </Typography>
+  </Box>
+);
 
 const MapView = ({
   basemap,
@@ -89,16 +144,33 @@ const MapView = ({
   endPoint,
   onStartPointChange,
   onEndPointChange,
-  routeGeoJson,
+  routes,
+  selectedId,
+  onSelectRoute,
+  focus,
+  onDropFiles,
   corridor,
   showCorridor,
   corridorOpacity,
 }: MapViewProps) => {
   const bm = useMemo(() => getBasemap(basemap), [basemap]);
   const mapApiRef = useRef<MapApi | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  // On a phone the drawer is a modal over the map, closed to look at it, so
+  // there is nothing to keep clear of.
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const leftInset = panelOpen && !isMobile ? PANEL_WIDTH : 0;
 
   return (
-    <Box sx={{ height: "100dvh", width: "100vw", position: "relative" }}>
+    <Box
+      sx={{ height: "100dvh", width: "100vw", position: "relative" }}
+      onDragEnter={(e) => {
+        // Files only: dragging a marker or the map itself is not an upload.
+        if (e.dataTransfer.types.includes("Files")) setDragging(true);
+      }}
+    >
       <MapContainer
         center={CENTER}
         zoom={11}
@@ -111,7 +183,7 @@ const MapView = ({
         style={{ height: "100%", width: "100vw" }}
       >
         {/* Explicit panes so the stack is fixed: basemap, overlays, the
-            route, then the markers you drag on top of all of it. */}
+            routes, then the markers you drag on top of all of it. */}
         <Pane name="basemap" style={{ zIndex: 200 }}>
           <TileLayer url={bm.url} attribution={bm.attribution} />
         </Pane>
@@ -127,7 +199,7 @@ const MapView = ({
           ))}
         </Pane>
 
-        {/* Under the route, so the line stays readable on top of its band. */}
+        {/* Under the routes, so the line stays readable on top of its band. */}
         <Pane name="corridor" style={{ zIndex: 350, pointerEvents: "none" }}>
           {corridor && showCorridor && (
             <CorridorOverlay
@@ -138,17 +210,19 @@ const MapView = ({
           )}
         </Pane>
 
-        {routeGeoJson && (
-          <Pane name="route" style={{ zIndex: 450 }}>
-            {/* Keyed on the data so a new route replaces the old line -
-                react-leaflet's GeoJSON does not re-render on prop change. */}
-            <GeoJSON
-              key={JSON.stringify(routeGeoJson)}
-              data={routeGeoJson}
-              style={() => ({ weight: 6, opacity: 1, color: COLORS.teal })}
-            />
-          </Pane>
-        )}
+        <Pane name="route" style={{ zIndex: 450 }}>
+          <RouteLines
+            routes={routes}
+            selectedId={selectedId}
+            pickMode={pickMode}
+            onSelect={onSelectRoute}
+          />
+        </Pane>
+
+        {/* Above the routes, so a Crux is never under its own red line, and
+            below the start and end you drag. */}
+        <Pane name="cruxes" style={{ zIndex: 500 }} />
+        <CruxMarkers routes={routes} selectedId={selectedId} focus={focus} />
 
         <Pane name="markers" style={{ zIndex: 600, pointerEvents: "auto" }} />
 
@@ -179,12 +253,15 @@ const MapView = ({
             mapApiRef.current = api;
           }}
         />
+        <FocusController focus={focus} leftInset={leftInset} />
 
         <ScaleBar position="bottomleft" />
         <CursorCoords />
       </MapContainer>
 
       <RoutingButton onClick={onOpenPanel} hidden={panelOpen} />
+
+      {dragging && <DropOverlay onDrop={onDropFiles} onLeave={() => setDragging(false)} />}
 
       <Box
         sx={{

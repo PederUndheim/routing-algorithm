@@ -213,6 +213,19 @@ EXPOSURE_CLASSES = (
 )
 
 
+# --- Crux Identifier ---
+# Where along one Route the terrain asks for attention - see skimap.crux.
+# Separate from PRA_RUNOUT and SLOPE: those price ground for the router,
+# these decide what a ski tourer is told about the line it came back with.
+CRUX = {
+    "pra_threshold": 50.0,       # PRA % above this: Probable release area
+    "slope_threshold": 30.0,     # degrees, at or above: Fall hazard. No cap
+    "runout_reach": 10_000.0,    # runout >= 0 and below this: Runout area
+    "sample_spacing_m": 10.0,    # one sample per cell of the 10 m rasters
+    "max_dip_m": 30.0,           # a shorter lower-ranked dip does not split a zone
+}
+
+
 # --- Corridor segments ---
 # Hand-divided corridors: EXPOSURE_CLASSES gives a whole route one colour,
 # this gives one route several from geometry you draw. Colours are that

@@ -31,9 +31,15 @@ if (!process.env.ESBUILD_BINARY_PATH && existsSync(allowed)) {
 
 // node_modules/.bin/vite is a shell shim; the .js entry point runs under the
 // node.exe we are already in, which is the one the policy permits.
-const vite = join("node_modules", "vite", "bin", "vite.js");
+//
+// Vitest transforms through the same esbuild, so `vite.mjs vitest run` starts
+// it the same way. Anything else is passed to Vite as its own arguments.
+const [entry, args] =
+  process.argv[2] === "vitest"
+    ? [join("node_modules", "vitest", "vitest.mjs"), process.argv.slice(3)]
+    : [join("node_modules", "vite", "bin", "vite.js"), process.argv.slice(2)];
 
-const child = spawn(process.execPath, [vite, ...process.argv.slice(2)], {
+const child = spawn(process.execPath, [entry, ...args], {
   stdio: "inherit",
 });
 child.on("exit", (code, signal) => process.exit(signal ? 1 : code ?? 1));

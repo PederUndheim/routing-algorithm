@@ -1,4 +1,6 @@
-import type { LatLng, RouteResponse } from "./types";
+import type { LineString } from "geojson";
+
+import type { CruxResult, LatLng, RouteResponse } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -18,21 +20,25 @@ export const checkHealth = async (): Promise<boolean> => {
   }
 };
 
-export const requestRoute = async (
-  start: LatLng,
-  end: LatLng
-): Promise<RouteResponse> => {
-  const res = await fetch(`${BASE}/route`, {
+const postJson = async <T>(path: string, body: unknown, failed: string): Promise<T> => {
+  const res = await fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ start, end }),
+    body: JSON.stringify(body),
   });
 
   // The backend puts its reason in `message` on every 4xx, so prefer that
   // over the status code - "sits outside the cost surface" is worth showing.
   const data = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(data?.message ?? `Routing failed (HTTP ${res.status}).`);
+    throw new Error(data?.message ?? `${failed} (HTTP ${res.status}).`);
   }
-  return data as RouteResponse;
+  return data as T;
 };
+
+export const requestRoute = (start: LatLng, end: LatLng): Promise<RouteResponse> =>
+  postJson("/route", { start, end }, "Routing failed");
+
+/** Run the Crux Identifier on one Route's line. */
+export const requestCrux = (line: LineString): Promise<CruxResult> =>
+  postJson("/crux", { route: line }, "Identifying cruxes failed");

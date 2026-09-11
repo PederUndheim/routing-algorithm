@@ -78,22 +78,32 @@ def sample_points(geometry: ogr.Geometry, spacing_m: float) -> np.ndarray:
     curvature - summing over them would quietly weight corners double.
     """
     xy = np.asarray(geometry.GetPoints(), dtype=np.float64)[:, :2]
+    return sample_stations(xy, spacing_m)[1]
+
+
+def sample_stations(xy: np.ndarray, spacing_m: float) -> tuple[np.ndarray, np.ndarray]:
+    """sample_points for a line given as an (n, 2) array, with each sample's
+    distance along the line as well: (distances, points)."""
     if len(xy) < 2:
-        return xy
+        return np.zeros(len(xy)), xy
 
     step = np.hypot(np.diff(xy[:, 0]), np.diff(xy[:, 1]))
     along = np.concatenate([[0.0], np.cumsum(step)])
     total = float(along[-1])
     if total <= 0.0:
-        return xy[:1]
+        return np.zeros(1), xy[:1]
 
     wanted = np.append(np.arange(0.0, total, spacing_m), total)
-    return np.column_stack([np.interp(wanted, along, xy[:, 0]),
-                            np.interp(wanted, along, xy[:, 1])])
+    return wanted, np.column_stack([np.interp(wanted, along, xy[:, 0]),
+                                    np.interp(wanted, along, xy[:, 1])])
 
 
-def sample_raster(path: Path, xy: np.ndarray) -> np.ndarray:
-    """Raster value under each point; NaN off the raster and on nodata.
+def sample_raster(path: Path, xy: np.ndarray, *, nodata_as: float = np.nan) -> np.ndarray:
+    """Raster value under each point; NaN off the raster, `nodata_as` on nodata.
+
+    NaN for both by default. Pass a value where the raster's nodata is an
+    answer rather than a hole - the runout raster's 10000 is "beyond reach",
+    which is something known about that ground.
 
     One window read covering the route rather than a 1x1 read per point: a
     few hundred routes at several hundred samples each is ~400k reads, and on
@@ -119,7 +129,7 @@ def sample_raster(path: Path, xy: np.ndarray) -> np.ndarray:
     ds = None
 
     if nodata is not None:
-        out[out == nodata] = np.nan
+        out[out == nodata] = nodata_as
     return out
 
 

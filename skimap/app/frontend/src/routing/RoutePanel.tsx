@@ -2,17 +2,19 @@ import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
-import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
-import Slider from "@mui/material/Slider";
-import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
-import type { LatLng, PickMode, RouteResponse } from "../types";
-import { COLORS } from "../theme";
+import type { Route } from "../routes/routeList";
+import type { Crux, LatLng, PickMode } from "../types";
+import { COLORS, PANEL_WIDTH } from "../theme";
+
+import RouteListSection from "./RouteListSection";
+import SelectedRoute from "./SelectedRoute";
+import { outlinedSx } from "./styles";
 
 type RoutePanelProps = {
   open: boolean;
@@ -26,7 +28,15 @@ type RoutePanelProps = {
   onGenerate: () => void;
   isRouting: boolean;
   backendReady: boolean | null;
-  result: RouteResponse | null;
+  routes: readonly Route[];
+  selectedId: string | null;
+  onSelectRoute: (id: string) => void;
+  onToggleRoute: (id: string) => void;
+  onDeleteRoute: (id: string) => void;
+  onUpload: (files: File[]) => void;
+  isIdentifying: boolean;
+  onIdentify: () => void;
+  onFocusCrux: (routeId: string, crux: Crux) => void;
   showCorridor: boolean;
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
@@ -35,21 +45,9 @@ type RoutePanelProps = {
 
 const formatCoord = (p: LatLng) => p.lat.toFixed(4) + "°N, " + p.lng.toFixed(4) + "°E";
 
-const km = (metres: number) => (metres / 1000).toFixed(2) + " km";
-
 const pickLabel = (picking: boolean, chosen: boolean, what: string) => {
   if (picking) return "Click on map...";
   return (chosen ? "Re-pick " : "Pick ") + what;
-};
-
-const outlinedSx = {
-  borderColor: COLORS.teal,
-  color: "white",
-  "&:hover": {
-    borderColor: COLORS.teal,
-    backgroundColor: "rgba(54,126,152,0.10)",
-  },
-  "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)" },
 };
 
 type PointRowProps = {
@@ -107,15 +105,6 @@ const PointRow = ({ title, what, point, picking, onPick, onClear }: PointRowProp
   </Box>
 );
 
-const Readout = ({ label, value }: { label: string; value: string }) => (
-  <Box sx={{ display: "flex", justifyContent: "space-between", py: 0.25 }}>
-    <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{label}</Typography>
-    <Typography sx={{ fontSize: 13, color: "white", fontVariantNumeric: "tabular-nums" }}>
-      {value}
-    </Typography>
-  </Box>
-);
-
 const RoutePanel = ({
   open,
   onClose,
@@ -128,7 +117,15 @@ const RoutePanel = ({
   onGenerate,
   isRouting,
   backendReady,
-  result,
+  routes,
+  selectedId,
+  onSelectRoute,
+  onToggleRoute,
+  onDeleteRoute,
+  onUpload,
+  isIdentifying,
+  onIdentify,
+  onFocusCrux,
   showCorridor,
   onShowCorridorChange,
   corridorOpacity,
@@ -136,9 +133,10 @@ const RoutePanel = ({
 }: RoutePanelProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const width = isMobile ? Math.min(window.innerWidth * 0.8, 380) : 380;
+  const width = isMobile ? Math.min(window.innerWidth * 0.8, PANEL_WIDTH) : PANEL_WIDTH;
 
   const canRoute = Boolean(startPoint) && Boolean(endPoint) && !pickMode && !isRouting;
+  const selected = routes.find((r) => r.id === selectedId) ?? null;
 
   return (
     <Drawer
@@ -193,115 +191,55 @@ const RoutePanel = ({
           onClear={onClearEnd}
         />
 
-        <FormControlLabel
-          control={
-            <Switch
-              checked={showCorridor}
-              onChange={(e) => onShowCorridorChange(e.target.checked)}
-              sx={{
-                "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
-                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                  backgroundColor: COLORS.teal,
-                },
-              }}
-            />
-          }
-          label="Show corridor"
-          sx={{ color: "white", "& .MuiFormControlLabel-label": { fontSize: 14 } }}
-        />
+        {backendReady === false && (
+          <Typography sx={{ fontSize: 12, color: COLORS.orange, mb: 1.5 }}>
+            Backend not reachable on localhost:8000. Start it with
+            {" python-qgis.bat -m app.backend.server"}, then reload.
+          </Typography>
+        )}
 
-        {/* Kept in the layout but dimmed when the corridor is off, so the
-            panel does not jump as you toggle it - same as the map overlays. */}
-        <Box
+        <Button
+          variant="contained"
+          fullWidth
+          size="large"
+          disabled={!canRoute}
+          onClick={onGenerate}
           sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 1.5,
-            pl: 1.5,
-            pr: 0.5,
-            opacity: showCorridor ? 1 : 0.45,
-            pointerEvents: showCorridor ? "auto" : "none",
-            transition: "opacity 0.15s ease",
+            backgroundColor: COLORS.orange,
+            fontSize: { xs: 14, sm: 16 },
+            "&:hover": { backgroundColor: COLORS.orange, transform: "scale(1.01)" },
+            "&.Mui-disabled": {
+              backgroundColor: "rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.4)",
+            },
           }}
         >
-          <Slider
-            value={corridorOpacity}
-            min={0}
-            max={1}
-            step={0.05}
-            disabled={!showCorridor}
-            onChange={(_, v) => onCorridorOpacityChange(v as number)}
-            sx={{
-              color: COLORS.teal,
-              "& .MuiSlider-thumb": { width: 14, height: 14 },
-            }}
+          {isRouting ? "Routing..." : "Generate route"}
+        </Button>
+
+        <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.15)" }} />
+
+        <RouteListSection
+          routes={routes}
+          selectedId={selectedId}
+          onSelect={onSelectRoute}
+          onToggleVisible={onToggleRoute}
+          onDelete={onDeleteRoute}
+          onUpload={onUpload}
+          isIdentifying={isIdentifying}
+          onIdentify={onIdentify}
+        />
+
+        {selected && (
+          <SelectedRoute
+            route={selected}
+            onFocusCrux={(crux) => onFocusCrux(selected.id, crux)}
+            showCorridor={showCorridor}
+            onShowCorridorChange={onShowCorridorChange}
+            corridorOpacity={corridorOpacity}
+            onCorridorOpacityChange={onCorridorOpacityChange}
           />
-          <Typography
-            sx={{
-              fontSize: 12,
-              color: "white",
-              minWidth: 34,
-              textAlign: "right",
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {Math.round(corridorOpacity * 100)}%
-          </Typography>
-        </Box>
-
-        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.55)", mt: 0.5, mb: 2 }}>
-          The corridor is the ground you could cross instead without the trip
-          costing much more - navy along the route, fading out at the edge of
-          the band, in the blue ArcGIS draws it. At 100% that is exactly the
-          ArcGIS rendering. No parameters otherwise: the route is the cheapest
-          line through the cost surface as it was last built.
-        </Typography>
-
-        <Box sx={{ mt: "auto" }}>
-          {backendReady === false && (
-            <Typography sx={{ fontSize: 12, color: COLORS.orange, mb: 1.5 }}>
-              Backend not reachable on localhost:8000. Start it with
-              {" python-qgis.bat -m app.backend.server"}, then reload.
-            </Typography>
-          )}
-
-          <Button
-            variant="contained"
-            fullWidth
-            size="large"
-            disabled={!canRoute}
-            onClick={onGenerate}
-            sx={{
-              backgroundColor: COLORS.orange,
-              fontSize: { xs: 14, sm: 16 },
-              "&:hover": { backgroundColor: COLORS.orange, transform: "scale(1.01)" },
-              "&.Mui-disabled": {
-                backgroundColor: "rgba(255,255,255,0.12)",
-                color: "rgba(255,255,255,0.4)",
-              },
-            }}
-          >
-            {isRouting ? "Routing..." : "Generate route"}
-          </Button>
-
-          {result && (
-            <Box
-              sx={{
-                mt: 2,
-                p: 1.5,
-                borderRadius: 2,
-                backgroundColor: "rgba(0,0,0,0.18)",
-                border: "1px solid rgba(255,255,255,0.10)",
-              }}
-            >
-              <Readout label="Route length" value={km(result.length_m)} />
-              <Readout label="Straight line" value={km(result.straight_m)} />
-              <Readout label="Detour" value={result.detour.toFixed(2) + "x"} />
-              <Readout label="Cost" value={Math.round(result.cost).toLocaleString()} />
-              <Readout label="Routed in" value={result.seconds.toFixed(1) + " s"} />
-            </Box>
-          )}
-        </Box>
+        )}
       </Box>
     </Drawer>
   );
