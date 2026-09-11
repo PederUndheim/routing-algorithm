@@ -1,0 +1,30 @@
+{
+  "round": 1,
+  "note": "round 1: how much should a GPS track take off, and does it differ in forest? Panels run from least track influence to most.",
+  "models": [
+    {
+      "name": "no_tracks",
+      "label": "No track data",
+      "routes": "test/track_reduction_test/routes.gpkg",
+      "corridors": "test/track_reduction_test/corridors"
+    },
+    {
+      "name": "forest_1_2",
+      "label": "1.0 open / 2.0 forest",
+      "routes": "test/track_variants/forest_1_2/routes.gpkg",
+      "corridors": "test/track_variants/forest_1_2/corridors"
+    },
+    {
+      "name": "max2",
+      "label": "2.0 / 2.0",
+      "routes": "test/track_variants/max2/routes.gpkg",
+      "corridors": "test/track_variants/max2/corridors"
+    },
+    {
+      "name": "baseline",
+      "label": "Production 3.0 / 3.0",
+      "routes": "routing_output/routes.gpkg",
+      "corridors": "routing_output/corridors"
+    }
+  ]
+}

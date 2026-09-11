@@ -1,0 +1,44 @@
+import slopeThumb from "../assets/overlays/slope.png";
+import runoutThumb from "../assets/overlays/runout.png";
+
+/** NVE's steepness tiles - the same two the cost surface is built to agree
+ *  with, so they are the quickest way to see whether a route makes sense. */
+export type OverlayId = "slope" | "slope_runout";
+
+export type OverlayDef = {
+  id: OverlayId;
+  label: string;
+  tileUrl: string;
+  opacityDefault: number;
+  thumbUrl: string;
+};
+
+const NVE = "https://gis3.nve.no/arcgis/rest/services/wmts";
+
+export const OVERLAYS: OverlayDef[] = [
+  {
+    id: "slope",
+    label: "Slope",
+    tileUrl: `${NVE}/Bratthet_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
+    opacityDefault: 0.55,
+    thumbUrl: slopeThumb,
+  },
+  {
+    id: "slope_runout",
+    label: "Slope and runout",
+    tileUrl: `${NVE}/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
+    opacityDefault: 0.38,
+    thumbUrl: runoutThumb,
+  },
+];
+
+/** Both derived from OVERLAYS, so adding a layer above is the only edit. */
+export const OVERLAYS_OFF = OVERLAYS.reduce(
+  (acc, o) => ({ ...acc, [o.id]: false }),
+  {} as Record<OverlayId, boolean>
+);
+
+export const DEFAULT_OPACITY = OVERLAYS.reduce(
+  (acc, o) => ({ ...acc, [o.id]: o.opacityDefault }),
+  {} as Record<OverlayId, number>
+);

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Corridor review</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="/static/review.css">
+</head>
+<body>
+
+<div id="page">
+
+<header id="bar">
+  <div class="bar-left">
+    <span id="round" class="pill">round -</span>
+    <span id="tour-name" class="tour-name">loading</span>
+    <span id="tour-fid" class="muted"></span>
+  </div>
+
+  <div class="bar-mid">
+    <div id="progress-track"><div id="progress-fill"></div></div>
+    <span id="progress-text" class="muted"></span>
+  </div>
+
+  <div class="bar-right">
+    <button id="prev" title="Previous tour (left arrow)">&larr;</button>
+    <button id="next" title="Next tour (right arrow)">&rarr;</button>
+    <button id="skip" title="Jump to next unreviewed (Enter)">next unreviewed</button>
+    <button id="toggle-list" title="Show all tours (L)">list</button>
+  </div>
+</header>
+
+<section id="controls">
+  <div class="control-group">
+    <span class="control-label">Exposure class</span>
+    <div class="shift-buttons" id="shift">
+      <button data-shift="-1" title="One class less severe (D)">less severe</button>
+      <button data-shift="0" class="on" title="Keep the computed class (S)">keep</button>
+      <button data-shift="1" title="One class more severe (U)">more severe</button>
+    </div>
+    <span id="shift-hint" class="muted"></span>
+  </div>
+
+  <div class="control-group grow">
+    <span class="control-label">Note</span>
+    <input id="note" type="text" placeholder="optional - why this one" autocomplete="off">
+  </div>
+
+  <div class="control-group fix-group">
+    <label class="check" title="This tour needs editing in tours.gpkg (F)">
+      <input type="checkbox" id="needs-fix"> fix tour data
+    </label>
+    <input id="fix-note" type="text" placeholder="what is wrong with it" autocomplete="off" disabled>
+  </div>
+
+  <div class="control-group">
+    <span id="verdict-state" class="muted"></span>
+    <button id="clear" title="Drop this tour's verdict (Backspace)">clear verdict</button>
+  </div>
+</section>
+
+<main id="panels"><p class="empty">loading</p></main>
+
+<footer id="legend">
+  <span class="muted">click a panel or press its number to pick &middot; arrows to step, Enter for the next unreviewed</span>
+  <span class="spacer"></span>
+  <label class="check"><input type="checkbox" id="show-slope" checked> slope WMTS</label>
+  <label class="check"><input type="checkbox" id="show-runout"> runout</label>
+  <label class="check"><input type="checkbox" id="show-tracks"> GPS tracks <span id="tracks-state" class="muted"></span></label>
+  <label class="check"><input type="checkbox" id="show-route" checked> route line</label>
+  <label class="check"><input type="checkbox" id="lock-maps" checked> lock pan/zoom</label>
+  <span class="spacer"></span>
+  <span id="classes" class="classes"></span>
+</footer>
+
+</div><!-- /#page -->
+
+<aside id="tour-list" hidden>
+  <div class="list-head">
+    <input id="list-filter" type="text" placeholder="filter by name or fid" autocomplete="off">
+    <select id="list-scope">
+      <option value="all">all</option>
+      <option value="todo">unreviewed</option>
+      <option value="done">reviewed</option>
+      <option value="shifted">class shifted</option>
+      <option value="fix">needs fixing</option>
+    </select>
+    <button id="close-list">close</button>
+  </div>
+  <ol id="list-body"></ol>
+</aside>
+
+<div id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="/static/review.js"></script>
+</body>
+</html>

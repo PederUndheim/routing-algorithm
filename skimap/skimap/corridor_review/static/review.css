@@ -1,0 +1,300 @@
+/* Neutral, low-chroma chrome. The maps carry every colour that means
+   anything here - a corridor's exposure class, NVE's slope ramp - so the
+   interface around them stays grey on purpose. */
+
+:root {
+  --bg: #14161a;
+  --panel: #1c1f25;
+  --edge: #2b3038;
+  --edge-bright: #3d444f;
+  --text: #e6e8ec;
+  --muted: #8d95a3;
+  --accent: #2e9bff;
+  --amber: #e8a13a;   /* the fix flag - not an exposure class, not the accent */
+  --list-width: 340px;
+
+  /* The four exposure classes, matching data/styles_arcgis. */
+  --green: #3fae5a;
+  --blue: #2e9bff;
+  --red: #e0483d;
+  --black: #14161a;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* The page and the tour list are siblings in a row, and the list is a real
+   column rather than something floating above. It used to be position:fixed
+   and it covered part of the rightmost card - which is one of the models you
+   are comparing, so the single thing it must not hide was the thing it hid.
+   As a column it cannot overlap anything, at any width, whatever else moves. */
+body {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#page {
+  flex: 1;
+  min-width: 0;      /* lets the panels shrink instead of overflowing */
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+}
+
+button, input, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  padding: 5px 10px;
+}
+
+button { cursor: pointer; }
+button:hover { border-color: var(--edge-bright); }
+button.on { background: var(--accent); border-color: var(--accent); color: #06121f; font-weight: 600; }
+
+.muted { color: var(--muted); }
+.spacer { flex: 1; }
+
+/* --- top bar ---------------------------------------------------------- */
+
+#bar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.bar-left, .bar-right { display: flex; align-items: center; gap: 8px; }
+.bar-mid { display: flex; align-items: center; gap: 10px; flex: 1; }
+
+.pill {
+  padding: 2px 9px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 999px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tour-name { font-size: 15px; font-weight: 600; }
+
+#progress-track {
+  flex: 1;
+  height: 5px;
+  background: var(--edge);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+#progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width 140ms ease-out;
+}
+
+/* --- controls --------------------------------------------------------- */
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.control-group { display: flex; align-items: center; gap: 8px; }
+.control-group.grow { flex: 1; }
+.control-group.grow input { flex: 1; }
+
+.control-label { color: var(--muted); white-space: nowrap; }
+.shift-buttons { display: flex; gap: 4px; }
+
+/* The fix flag is about the tour, not the corridors, so it reads as a
+   separate concern rather than another verdict control. */
+.fix-group { padding-left: 18px; border-left: 1px solid var(--edge); }
+.fix-group input[type="text"] { width: 190px; }
+.fix-group.on .check { color: var(--amber); font-weight: 600; }
+.fix-group input[type="text"]:disabled { opacity: 0.4; }
+
+.flag { color: var(--amber); font-weight: 700; }
+
+/* --- panels ----------------------------------------------------------- */
+
+#panels {
+  display: grid;
+  grid-auto-flow: column;
+  /* minmax(0, 1fr), not 1fr: a bare 1fr is minmax(auto, 1fr), so a column
+     grows past its share when its content has a wide minimum - and the panel
+     labels differ in length, so the columns came out unequal. Equal width is
+     not cosmetic here. Two maps at the same zoom in containers of different
+     widths show different amounts of ground, which is precisely the thing
+     this page exists to rule out. */
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 14px;
+  min-height: 0;
+}
+
+.panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--panel);
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 120ms;
+}
+
+.panel:hover { border-color: var(--edge-bright); }
+.panel.chosen { border-color: var(--accent); }
+.panel.missing { opacity: 0.5; cursor: default; }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-bottom: 1px solid var(--edge);
+}
+
+.key {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--edge-bright);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.panel-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border: 1px solid transparent;
+}
+
+.chip.green { background: var(--green); color: #06210d; }
+.chip.blue  { background: var(--blue);  color: #06121f; }
+.chip.red   { background: var(--red);   color: #2a0906; }
+.chip.black { background: #000; color: #cfd4dc; border-color: var(--edge-bright); }
+
+.panel-map { min-height: 0; background: #0e1013; }
+.panel-map.leaflet-container { background: #0e1013; }
+
+.panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 14px;
+  padding: 6px 9px;
+  border-top: 1px solid var(--edge);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-foot b { color: var(--text); font-weight: 600; }
+.panel-foot .best { color: var(--accent); }
+
+/* --- legend ----------------------------------------------------------- */
+
+#legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--edge);
+  background: var(--panel);
+}
+
+.check { display: flex; align-items: center; gap: 5px; color: var(--muted); cursor: pointer; }
+.classes { display: flex; gap: 8px; align-items: center; }
+
+/* --- tour list -------------------------------------------------------- */
+
+#tour-list {
+  flex: none;
+  width: var(--list-width);
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--panel);
+  border-left: 1px solid var(--edge);
+}
+
+/* Setting display above overrides the browser's own [hidden] rule, because an
+   author declaration beats the UA stylesheet. Without this the list is never
+   hidden - it was permanently open, which read as it covering the cards. Any
+   element given a display here needs the same line. */
+#tour-list[hidden] { display: none; }
+
+.list-head { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--edge); }
+.list-head input { flex: 1; min-width: 0; }
+
+#list-body { margin: 0; padding: 0; list-style: none; overflow-y: auto; }
+
+#list-body li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--edge);
+  cursor: pointer;
+}
+
+#list-body li:hover { background: var(--edge); }
+#list-body li.current { background: var(--edge); box-shadow: inset 3px 0 0 var(--accent); }
+#list-body .li-fid { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 42px; }
+#list-body .li-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#list-body .li-model { color: var(--muted); font-size: 11px; }
+
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--edge-bright); flex: none; }
+.dot.green { background: var(--green); }
+.dot.blue  { background: var(--blue); }
+.dot.red   { background: var(--red); }
+.dot.black { background: #000; box-shadow: 0 0 0 1px var(--edge-bright); }
+
+/* --- toast ------------------------------------------------------------ */
+
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 60px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: var(--red);
+  color: #fff;
+  border-radius: 6px;
+  z-index: 1000;
+  max-width: 70vw;
+}
+
+.empty { color: var(--muted); padding: 20px; }
+
+/* Leaflet's own controls, brought into the dark palette. */
+.leaflet-control-attribution {
+  background: rgba(20, 22, 26, 0.75) !important;
+  color: var(--muted) !important;
+  font-size: 10px !important;
+}
+.leaflet-control-attribution a { color: var(--muted) !important; }

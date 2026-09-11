@@ -1,0 +1,11 @@
+{
+  "name": "tracks_max_6",
+  "note": "Ceiling 6.0. Result: best coverage of the sweep (+2.2%) at +21.4% exposure/km, 6 tours over 250 m. Non-monotonic vs 5.0, which suggests routing threshold flips rather than a smooth response. No saturation: `tracks` shows mean units off a tracked pixel scaling linearly with the ceiling (0.118/unit), because tile_bands gives sub-50th-percentile pixels zero regardless. To widen track influence, add a lower band - the ceiling only amplifies the busiest cells.",
+  "extends": "baseline",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 6.0,
+      "max_reduction_forest": 6.0
+    }
+  }
+}

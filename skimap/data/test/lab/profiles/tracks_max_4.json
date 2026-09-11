@@ -1,0 +1,11 @@
+{
+  "name": "tracks_max_4",
+  "note": "Ceiling 4.0 in and out of forest (production 3.0 = baseline). Result: +0.5% coverage, +8.9% exposure/km, routes barely move (max sep 319 m, 1 tour over 250 m). The efficient point of the 4/5/6 sweep, but still exposure for very little coverage.",
+  "extends": "baseline",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 4.0,
+      "max_reduction_forest": 4.0
+    }
+  }
+}

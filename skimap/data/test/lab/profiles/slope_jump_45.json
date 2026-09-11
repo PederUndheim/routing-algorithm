@@ -1,0 +1,13 @@
+{
+  "name": "slope_jump_45",
+  "note": "Step moved from 29-30 to 44-45, 30-45 deg left near-flat (3.5 -> 6.6). Result: 29/30 tours moved, 6 over 1 km, Lakselvtindan -8735 m. Exposure/km +65.3% for +0.7% track coverage - the 30 deg step was carrying the avalanche discrimination and nothing replaced it. Rejected.",
+  "extends": "baseline",
+  "config": {
+    "SLOPE": {
+      "threshold": 45.0,
+      "jump_start": 44.0,
+      "jump_end": 45.0,
+      "tail_end": 60.0
+    }
+  }
+}

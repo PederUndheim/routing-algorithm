@@ -1,0 +1,15 @@
+{
+  "name": "slope_jump_45_mild",
+  "note": "Same step at 44-45, band graded 6.8 -> 12.2, sub-29 deg matched to production. Result: indistinguishable from slope_jump_45 (exposure/km +65.1% vs +65.3%, same tours moving the same distances). The ramp was too shallow to matter against production's 36 at 30 deg. Rejected - but it showed the step location, not the ramp, is what moves routes.",
+  "extends": "baseline",
+  "config": {
+    "SLOPE": {
+      "threshold": 45.0,
+      "low_max": 0.109,
+      "low_power": 2.0,
+      "jump_start": 44.0,
+      "jump_end": 45.0,
+      "tail_end": 60.0
+    }
+  }
+}

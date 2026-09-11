@@ -1,0 +1,11 @@
+{
+  "name": "tracks_linear_1_2",
+  "note": "CONTROL for the above. Your question 'is 1 enough?' asked on the CURRENT curve, so the pair isolates what the curve is worth at one coefficient.",
+  "extends": "baseline",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 1.0,
+      "max_reduction_forest": 2.0
+    }
+  }
+}

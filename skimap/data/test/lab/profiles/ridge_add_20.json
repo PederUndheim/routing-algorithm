@@ -1,0 +1,6 @@
+{
+  "name": "ridge_add_20",
+  "note": "Twice the committed charge on exposed ridges. Against ridge_off: 7 of 30 tours moved, Litjemoa -702 m.",
+  "extends": "baseline",
+  "config": {"RIDGE_COST": {"extra": 20.0}}
+}

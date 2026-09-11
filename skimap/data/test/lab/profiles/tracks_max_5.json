@@ -1,0 +1,11 @@
+{
+  "name": "tracks_max_5",
+  "note": "Ceiling 5.0. Result: STRICTLY WORSE than 4.0 - coverage +0.4% but mean track density -2.9%, exposure/km +22.4%, 5 tours over 250 m. It moved routes OFF tracks and INTO avalanche terrain. Reject.",
+  "extends": "baseline",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 5.0,
+      "max_reduction_forest": 5.0
+    }
+  }
+}

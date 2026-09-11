@@ -1,0 +1,11 @@
+{
+  "name": "no_tracks",
+  "note": "GPS track reduction off - what are the tracks actually worth on these 27 tours?",
+  "extends": "baseline",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 0.0,
+      "max_reduction_forest": 0.0
+    }
+  }
+}

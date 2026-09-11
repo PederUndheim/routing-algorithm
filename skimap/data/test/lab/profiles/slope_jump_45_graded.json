@@ -1,0 +1,16 @@
+{
+  "name": "slope_jump_45_graded",
+  "note": "Step at 44-45 with a real gradient across the band: 14 -> 57.5 (x4.1 spread vs production's x2.6). low_power 4.0 holds sub-25 deg near production, jump_to 0.90 keeps a visible step. Result: exposure/km +27.7% (vs +65% for the two above) with the best track coverage of the set, +2.7%. Lakselvtindan keeps its detour (288 m separation, vs 3258 m under slope_jump_45). Grades polarise: green 11->13 but red 4->6. The one worth pursuing.",
+  "extends": "baseline",
+  "config": {
+    "SLOPE": {
+      "threshold": 45.0,
+      "low_max": 0.62,
+      "low_power": 4.0,
+      "jump_start": 44.0,
+      "jump_end": 45.0,
+      "jump_to": 0.9,
+      "tail_end": 60.0
+    }
+  }
+}

@@ -82,12 +82,17 @@ tmp/
 *_temp/
 *.log
 
-# skimap: data is ignored, but the source-data contract is tracked
+# skimap: data is ignored, but the source-data contract is tracked.
+# national/ moved under input/ when the data tree was reorganized, so each
+# level on the way down has to be re-included in turn - git will not
+# re-include a file whose parent directory is still excluded.
 !skimap/data/
 skimap/data/*
-!skimap/data/national/
-skimap/data/national/*
-!skimap/data/national/README.md
+!skimap/data/input/
+skimap/data/input/*
+!skimap/data/input/national/
+skimap/data/input/national/*
+!skimap/data/input/national/README.md
 
 # tours.gpkg is the one input that is not reproducible - every other file
 # under data/ rebuilds from the national sources, but the tours are hand
@@ -97,3 +102,24 @@ skimap/data/national/*
 !skimap/data/tours/
 skimap/data/tours/*
 !skimap/data/tours/tours.gpkg
+
+# Lab profiles, on the same argument as tours.gpkg: a profile is the record
+# of an experiment - which tours, which parameters, and what it was asking -
+# and it rebuilds from nothing. Everything else under data/test/lab/ is
+# output and stays ignored.
+!skimap/data/test/
+skimap/data/test/*
+!skimap/data/test/lab/
+skimap/data/test/lab/*
+!skimap/data/test/lab/profiles/
+
+# The corridor review, on the same argument again - but more so. config.json
+# is the record of which models a round compared, and review.json is the
+# judgement itself: every pick a person made looking at the map, one tour at
+# a time. Re-running the pipeline reproduces every other file in this repo;
+# nothing reproduces this one. cache/ is rendered overlays and export/ is
+# built from review.json, so both stay ignored.
+!skimap/data/review/
+skimap/data/review/*
+!skimap/data/review/config.json
+!skimap/data/review/review.json

@@ -1,0 +1,6 @@
+{
+  "name": "ridge_off",
+  "note": "CONTROL: no ridge charge. Measure a ridge profile with --against ridge_off, not against production - production was routed on a stale national COG and carries that drift too.",
+  "extends": "baseline",
+  "config": {"RIDGE_COST": {"extra": 0.0}}
+}

@@ -1,0 +1,6 @@
+{
+  "name": "ridge_add_30",
+  "note": "Three times the committed charge. Against ridge_off: 9 of 29 tours moved, but Litjemoa finds the same line as 20 - the extra only disturbs more tours elsewhere.",
+  "extends": "baseline",
+  "config": {"RIDGE_COST": {"extra": 30.0}}
+}
