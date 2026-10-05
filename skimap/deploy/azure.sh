@@ -106,65 +106,64 @@ app() {
     --azure-file-account-name "$STORAGE" --azure-file-account-key "$(storage_key)" \
     --azure-file-share-name "$SHARE" -o none
 
-  # The YAML, because volume mounts with a subPath have no CLI flags.
+  # Created with a direct ARM call rather than `az containerapp create`:
+  # that failed on a request of its own - a 400 asking for a boolean, from
+  # something that was not the app - with both the built-in az and the
+  # extension. A PUT sends exactly this and nothing else, and it creates or
+  # replaces, so a re-run is the same call.
   #
   # maxReplicas is 1 and must stay so: routes are serialized by a lock in the
   # process, and each corridor PNG is on the disk of the replica that drew it.
   #
   # The startup probe asks /health, which is not answered until GRASS is up
   # and the surface is linked; 10 tries 20 s apart allows a slow cold start.
-  local spec=/tmp/skimap-api.yaml
+  local spec=/tmp/skimap-api.json
   cat > "$spec" <<EOF
-location: $LOCATION
-properties:
-  managedEnvironmentId: $(az containerapp env show -n "$ENVIRONMENT" -g "$RG" --query id -o tsv)
-  workloadProfileName: Consumption
-  configuration:
-    activeRevisionsMode: Single
-    ingress:
-      external: true
-      targetPort: 8000
-      transport: http
-  template:
-    containers:
-      - name: $APP
-        image: $IMAGE
-        resources:
-          cpu: 2
-          memory: 4Gi
-        env:
-          - name: SKIMAP_ALLOWED_ORIGIN
-            value: $ORIGIN
-        probes:
-          - type: Startup
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 10
-            periodSeconds: 20
-            timeoutSeconds: 10
-            failureThreshold: 10
-        volumeMounts:
-          - volumeName: data
-            mountPath: /app/data/input
-            subPath: input
-          - volumeName: data
-            mountPath: /app/data/cost_surface
-            subPath: cost_surface
-    scale:
-      minReplicas: 0
-      maxReplicas: 1
-    volumes:
-      - name: data
-        storageType: AzureFile
-        storageName: $SHARE
+{
+  "location": "$LOCATION",
+  "properties": {
+    "environmentId": "$(az containerapp env show -n "$ENVIRONMENT" -g "$RG" --query id -o tsv)",
+    "workloadProfileName": "Consumption",
+    "configuration": {
+      "activeRevisionsMode": "Single",
+      "ingress": {"external": true, "targetPort": 8000, "transport": "http"}
+    },
+    "template": {
+      "containers": [{
+        "name": "$APP",
+        "image": "$IMAGE",
+        "resources": {"cpu": 2, "memory": "4Gi"},
+        "env": [{"name": "SKIMAP_ALLOWED_ORIGIN", "value": "$ORIGIN"}],
+        "probes": [{
+          "type": "Startup",
+          "httpGet": {"path": "/health", "port": 8000},
+          "initialDelaySeconds": 10,
+          "periodSeconds": 20,
+          "timeoutSeconds": 10,
+          "failureThreshold": 10
+        }],
+        "volumeMounts": [
+          {"volumeName": "data", "mountPath": "/app/data/input", "subPath": "input"},
+          {"volumeName": "data", "mountPath": "/app/data/cost_surface", "subPath": "cost_surface"}
+        ]
+      }],
+      "scale": {"minReplicas": 0, "maxReplicas": 1},
+      "volumes": [{"name": "data", "storageType": "AzureFile", "storageName": "$SHARE"}]
+    }
+  }
+}
 EOF
   echo "== the app"
-  if az containerapp show -n "$APP" -g "$RG" -o none 2>/dev/null; then
-    az containerapp update -n "$APP" -g "$RG" --yaml "$spec" -o none
-  else
-    az containerapp create -n "$APP" -g "$RG" --yaml "$spec" -o none
-  fi
+  local app_url
+  app_url="https://management.azure.com$(az group show -n "$RG" --query id -o tsv)/providers/Microsoft.App/containerApps/$APP?api-version=2024-03-01"
+  az rest --method put --url "$app_url" --body @"$spec" -o none
+  local state=""
+  for _ in $(seq 60); do
+    state=$(az rest --method get --url "$app_url" --query properties.provisioningState -o tsv)
+    [ "$state" = "Succeeded" ] || [ "$state" = "Failed" ] && break
+    sleep 10
+  done
+  echo "   provisioning: $state"
 
   # GitHub Actions signs in as this identity with a short-lived OIDC token,
   # so there is no password to store. It may only touch rg-skimap, and only
@@ -183,7 +182,7 @@ EOF
     --scope "$(az group show -n "$RG" --query id -o tsv)" -o none
 
   echo
-  echo "API: https://$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)"
+  echo "API: https://$(az rest --method get --url "$app_url" --query properties.configuration.ingress.fqdn -o tsv)"
   echo
   echo "GitHub, Settings > Secrets and variables > Actions:"
   echo "  secret    AZURE_CLIENT_ID        $(az identity show -n "$IDENTITY" -g "$RG" --query clientId -o tsv)"
