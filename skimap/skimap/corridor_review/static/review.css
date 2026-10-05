@@ -76,8 +76,16 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
   background: var(--panel);
 }
 
-.bar-left, .bar-right { display: flex; align-items: center; gap: 8px; }
-.bar-mid { display: flex; align-items: center; gap: 10px; flex: 1; }
+/* The controls come first and never shrink; the tour name gives way.
+   #bar is a flex row inside a page that body clips at the viewport, and a
+   flex item will not shrink below its content unless told to - so a long
+   tour name, or a group switch carrying a long label, used to push the
+   buttons on the right straight off the screen, where they are still there,
+   still clickable in principle, and completely unreachable. */
+.bar-left { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.bar-right { display: flex; align-items: center; gap: 8px; flex: none; }
+.bar-mid { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
+
 
 .pill {
   padding: 2px 9px;
@@ -87,7 +95,15 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
   white-space: nowrap;
 }
 
-.tour-name { font-size: 15px; font-weight: 600; }
+/* Ellipsised, not wrapped: it is the flexible half of the header - see
+   .bar-left - and the buttons on the right keep their room. */
+.tour-name {
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 #progress-track {
   flex: 1;
@@ -119,7 +135,44 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 .control-group.grow input { flex: 1; }
 
 .control-label { color: var(--muted); white-space: nowrap; }
-.shift-buttons { display: flex; gap: 4px; }
+
+/* The class buttons carry their own colour, so the choice is read off the
+   swatch rather than off the words "less severe" - which only ever said
+   which DIRECTION you were going, never where you ended up, and could not
+   express a jump from green to black at all. */
+.class-buttons { display: flex; gap: 4px; }
+
+.class-button {
+  padding: 4px 12px;
+  border: 2px solid transparent;
+  border-radius: 5px;
+  font-weight: 600;
+  /* Dimmed until chosen: four saturated swatches side by side compete with
+     the corridors, which are the thing actually being judged. */
+  opacity: 0.45;
+  filter: saturate(0.6);
+}
+
+.class-button:hover { opacity: 0.8; filter: none; }
+
+.class-button.on {
+  opacity: 1;
+  filter: none;
+  border-color: var(--text);
+}
+
+/* The class classify() came up with, marked so a disagreement is visible as
+   a disagreement - the selected button moving away from this one is the
+   whole signal the review exists to collect. */
+.class-button.computed::after {
+  content: " *";
+  font-weight: 700;
+}
+
+.class-button.green { background: var(--green); color: #06210d; }
+.class-button.blue  { background: var(--blue);  color: #06121f; }
+.class-button.red   { background: var(--red);   color: #2a0906; }
+.class-button.black { background: #000; color: #cfd4dc; }
 
 /* The fix flag is about the tour, not the corridors, so it reads as a
    separate concern rather than another verdict control. */
@@ -132,7 +185,18 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 
 /* --- panels ----------------------------------------------------------- */
 
+/* One cell, with every bench stacked in it - see review.js. Only one is
+   ever not [hidden], so the hidden ones take no height and the visible one
+   gets the whole row the page grid gave this element. */
 #panels {
+  display: grid;
+  grid-template: 1fr / 1fr;
+  padding: 10px 14px;
+  min-height: 0;
+}
+
+.bench {
+  grid-area: 1 / 1;
   display: grid;
   grid-auto-flow: column;
   /* minmax(0, 1fr), not 1fr: a bare 1fr is minmax(auto, 1fr), so a column
@@ -143,9 +207,12 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
      this page exists to rule out. */
   grid-auto-columns: minmax(0, 1fr);
   gap: 10px;
-  padding: 10px 14px;
   min-height: 0;
 }
+
+/* display:grid above beats the browser's own [hidden] rule, so the hidden
+   benches would otherwise all be on screen at once. */
+.bench[hidden] { display: none; }
 
 .panel {
   display: grid;
@@ -250,6 +317,12 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 
 .list-head { display: flex; gap: 6px; padding: 10px; border-bottom: 1px solid var(--edge); }
 .list-head input { flex: 1; min-width: 0; }
+/* A <select> is as wide as its widest option, and the scopes now include a
+   group's own label - which is long enough to shove `close` past the edge of
+   a 340px panel, leaving the list with no way to shut. Capped and clipped;
+   the full text is still in the dropdown. */
+.list-head select { flex: 0 1 auto; min-width: 0; max-width: 118px; }
+.list-head button { flex: none; }
 
 #list-body { margin: 0; padding: 0; list-style: none; overflow-y: auto; }
 
@@ -266,7 +339,18 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 #list-body li.current { background: var(--edge); box-shadow: inset 3px 0 0 var(--accent); }
 #list-body .li-fid { color: var(--muted); font-variant-numeric: tabular-nums; min-width: 42px; }
 #list-body .li-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#list-body .li-model { color: var(--muted); font-size: 11px; }
+/* flex: none on both - the flag is the whole point of the row for a tour
+   that has one, and a long model name must not be able to squeeze it out. */
+#list-body .li-model {
+  color: var(--muted);
+  font-size: 11px;
+  flex: none;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#list-body .flag { flex: none; min-width: 10px; }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--edge-bright); flex: none; }
 .dot.green { background: var(--green); }
@@ -276,17 +360,28 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 
 /* --- toast ------------------------------------------------------------ */
 
+/* Neutral by default. Most of what gets said here is not a failure - "every
+   tour has a verdict", "no more tours this way" - and a red box for those
+   reads as an error, which sends you looking for a problem that is not
+   there. Red is reserved for .error, which is what a caught exception uses. */
 #toast {
   position: fixed;
   left: 50%;
   bottom: 60px;
   transform: translateX(-50%);
   padding: 8px 16px;
-  background: var(--red);
-  color: #fff;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--edge-bright);
   border-radius: 6px;
   z-index: 1000;
   max-width: 70vw;
+}
+
+#toast.error {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
 }
 
 .empty { color: var(--muted); padding: 20px; }
@@ -298,3 +393,52 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
   font-size: 10px !important;
 }
 .leaflet-control-attribution a { color: var(--muted) !important; }
+
+/* --- the model-set switch --------------------------------------------- */
+
+.groups {
+  display: inline-flex;
+  gap: 2px;
+  margin-right: 10px;
+  padding: 2px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+}
+
+/* Same trap as .bench: display here beats the browser's [hidden] rule, so a
+   single-group config would show an empty switch instead of no switch. */
+.groups[hidden] { display: none; }
+
+.group-button {
+  border: none;
+  background: none;
+  padding: 3px 9px;
+  border-radius: 4px;
+  color: var(--muted);
+  /* Capped: the label is whatever config.json calls the group, and a wordy
+     one is not allowed to cost the buttons beside it their place. */
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-button:hover:not(:disabled) { color: var(--text); }
+
+/* The same accent the shift buttons use for "this is the one selected" -
+   the global button.on rule cannot reach it, because .group-button clears
+   the background it sets. */
+.group-button.on {
+  background: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+}
+
+/* Greyed, not hidden: a button that comes and goes as you page is harder to
+   aim at than one that is simply off, and "no such model for this tour" is
+   itself worth seeing. */
+.group-button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

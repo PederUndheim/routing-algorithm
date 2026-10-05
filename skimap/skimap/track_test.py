@@ -132,10 +132,13 @@ def route(*, buffer_m: Optional[float] = None,
     results = routing.run_batch(
         found, out_dir=ROOT, buffer_m=buffer_m,
         force=force, merge=merge,
-        # `tours` is the whole file here, but pruning compares against the
-        # PRODUCTION routes' idea of what is stale and this directory is not
-        # that. Nothing else writes here, so there is nothing to prune.
-        prune=False,
+        # Prunes against this build's own routes.gpkg, so a tour deleted,
+        # moved or renamed in tours.gpkg is dropped here as it is in
+        # production - otherwise its corridor keeps being merged, and the
+        # corridor review compares a stale route against a fresh one. Never
+        # with --fid or --limit: to pruning, every tour left out of a subset
+        # looks deleted.
+        prune=not (fids or limit),
         surface=surface, cost_raster=COST_RASTER,
     )
     compare()

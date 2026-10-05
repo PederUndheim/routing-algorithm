@@ -15,6 +15,7 @@ import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
 import { createRouteList } from "./routes/routeList";
 import RoutePanel from "./routing/RoutePanel";
+import { usePanelWidth } from "./routing/usePanelWidth";
 import type { LatLng, MapFocus, PickMode } from "./types";
 
 const App = () => {
@@ -24,6 +25,9 @@ const App = () => {
     useState<Record<OverlayId, number>>(DEFAULT_OPACITY);
 
   const [panelOpen, setPanelOpen] = useState(true);
+  // Here rather than in the drawer, because the map insets what it zooms to
+  // by the drawer's width and has to follow it as it is dragged.
+  const { width: panelWidth, setWidth: setPanelWidth, resetWidth } = usePanelWidth();
   const [startPoint, setStartPoint] = useState<LatLng | null>(null);
   const [endPoint, setEndPoint] = useState<LatLng | null>(null);
   const [pickMode, setPickMode] = useState<PickMode>(null);
@@ -122,6 +126,7 @@ const App = () => {
           setOverlayOpacity((prev) => ({ ...prev, [id]: opacity }))
         }
         panelOpen={panelOpen}
+        panelWidth={panelWidth}
         onOpenPanel={() => setPanelOpen(true)}
         pickMode={pickMode}
         onPickModeChange={setPickMode}
@@ -142,6 +147,9 @@ const App = () => {
       <RoutePanel
         open={panelOpen}
         onClose={() => setPanelOpen(false)}
+        panelWidth={panelWidth}
+        onPanelWidthChange={setPanelWidth}
+        onResetPanelWidth={resetWidth}
         startPoint={startPoint}
         endPoint={endPoint}
         pickMode={pickMode}

@@ -11,7 +11,8 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
 import type { Route } from "../routes/routeList";
 import { COLORS } from "../theme";
-import { outlinedSx } from "./styles";
+import RouteInfoButton from "./RouteInfo";
+import { outlinedSx, scrollbarSx } from "./styles";
 
 type RouteRowProps = {
   route: Route;
@@ -76,6 +77,8 @@ const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete }: Rout
         {route.name}
       </Typography>
 
+      <RouteInfoButton route={route} />
+
       <IconButton
         size="small"
         aria-label={`Delete ${route.name}`}
@@ -124,6 +127,7 @@ const RouteListSection = ({
         maxHeight: 250,
         overflowY: "auto",
         p: "1px",
+        ...scrollbarSx,
       }}
     >
       {routes.length === 0 && (

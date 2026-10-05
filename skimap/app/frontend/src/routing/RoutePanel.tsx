@@ -12,13 +12,17 @@ import type { Route } from "../routes/routeList";
 import type { Crux, LatLng, PickMode } from "../types";
 import { COLORS, PANEL_WIDTH } from "../theme";
 
+import ResizeHandle from "./ResizeHandle";
 import RouteListSection from "./RouteListSection";
 import SelectedRoute from "./SelectedRoute";
-import { outlinedSx } from "./styles";
+import { outlinedSx, scrollbarSx } from "./styles";
 
 type RoutePanelProps = {
   open: boolean;
   onClose: () => void;
+  panelWidth: number;
+  onPanelWidthChange: (width: number) => void;
+  onResetPanelWidth: () => void;
   startPoint: LatLng | null;
   endPoint: LatLng | null;
   pickMode: PickMode;
@@ -108,6 +112,9 @@ const PointRow = ({ title, what, point, picking, onPick, onClear }: PointRowProp
 const RoutePanel = ({
   open,
   onClose,
+  panelWidth,
+  onPanelWidthChange,
+  onResetPanelWidth,
   startPoint,
   endPoint,
   pickMode,
@@ -133,7 +140,9 @@ const RoutePanel = ({
 }: RoutePanelProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const width = isMobile ? Math.min(window.innerWidth * 0.8, PANEL_WIDTH) : PANEL_WIDTH;
+  // A phone has no room to give the drawer, so there it is not resizable
+  // and takes its usual share of the screen instead.
+  const width = isMobile ? Math.min(window.innerWidth * 0.8, PANEL_WIDTH) : panelWidth;
 
   const canRoute = Boolean(startPoint) && Boolean(endPoint) && !pickMode && !isRouting;
   const selected = routes.find((r) => r.id === selectedId) ?? null;
@@ -151,6 +160,9 @@ const RoutePanel = ({
         "& .MuiDrawer-paper": {
           width,
           backgroundColor: COLORS.panel,
+          // The resize handle and its collapse tab ride just outside the
+          // paper's right edge, and would be clipped away otherwise.
+          overflow: "visible",
           display: "flex",
           flexDirection: "column",
           boxSizing: "border-box",
@@ -172,7 +184,16 @@ const RoutePanel = ({
 
       <Divider color={COLORS.orange} variant="middle" />
 
-      <Box sx={{ p: 2, display: "flex", flexDirection: "column", flex: 1, overflowY: "auto" }}>
+      <Box
+        sx={{
+          p: 2,
+          display: "flex",
+          flexDirection: "column",
+          flex: 1,
+          overflowY: "auto",
+          ...scrollbarSx,
+        }}
+      >
         <PointRow
           title="Choose start point"
           what="start point"
@@ -241,6 +262,15 @@ const RoutePanel = ({
           />
         )}
       </Box>
+
+      {!isMobile && (
+        <ResizeHandle
+          width={panelWidth}
+          onWidthChange={onPanelWidthChange}
+          onReset={onResetPanelWidth}
+          onCollapse={onClose}
+        />
+      )}
     </Drawer>
   );
 };

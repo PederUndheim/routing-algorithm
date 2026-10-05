@@ -274,8 +274,16 @@ def corridors_by_fid(corridor_dir: Path) -> dict[int, Path]:
 
 def split_corridors(colours: dict[int, str],
                     corridor_dir: Optional[Path] = None,
-                    out_dir: Optional[Path] = None) -> dict[str, Path]:
-    """One merged corridor raster per exposure class, and nothing else.
+                    out_dir: Optional[Path] = None, *,
+                    routes_path: Optional[Path] = None,
+                    stacked: bool = False) -> dict[str, Path]:
+    """One corridor raster per exposure class, and nothing else.
+
+    Where corridors of different classes overlap, skimap.overlap draws the
+    shared ground once, in the easiest class that goes there, and cross-fades
+    where the colours meet - see config.OVERLAP. That needs the lines as well
+    as the corridors, hence `routes_path`. `stacked` writes the old output
+    instead: each class merged on its own, overlaps drawn in both.
 
     The output directory holds exactly the four class rasters. The per-route
     corridors and corridors_all.tif stay where `route` wrote them, in
@@ -295,6 +303,14 @@ def split_corridors(colours: dict[int, str],
     if missing:
         print(f"\n{len(missing)} scored routes have no corridor on disk: {missing[:10]}"
               f"{' ...' if len(missing) > 10 else ''}")
+
+    if not stacked:
+        from skimap import overlap   # imported here: overlap imports this module
+
+        routes_path = Path(routes_path) if routes_path else (paths.ROUTES / "routes.gpkg")
+        lines = overlap.load_lines(routes_path, colours=colours)
+        files = {fid: available[fid] for fid in colours if fid in available}
+        return overlap.write_classes(lines, files, out_dir)
 
     grouped: dict[str, list[Path]] = defaultdict(list)
     for tour_fid, colour in colours.items():
@@ -316,7 +332,9 @@ def split_corridors(colours: dict[int, str],
 
 def run(routes_path: Optional[Path] = None,
         corridor_dir: Optional[Path] = None,
-        out_dir: Optional[Path] = None) -> dict[str, Path]:
+        out_dir: Optional[Path] = None, *,
+        stacked: bool = False) -> dict[str, Path]:
     """Score the routes, then split their corridors by the class that gives."""
     colours = score_routes(routes_path)
-    return split_corridors(colours, corridor_dir, out_dir)
+    return split_corridors(colours, corridor_dir, out_dir,
+                           routes_path=routes_path, stacked=stacked)

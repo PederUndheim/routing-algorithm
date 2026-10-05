@@ -5,20 +5,12 @@ import Slider from "@mui/material/Slider";
 import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 
-import { DANGER_CLASS_ICONS, DANGER_CLASS_NAMES } from "../dangerClasses";
+import { cruxBadge, dangerIcons, dangerName } from "../dangerClasses";
 import { km } from "../format";
 import type { Route } from "../routes/routeList";
 import type { Crux, CruxResult } from "../types";
-import { COLORS, CRUX_COLORS } from "../theme";
-
-const Readout = ({ label, value }: { label: string; value: string }) => (
-  <Box sx={{ display: "flex", justifyContent: "space-between", py: 0.25 }}>
-    <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{label}</Typography>
-    <Typography sx={{ fontSize: 13, color: "white", fontVariantNumeric: "tabular-nums" }}>
-      {value}
-    </Typography>
-  </Box>
-);
+import { COLORS, CRUX_COLORS, dangerColor } from "../theme";
+import { InfoButton } from "./RouteInfo";
 
 type CorridorControlsProps = {
   showCorridor: boolean;
@@ -34,22 +26,34 @@ const CorridorControls = ({
   onCorridorOpacityChange,
 }: CorridorControlsProps) => (
   <Box sx={{ mt: 1.5 }}>
-    <FormControlLabel
-      control={
-        <Switch
-          checked={showCorridor}
-          onChange={(e) => onShowCorridorChange(e.target.checked)}
-          sx={{
-            "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
-            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-              backgroundColor: COLORS.teal,
-            },
-          }}
-        />
-      }
-      label="Show corridor"
-      sx={{ color: "white", "& .MuiFormControlLabel-label": { fontSize: 14 } }}
-    />
+    <Box sx={{ display: "flex", alignItems: "center" }}>
+      <FormControlLabel
+        control={
+          <Switch
+            checked={showCorridor}
+            onChange={(e) => onShowCorridorChange(e.target.checked)}
+            sx={{
+              "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
+              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                backgroundColor: COLORS.teal,
+              },
+            }}
+          />
+        }
+        label="Show corridor"
+        sx={{ color: "white", mr: 0.5, "& .MuiFormControlLabel-label": { fontSize: 14 } }}
+      />
+
+      <InfoButton label="What the corridor is">
+        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.85)" }}>
+          The corridor is the ground you could cross instead without the trip
+          costing much more - navy along the route, fading out at the edge of
+          the band, in the blue ArcGIS draws it. At 100% that is exactly the
+          ArcGIS rendering. No parameters otherwise: the route is the cheapest
+          line through the cost surface as it was last built.
+        </Typography>
+      </InfoButton>
+    </Box>
 
     {/* Kept in the layout but dimmed when the corridor is off, so the
         panel does not jump as you toggle it - same as the map overlays. */}
@@ -89,14 +93,6 @@ const CorridorControls = ({
         {Math.round(corridorOpacity * 100)}%
       </Typography>
     </Box>
-
-    <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.55)", mt: 0.5 }}>
-      The corridor is the ground you could cross instead without the trip
-      costing much more - navy along the route, fading out at the edge of
-      the band, in the blue ArcGIS draws it. At 100% that is exactly the
-      ArcGIS rendering. No parameters otherwise: the route is the cheapest
-      line through the cost surface as it was last built.
-    </Typography>
   </Box>
 );
 
@@ -119,7 +115,8 @@ const CruxList = ({ result, onFocus }: { result: CruxResult; onFocus: (crux: Cru
       sx={{ listStyle: "none", p: 0, m: 0, display: "flex", flexDirection: "column", gap: 0.5 }}
     >
       {result.cruxes.map((crux) => {
-        const ClassIcon = DANGER_CLASS_ICONS[crux.class];
+        const icons = dangerIcons(crux);
+        const badge = cruxBadge(crux);
         return (
           <Box component="li" key={crux.number}>
             <ButtonBase
@@ -142,7 +139,7 @@ const CruxList = ({ result, onFocus }: { result: CruxResult; onFocus: (crux: Cru
                   px: 0.5,
                   boxSizing: "border-box",
                   borderRadius: 11,
-                  backgroundColor: CRUX_COLORS.danger,
+                  backgroundColor: dangerColor(crux),
                   color: "white",
                   fontSize: 12,
                   fontWeight: 700,
@@ -153,9 +150,16 @@ const CruxList = ({ result, onFocus }: { result: CruxResult; onFocus: (crux: Cru
               >
                 {crux.number}
               </Box>
-              <ClassIcon sx={{ color: "white", fontSize: 18 }} />
+              {icons.map((AreaIcon, i) => (
+                <AreaIcon key={i} sx={{ color: "white", fontSize: 18 }} />
+              ))}
               <Typography sx={{ color: "white", fontSize: 13, flex: 1, textAlign: "left" }}>
-                {DANGER_CLASS_NAMES[crux.class]}
+                {dangerName(crux)}
+                {badge && (
+                  <Box component="span" sx={{ ml: 0.75, color: CRUX_COLORS.steep }}>
+                    {badge}
+                  </Box>
+                )}
               </Typography>
               <Typography
                 sx={{
@@ -179,49 +183,28 @@ type SelectedRouteProps = CorridorControlsProps & {
   onFocusCrux: (crux: Crux) => void;
 };
 
-/** What there is to know about the Selected route. An uploaded Route only
- *  has its length; the router's numbers and the corridor exist only for
- *  one it computed, and the Cruxes only once the identifier has run. */
+/** What the Selected route needs the drawer for: its Cruxes, its corridor,
+ *  and the warning if part of it could not be analysed. The route's own
+ *  numbers live behind the info button on its row in the list above, so the
+ *  name is not repeated here. */
 const SelectedRoute = ({ route, onFocusCrux, ...corridorControls }: SelectedRouteProps) => (
   <Box sx={{ mt: 2 }}>
-    <Box
-      sx={{
-        p: 1.5,
-        borderRadius: 2,
-        backgroundColor: "rgba(0,0,0,0.18)",
-        border: "1px solid rgba(255,255,255,0.10)",
-      }}
-    >
+    {/* A safety caveat, so never behind an info button. */}
+    {route.crux && route.crux.no_data_m > 0 && (
       <Typography
         sx={{
-          color: "white",
-          fontSize: 14,
-          fontWeight: 600,
-          mb: 0.5,
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          whiteSpace: "nowrap",
+          fontSize: 12,
+          color: COLORS.orange,
+          p: 1.5,
+          borderRadius: 2,
+          backgroundColor: "rgba(0,0,0,0.18)",
+          border: "1px solid rgba(255,255,255,0.10)",
         }}
       >
-        {route.name}
+        {km(route.crux.no_data_m)} of route not analysed: there is no terrain
+        data there. It is drawn grey and dashed - do not read it as safe.
       </Typography>
-      <Readout label="Route length" value={km(route.lengthM)} />
-      {route.routed && (
-        <>
-          <Readout label="Straight line" value={km(route.routed.straight_m)} />
-          <Readout label="Detour" value={route.routed.detour.toFixed(2) + "x"} />
-          <Readout label="Cost" value={Math.round(route.routed.cost).toLocaleString()} />
-          <Readout label="Routed in" value={route.routed.seconds.toFixed(1) + " s"} />
-        </>
-      )}
-
-      {route.crux && route.crux.no_data_m > 0 && (
-        <Typography sx={{ fontSize: 12, color: COLORS.orange, mt: 1 }}>
-          {km(route.crux.no_data_m)} of route not analysed: there is no terrain
-          data there. It is drawn grey and dashed - do not read it as safe.
-        </Typography>
-      )}
-    </Box>
+    )}
 
     {route.crux && <CruxList result={route.crux} onFocus={onFocusCrux} />}
 

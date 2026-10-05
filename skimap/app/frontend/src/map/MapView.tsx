@@ -13,7 +13,7 @@ import { OVERLAYS } from "../layers/overlays";
 import type { OverlayId } from "../layers/overlays";
 import type { Route } from "../routes/routeList";
 import type { Corridor, LatLng, MapFocus, PickMode } from "../types";
-import { COLORS, PANEL_WIDTH } from "../theme";
+import { COLORS } from "../theme";
 
 import { endIcon, startIcon } from "../ui/MarkerIcons";
 import CursorCoords from "../ui/CursorCoords";
@@ -67,6 +67,8 @@ type MapViewProps = {
   overlayOpacity: Record<OverlayId, number>;
   onOverlayOpacityChange: (id: OverlayId, opacity: number) => void;
   panelOpen: boolean;
+  /** The drawer's live width, so what the map zooms to stays clear of it. */
+  panelWidth: number;
   onOpenPanel: () => void;
   pickMode: PickMode;
   onPickModeChange: (mode: PickMode) => void;
@@ -137,6 +139,7 @@ const MapView = ({
   overlayOpacity,
   onOverlayOpacityChange,
   panelOpen,
+  panelWidth,
   onOpenPanel,
   pickMode,
   onPickModeChange,
@@ -161,7 +164,7 @@ const MapView = ({
   // there is nothing to keep clear of.
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
-  const leftInset = panelOpen && !isMobile ? PANEL_WIDTH : 0;
+  const leftInset = panelOpen && !isMobile ? panelWidth : 0;
 
   return (
     <Box

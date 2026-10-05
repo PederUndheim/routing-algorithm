@@ -1,42 +1,69 @@
-import { useEffect, useRef } from "react";
-import { Marker, Popup, useMap } from "react-leaflet";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Marker, Popup, useMap, useMapEvent } from "react-leaflet";
+import { latLngBounds } from "leaflet";
 import type { Marker as LeafletMarker } from "leaflet";
 
-import { DANGER_CLASS_NAMES } from "../dangerClasses";
+import { dangerName } from "../dangerClasses";
 import { km, stretchLength } from "../format";
 import type { Route } from "../routes/routeList";
 import type { Crux, MapFocus } from "../types";
-import { cruxIcon } from "../ui/MarkerIcons";
+import { cruxIcon, cruxIconSize } from "../ui/MarkerIcons";
+import { clusterCruxes, clusterLabel } from "./clusterCruxes";
+import type { CruxCluster } from "./clusterCruxes";
 
-/** How bad it gets, for the two classes where one number says it. */
-const severity = (crux: Crux): string | null => {
-  if (crux.max_pra_percent !== undefined) {
-    return `Max release probability: ${Math.round(crux.max_pra_percent)}%`;
+/** How bad it gets: the steepest ground in the area, and the highest
+ *  release probability where the area is a release area at all. */
+const severity = (crux: Crux): string[] => {
+  const lines: string[] = [];
+  if (crux.max_slope_deg !== undefined) {
+    lines.push(`Max slope: ${Math.round(crux.max_slope_deg)}°`);
   }
-  if (crux.max_slope_deg !== undefined) return `Max slope: ${Math.round(crux.max_slope_deg)}°`;
-  return null;
+  if (crux.max_pra_percent !== undefined) {
+    lines.push(`Max release probability: ${Math.round(crux.max_pra_percent)}%`);
+  }
+  return lines;
 };
 
-const CruxPopup = ({ crux }: { crux: Crux }) => {
-  const extra = severity(crux);
-  return (
-    <Popup>
-      <strong>
-        {crux.number}. {DANGER_CLASS_NAMES[crux.class]}
-      </strong>
-      <br />
-      From start: {km(crux.distance_m)}
-      <br />
-      Zone length: {stretchLength(crux.length_m)}
-      {extra && (
-        <>
-          <br />
-          {extra}
-        </>
-      )}
-    </Popup>
-  );
-};
+const CruxPopup = ({ crux }: { crux: Crux }) => (
+  <Popup>
+    <strong>
+      {crux.number}. {dangerName(crux)}
+    </strong>
+    <br />
+    From start: {km(crux.distance_m)}
+    <br />
+    Area length: {stretchLength(crux.length_m)}
+    {severity(crux).map((line) => (
+      <span key={line}>
+        <br />
+        {line}
+      </span>
+    ))}
+  </Popup>
+);
+
+/** What a cluster holds, worst first, so the reason it is drawn the colour
+ *  it is comes first. Zooming in is what separates them, and the popup says
+ *  so rather than leaving it to be guessed. */
+const ClusterPopup = ({ cluster }: { cluster: CruxCluster }) => (
+  <Popup>
+    <strong>
+      Cruxes {clusterLabel(cluster)} ({cluster.members.length})
+    </strong>
+    <br />
+    From start: {km(cluster.head.distance_m)}
+    <br />
+    <em>Worst: {dangerName(cluster.worst)}</em>
+    {severity(cluster.worst).map((line) => (
+      <span key={line}>
+        <br />
+        {line}
+      </span>
+    ))}
+    <br />
+    Zoom in to separate them.
+  </Popup>
+);
 
 const markerKey = (routeId: string, number: number) => `${routeId}:${number}`;
 
@@ -46,48 +73,123 @@ type CruxMarkersProps = {
   focus: MapFocus | null;
 };
 
-/** A numbered marker at every Crux of every visible, analysed Route, with a
- *  popup saying what it is. Hiding a Route hides its Cruxes with it. The
- *  Selected route's sit on top at full size; the rest recede.
+/** A marker at every Crux of every visible, analysed Route, with a popup
+ *  saying what it is. Hiding a Route hides its Cruxes with it. The Selected
+ *  route's sit on top at full size; the rest recede.
+ *
+ * Where markers would overlap they are drawn as one, carrying the worst of
+ * what it holds and the span of Crux numbers it covers - so a dense route
+ * reads at any zoom, and nothing is dropped, only stacked. Clustering is
+ * per Route: two Routes crossing keep their own markers, because a marker
+ * belongs to a line you are deciding about.
  *
  * Also answers a focus on one Crux - from the drawer's list - by moving the
- * map to it and opening its popup, which is why it keeps its markers. */
+ * map to it and opening its popup. That zoom usually breaks the cluster it
+ * was in, so the focus is held until a marker for it exists. */
 const CruxMarkers = ({ routes, selectedId, focus }: CruxMarkersProps) => {
   const map = useMap();
   const markers = useRef(new Map<string, LeafletMarker>());
+  const pending = useRef<MapFocus | null>(null);
+  const [zoom, setZoom] = useState(() => map.getZoom());
+
+  useMapEvent("zoomend", () => setZoom(map.getZoom()));
+
+  const shown = useMemo(
+    () => routes.filter((route) => route.visible && route.crux),
+    [routes]
+  );
+
+  // Absolute layer pixels at this zoom: they move when the map zooms, not
+  // when it pans, so panning never re-clusters.
+  const clustered = useMemo(
+    () =>
+      shown.map((route) => {
+        const selected = route.id === selectedId;
+        return {
+          route,
+          selected,
+          clusters: clusterCruxes(
+            route.crux!.cruxes,
+            (crux) => map.project([crux.position.lat, crux.position.lng], zoom),
+            (crux) => cruxIconSize(crux, selected, `${crux.number}`)
+          ),
+        };
+      }),
+    [shown, selectedId, map, zoom]
+  );
+
+  // A cluster is opened, not selected: zooming to what it covers is the
+  // only thing it can usefully do, and it is what its popup tells you to do.
+  const openCluster = useCallback(
+    (cluster: CruxCluster) => {
+      const points = cluster.members.map(
+        (crux) => [crux.position.lat, crux.position.lng] as [number, number]
+      );
+      const bounds = latLngBounds(points);
+      // Members stacked on one point give an empty bounds, which fitBounds
+      // cannot use: step in instead.
+      if (bounds.getNorthEast().equals(bounds.getSouthWest())) {
+        map.setView(points[0], Math.min(map.getZoom() + 2, map.getMaxZoom()));
+      } else {
+        map.fitBounds(bounds, { padding: [60, 60] });
+      }
+    },
+    [map]
+  );
 
   useEffect(() => {
     if (focus?.kind !== "crux") return;
+    pending.current = focus;
     map.setView([focus.position.lat, focus.position.lng], Math.max(map.getZoom(), 15));
-    // Absent when its Route is hidden: then the map still goes there.
-    markers.current.get(markerKey(focus.routeId, focus.number))?.openPopup();
   }, [map, focus]);
+
+  // On the focus itself, so a Crux already at this zoom opens at once, and
+  // again whenever the clusters change, so one that needed the zoom to
+  // split its cluster opens as soon as it exists. Absent when its Route is
+  // hidden: then the map has still gone there.
+  useEffect(() => {
+    const wanted = pending.current;
+    if (wanted?.kind !== "crux") return;
+    const marker = markers.current.get(markerKey(wanted.routeId, wanted.number));
+    if (marker) {
+      marker.openPopup();
+      pending.current = null;
+    }
+  }, [clustered, focus]);
 
   return (
     <>
-      {routes
-        .filter((route) => route.visible && route.crux)
-        .flatMap((route) => {
-          const selected = route.id === selectedId;
-          return route.crux!.cruxes.map((crux) => {
-            const key = markerKey(route.id, crux.number);
-            return (
-              <Marker
-                key={key}
-                ref={(marker) => {
-                  if (marker) markers.current.set(key, marker);
-                  else markers.current.delete(key);
-                }}
-                position={[crux.position.lat, crux.position.lng]}
-                icon={cruxIcon(crux.number, crux.class, selected)}
-                zIndexOffset={selected ? 1000 : 0}
-                pane="cruxes"
-              >
-                <CruxPopup crux={crux} />
-              </Marker>
-            );
-          });
-        })}
+      {clustered.flatMap(({ route, selected, clusters }) =>
+        clusters.map((cluster) => {
+          const grouped = cluster.members.length > 1;
+          // Keyed and registered by the Crux it starts at, so focusing any
+          // member finds this marker while they are drawn as one.
+          const key = markerKey(route.id, cluster.head.number);
+          return (
+            <Marker
+              key={key}
+              ref={(marker) => {
+                for (const crux of cluster.members) {
+                  const memberKey = markerKey(route.id, crux.number);
+                  if (marker) markers.current.set(memberKey, marker);
+                  else markers.current.delete(memberKey);
+                }
+              }}
+              position={[cluster.head.position.lat, cluster.head.position.lng]}
+              icon={cruxIcon(clusterLabel(cluster), cluster.worst, selected, grouped)}
+              zIndexOffset={selected ? 1000 : 0}
+              pane="cruxes"
+              eventHandlers={grouped ? { click: () => openCluster(cluster) } : undefined}
+            >
+              {grouped ? (
+                <ClusterPopup cluster={cluster} />
+              ) : (
+                <CruxPopup crux={cluster.head} />
+              )}
+            </Marker>
+          );
+        })
+      )}
     </>
   );
 };

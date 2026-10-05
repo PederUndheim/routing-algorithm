@@ -16,6 +16,8 @@ click and that used to count as a verdict.
     python -m skimap.corridor_review serve --port 8765
     python -m skimap.corridor_review status
     python -m skimap.corridor_review export
+    python -m skimap.corridor_review stats
+    python -m skimap.corridor_review colored-corridors
 
 Nothing here builds a cost surface or routes a tour. The models it compares
 are builds that already exist on disk - see models.py for why - so a round
@@ -46,7 +48,7 @@ from typing import Optional
 
 from skimap import paths, routing, tours as tours_module
 from skimap.corridor_review import models as models_module
-from skimap.corridor_review import render, server, sources
+from skimap.corridor_review import render, server, sources, stats as stats_module
 from skimap.corridor_review.store import LADDER, Store
 
 EXPORT = paths.DATA / "review" / "export"
@@ -95,7 +97,7 @@ def prepare(*, render_all: bool = False) -> None:
         rows = sources.model_rows(model)
         corridors = sources.corridor_paths(model)
         classed = sum(1 for row in rows.values() if row.get("colour"))
-        print(f"  {model.name:14s} {len(rows):4d} routes, {classed:4d} classed, "
+        print(f"  {model.name:16s} {len(rows):4d} routes, {classed:4d} classed, "
               f"{len(corridors):4d} corridors{'  (scored now)' if scored else ''}")
 
         if not render_all:
@@ -113,24 +115,30 @@ def prepare(*, render_all: bool = False) -> None:
 def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
     config = models_module.load()
     store = Store()
-    total = len(sources.tour_order())
-    reviewed = len(store.verdicts)
+    # Every count below is over the tours in tours.gpkg now. Verdicts and
+    # flags on deleted tours stay in review.json - see Store.current.
+    names = {t["fid"]: t["name"] for t in sources.tour_order()}
+    total = len(names)
+    reviewed = len(store.current(names))
 
     print(f"round {store.round}"
           f"{f' - {config.note}' if config.note else ''}")
     print(f"  {reviewed} / {total} tours reviewed"
           f"  ({(reviewed / total * 100) if total else 0:.0f}%)")
+    orphaned = len(store.verdicts) - reviewed
+    if orphaned:
+        print(f"  ({orphaned} verdicts on tours no longer in tours.gpkg, "
+              f"kept in review.json but not counted)")
 
     if fix_only:
-        rows = store.fix_list()
-        names = {t["fid"]: t["name"] for t in sources.tour_order()}
+        rows = store.fix_list(names)
         print(f"\n{len(rows)} tours flagged as needing work in tours.gpkg:")
         for fid, entry in rows:
             print(f"  {fid:6d}  {names.get(fid, ''):28s} {entry.get('note', '')}")
         return
 
     if shifted_only:
-        rows = store.shifted()
+        rows = store.shifted(names)
         print(f"\n{len(rows)} tours where the reviewer disagreed with classify():")
         print(f"  {'fid':>6}  {'model':14s} {'computed':8s} -> {'kept':8s} note")
         for fid, verdict in rows:
@@ -140,25 +148,26 @@ def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
         return
 
     print("\nchosen model:")
-    counts = store.counts_by_model()
+    counts = store.counts_by_model(names)
     for model in config.models:
         picked = counts.get(model.name, 0)
         share = (picked / reviewed * 100) if reviewed else 0
-        print(f"  {model.name:14s} {picked:4d}  {share:5.1f}%")
+        print(f"  {model.name:16s} {picked:4d}  {share:5.1f}%")
     unknown = set(counts) - {m.name for m in config.models}
     for name in sorted(unknown):
-        print(f"  {name:14s} {counts[name]:4d}         (not in the current config)")
+        print(f"  {name:16s} {counts[name]:4d}         (not in the current config)")
 
     print("\nexposure class as reviewed:")
-    by_colour = store.counts_by_colour()
+    by_colour = store.counts_by_colour(names)
     for colour in LADDER:
         print(f"  {colour:8s} {by_colour.get(colour, 0):4d}")
 
-    shifted = store.shifted()
+    shifted = store.shifted(names)
     if shifted:
         print(f"\n{len(shifted)} class shifts - see `status --shifted`")
-    if store.needs_fix:
-        print(f"{len(store.needs_fix)} tours need work in tours.gpkg - "
+    fixes = store.fix_list(names)
+    if fixes:
+        print(f"{len(fixes)} tours need work in tours.gpkg - "
               f"see `status --needs-fix`")
 
 
@@ -263,9 +272,11 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
     datasource = None
 
     print(f"{written} tours -> {out_path}")
-    print(f"  {len(store.verdicts)} with a verdict")
-    if store.needs_fix:
-        print(f"  {len(store.needs_fix)} flagged as needing work in tours.gpkg "
+    present = {tour.fid for tour in tour_list}
+    print(f"  {len(store.current(present))} with a verdict")
+    fixes = store.fix_list(present)
+    if fixes:
+        print(f"  {len(fixes)} flagged as needing work in tours.gpkg "
               f"(needs_fix = 1)")
     if missing_geometry:
         print(f"  {missing_geometry} reviewed tours had no route geometry in "
@@ -296,6 +307,68 @@ def _route_geometry(model, fid: int):
     geometry = feature.GetGeometryRef().Clone() if feature is not None else None
     datasource = None
     return geometry
+
+
+def colored_corridors(out_dir: Optional[Path] = None) -> dict[str, Path]:
+    """Repaint data/colored_corridors from the review, not from classify().
+
+    Nationally these four rasters come from one model (baseline) scored by
+    classify() alone - see exposure.split_corridors. That is exactly the
+    step the review exists to second-guess: a tour's best corridor may come
+    from another model entirely, and the reviewer's shift can move its class
+    away from what classify() said. So per tour this takes the model and the
+    colour the review actually settled on, not baseline's.
+
+    A tour with no verdict yet is left out and named, not filled from
+    baseline - a corridor a round has not reached should not read as though
+    someone looked at it and agreed with the automatic class.
+    """
+    from skimap import overlap
+
+    review_config = models_module.load()
+    store = Store()
+    names = {t["fid"]: t["name"] for t in sources.tour_order()}
+    verdicts = store.current(names)
+
+    unreviewed = sorted(set(names) - set(verdicts))
+    if unreviewed:
+        print(f"{len(unreviewed)} tour(s) have no verdict yet, left out of "
+              f"colored_corridors: {unreviewed}")
+
+    corridor_cache: dict[str, dict[int, Path]] = {}
+    lines: dict[int, "overlap.Line"] = {}
+    corridors: dict[int, Path] = {}
+    skipped: list[tuple[int, str]] = []
+
+    for fid, verdict in verdicts.items():
+        model = review_config.model(verdict["model"])
+        if model is None:
+            skipped.append((fid, f"model {verdict['model']!r} not in {review_config.path.name}"))
+            continue
+        by_fid = corridor_cache.setdefault(model.name, sources.corridor_paths(model))
+        corridor = by_fid.get(fid)
+        if corridor is None:
+            skipped.append((fid, f"no corridor for {model.name}"))
+            continue
+        geometry = _route_geometry(model, fid)
+        if geometry is None or geometry.GetPointCount() < 2:
+            skipped.append((fid, f"no route in {model.name}"))
+            continue
+        lines[fid] = overlap.make_line(fid, verdict["colour"], geometry.GetPoints())
+        corridors[fid] = corridor
+
+    if skipped:
+        print(f"{len(skipped)} reviewed tour(s) skipped:")
+        for fid, why in skipped:
+            print(f"  {fid}: {why}")
+
+    out_dir = Path(out_dir) if out_dir else paths.COLORED_CORRIDORS
+    written = overlap.write_classes(lines, corridors, out_dir)
+
+    print(f"\n{len(lines)} reviewed corridors -> {out_dir}")
+    for colour, path in written.items():
+        print(f"  {colour}: {path.name}")
+    return written
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -338,6 +411,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     p = sub.add_parser("cache", help="drop rendered overlays")
     p.add_argument("--model", help="just this model's")
 
+    p = sub.add_parser("stats", help="model/colour tables and exposure threshold "
+                                     "recommendations, under data/review/stats/")
+    p.add_argument("--out", type=Path)
+
+    p = sub.add_parser("colored-corridors",
+                       help="rebuild data/colored_corridors from each tour's "
+                            "reviewed model and colour, instead of classify() "
+                            "on baseline alone")
+    p.add_argument("--out", type=Path)
+
     args = parser.parse_args(argv)
 
     if args.stage == "init":
@@ -355,4 +438,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     elif args.stage == "cache":
         gone = render.clear_cache(args.model)
         print(f"{gone} cached files removed")
+    elif args.stage == "stats":
+        stats_module.run(out_dir=args.out)
+    elif args.stage == "colored-corridors":
+        colored_corridors(args.out)
     return 0

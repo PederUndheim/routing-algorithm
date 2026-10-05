@@ -260,7 +260,9 @@ describe("uploading a bad file", () => {
 const cruxResult = (distance: number): CruxResult => ({
   segments: [
     {
-      class: "fall_hazard",
+      class: "steep_slope",
+      fall_hazard: true,
+      max_slope_deg: 52,
       start_m: 0,
       end_m: 6200,
       line: {
@@ -275,7 +277,9 @@ const cruxResult = (distance: number): CruxResult => ({
   cruxes: [
     {
       number: 1,
-      class: "fall_hazard",
+      class: "steep_slope",
+      fall_hazard: true,
+      max_slope_deg: 52,
       position: { lat: 62.6, lng: 7.8 },
       distance_m: distance,
       length_m: 6200,

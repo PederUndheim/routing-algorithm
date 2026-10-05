@@ -1,0 +1,12 @@
+{
+  "name": "more_tracks_5",
+  "note": "Ceiling 5.0 in and out of forest, and presence_floor 0.5 so every pixel with 3+ passes is credited, not only the top half of its tile - the 4/5/6 sweep found the ceiling alone only amplifies cells above the 50th percentile, so a route could not be pulled onto a lightly-used track at any price. The ceiling is the only thing that differs between more_tracks_5, _10, _15 and _25. Measured on the 30 review-flagged tours against the re-routed national baseline of 2026-09-18 (production on this set: 66.3% on tracked ground, exposure/km 3.558). Result: Coverage 81.1% (+22.3%) for exposure/km +4.8%. All 30 routes moved, 15 by more than 250 m. The efficient point of the sweep by a wide margin: it buys 14.8 of the 21.2 points of coverage that 25.0 does, for a sixteenth of the exposure.",
+  "extends": "flagged_tracks",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 5.0,
+      "max_reduction_forest": 5.0,
+      "presence_floor": 0.5
+    }
+  }
+}

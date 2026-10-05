@@ -99,6 +99,28 @@ def _rgb(color: dict) -> RGB:
     raise ValueError(f"Unsupported colour type {kind!r}")
 
 
+# Where alpha sits in each colour space's `values`, which is not always last
+# in the list this reads: CMYK carries five numbers, grey two.
+_ALPHA_AT = {"CIMRGBColor": 3, "CIMHSVColor": 3, "CIMGrayColor": 1, "CIMCMYKColor": 4}
+
+
+def rgba255(color: dict) -> tuple[float, float, float, float]:
+    """One CIM colour as RGBA in 0..255, unrounded.
+
+    For the callers that do care about alpha - a corridor band fades out at
+    its edge by dropping to alpha 0, so dropping alpha the way _rgb does
+    would paint the whole slack band solid. CIM alpha is a percentage.
+
+    A colour with no alpha in its values is opaque, which is how Pro treats
+    a stop saved without one.
+    """
+    red, green, blue = _rgb(color)
+    values = color.get("values") or []
+    at = _ALPHA_AT.get(color.get("type"))
+    alpha = float(values[at]) if at is not None and len(values) > at else 100.0
+    return (red * 255.0, green * 255.0, blue * 255.0, alpha * 255.0 / 100.0)
+
+
 def _segment(ramp: dict) -> list[RGB]:
     """SAMPLES colours along one two-colour ramp, in its own colour space."""
     start, end = _rgb(ramp["fromColor"]), _rgb(ramp["toColor"])

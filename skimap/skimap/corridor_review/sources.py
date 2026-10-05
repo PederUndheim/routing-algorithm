@@ -62,25 +62,40 @@ def tour_order() -> list[dict[str, Any]]:
 
 
 def ensure_scored(model: Model, *, verbose: bool = True) -> bool:
-    """Give `model` exposure fields if it has none. True if it scored now."""
+    """Give `model` exposure fields if any route lacks them. True if it scored.
+
+    ANY route, not "the file looks scored". The common case between rounds is
+    not an unscored file, it is a scored one that gained a handful of routes:
+    edit a few tours, re-route, and `prune_stale` drops and rebuilds exactly
+    those, which come back with the geometry written and the exposure columns
+    null. A check that stopped at the first coloured feature called that file
+    scored and moved on, and the new routes reached the review with no class -
+    where the panel falls back to blue, which is a real class and reads as a
+    judgement rather than as a gap. Counting the blanks costs one pass over a
+    few hundred rows and cannot make that mistake.
+    """
     datasource = ogr.Open(str(model.routes))
     layer = datasource.GetLayer(0)
     definition = layer.GetLayerDefn()
     present = {definition.GetFieldDefn(i).GetName()
                for i in range(definition.GetFieldCount())}
-    scored = "colour" in present and "exp_score" in present
-    if scored:
-        # Present but empty happens when `route` rewrote the file after a
-        # scoring pass; treat an all-null colour column as unscored.
-        any_colour = any(feature.GetField("colour") for feature in layer)
+
+    if "colour" in present and "exp_score" in present:
+        # A null colour is what `route` leaves behind when it rewrites a
+        # feature after a scoring pass - so the column existing says nothing.
+        blank = sum(1 for feature in layer if not feature.GetField("colour"))
         layer.ResetReading()
-        if any_colour:
+        if not blank:
             datasource = None
             return False
+        total = layer.GetFeatureCount()
+        why = f"{blank} of {total} routes have no exposure class"
+    else:
+        why = "no exposure scores"
     datasource = None
 
     if verbose:
-        print(f"  {model.name}: no exposure scores, scoring {model.routes.name}")
+        print(f"  {model.name}: {why}, scoring {model.routes.name}")
     exposure.score_routes(model.routes)
     return True
 

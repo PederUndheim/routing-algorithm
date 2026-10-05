@@ -1,6 +1,10 @@
 {
   "round": 1,
-  "note": "round 1: how much should a GPS track take off, and does it differ in forest? Panels run from least track influence to most.",
+  "note": "round 1: how much should a GPS track take off, and does it differ in forest? Panels run from least track influence to most. The 'more track reduction' bench answers the follow-up the round-1 notes kept asking, on the 27 tours that asked it.",
+  "group_labels": {
+    "main": "round 1",
+    "more_tracks": "more track reduction"
+  },
   "models": [
     {
       "name": "no_tracks",
@@ -25,6 +29,34 @@
       "label": "Production 3.0 / 3.0",
       "routes": "routing_output/routes.gpkg",
       "corridors": "routing_output/corridors"
+    },
+    {
+      "name": "more_tracks_5",
+      "label": "5.0, every track ≥ 3",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_5/routes.gpkg",
+      "corridors": "test/lab/more_tracks_5/corridors"
+    },
+    {
+      "name": "more_tracks_10",
+      "label": "10.0, every track ≥ 3",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_10/routes.gpkg",
+      "corridors": "test/lab/more_tracks_10/corridors"
+    },
+    {
+      "name": "more_tracks_15",
+      "label": "15.0, every track ≥ 3",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_15/routes.gpkg",
+      "corridors": "test/lab/more_tracks_15/corridors"
+    },
+    {
+      "name": "more_tracks_25",
+      "label": "25.0, every track ≥ 3",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_25/routes.gpkg",
+      "corridors": "test/lab/more_tracks_25/corridors"
     }
   ]
 }

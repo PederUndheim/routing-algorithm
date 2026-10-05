@@ -281,37 +281,61 @@ def _region_buffer(tour: Tour, ceiling_m: float) -> float:
     return min(ceiling_m, max(floor_m, straight_m))
 
 
-def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
-              cost_raster: str = COST_RASTER) -> tuple[ogr.Geometry, float, Path]:
-    """Route one tour and write its corridor.
+def corridor_touches_edge(path: Path) -> dict[str, int]:
+    """Live corridor cells sitting on the raster's own border, per side.
 
-    `buffer_m` is a ceiling, not a fixed value - see `_region_buffer`.
+    The corridor is written at exactly the region extent and r.cost spreads
+    only inside it, so a cell alive ON the border means the band was cut by
+    the window. A corridor limited by terrain instead fades to null before it
+    gets there. Empty dict means nothing reaches an edge.
+    """
+    dataset = gdal.Open(str(path))
+    band = dataset.GetRasterBand(1)
+    values = band.ReadAsArray()
+    nodata = band.GetNoDataValue()
+    dataset = None
+    if values is None:
+        return {}
+    live = np.isfinite(values) & (values != nodata)
+    sides = {"north": live[0, :], "south": live[-1, :],
+             "west": live[:, 0], "east": live[:, -1]}
+    return {name: int(strip.sum()) for name, strip in sides.items() if strip.any()}
 
-    Returns the smoothed line, the symmetric optimal cost, and the corridor.
+
+def _window_ladder(tour: Tour, ceiling_m: float) -> list[float]:
+    """The buffers to try, in order: the natural one, then doublings.
+
+    Only the first is used unless its corridor comes back touching an edge -
+    see config.ROUTING["region_buffer_retry_cap_m"]. Doubling rather than
+    jumping straight to the cap because the window is quadratic in the buffer
+    and r.cost is linear in cells: the tours that need a second try mostly
+    need one step, and paying the cap for them would cost 16x the area to fix
+    a 2x problem.
+    """
+    first = _region_buffer(tour, ceiling_m)
+    cap = float(config.ROUTING.get("region_buffer_retry_cap_m", 0.0))
+    ladder = [first]
+    while cap and ladder[-1] * 2 <= cap:
+        ladder.append(ladder[-1] * 2)
+    return ladder
+
+
+def _spread_and_trace(tour: Tour, *, cost_raster: str, memory: int, tag: str,
+                      start_pt: str, end_pt: str, direction: str,
+                      from_start: str, from_end: str, gap: str, gap_pos: str,
+                      line: str, smooth: str, scored: str,
+                      params: dict, out_path: Path) -> tuple[ogr.Geometry, float]:
+    """One window's worth of work: spread, trace, score, write the corridor.
+
+    Everything here depends on the computational region already being set,
+    and nothing here sets it. That is what lets route_one run it again in a
+    wider window without any of this being written twice, and it is why the
+    region is the caller's business rather than this function's.
+
+    Returns the smoothed line and the symmetric optimal cost; the corridor
+    goes to `out_path`.
     """
     import grass.script as gs
-
-    tag = f"{tour.fid}_{slug(tour.name)}"
-    start_pt, end_pt = f"start_{tag}", f"end_{tag}"
-    direction = f"dir_{tag}"
-    from_start, from_end = f"symstart_{tag}", f"symend_{tag}"
-    gap, gap_pos = f"gap_{tag}", f"gappos_{tag}"
-    line, smooth = f"line_{tag}", f"smooth_{tag}"
-    scratch = [direction, from_start, from_end, gap, gap_pos]
-
-    memory = int(config.ROUTING["grass_memory_mb"])
-
-    # The region is the pair's bounding box plus a buffer, snapped to the cost
-    # surface. A route that runs to the edge of it was clipped by the window
-    # rather than by the terrain, so the ceiling is worth raising if that shows.
-    region_buffer_m = _region_buffer(tour, buffer_m)
-    xs, ys = (tour.start[0], tour.end[0]), (tour.start[1], tour.end[1])
-    gs.run_command("g.region", raster=cost_raster, align=cost_raster,
-                   w=min(xs) - region_buffer_m, e=max(xs) + region_buffer_m,
-                   s=min(ys) - region_buffer_m, n=max(ys) + region_buffer_m)
-
-    _import_point(start_pt, tour.start)
-    _import_point(end_pt, tour.end)
 
     # Spreads from both ends: their sum at a cell is the cost of the best
     # route through that cell, which is what makes a corridor definable.
@@ -345,14 +369,10 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
                    overwrite=True, quiet=True)
     geometry = _route_geometry(smooth)
 
-    corridor_dir.mkdir(parents=True, exist_ok=True)
-    params = config.CORRIDOR
     # Ceiling, not a fixed budget - see config.CORRIDOR. The slack term still
     # governs anything below the ceiling, which is what keeps short tours
     # band-shaped instead of collapsing to a disc.
     max_gap = min(cost_opt * float(params["slack"]), float(params["max_gap"]))
-    scored = f"score_{tag}"
-    scratch.append(scored)
     # 1 on the optimal line, falling to 0 at the edge of the slack band, then
     # raised to gamma to control how fast it falls away.
     gs.mapcalc(
@@ -360,11 +380,86 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
         f"1 - ({gap_pos} / {max_gap}), null()), {params['gamma']}))",
         overwrite=True, quiet=True,
     )
-    out_path = corridor_dir / f"{tour.fid:03d}_{slug(tour.name)}.tif"
     gs.run_command("r.out.gdal", input=scored, output=str(out_path),
                    format="GTiff", type="Float32", nodata=config.NODATA,
                    createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
                    flags="c", overwrite=True, quiet=True)
+    return geometry, cost_opt
+
+
+def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
+              cost_raster: str = COST_RASTER) -> tuple[ogr.Geometry, float, Path]:
+    """Route one tour and write its corridor.
+
+    `buffer_m` is a ceiling, not a fixed value - see `_region_buffer`.
+
+    Routes again in a wider window if the corridor comes back touching the
+    edge of the one it was routed in: such a corridor was cut by the box and
+    not by the terrain, and the line inside it is not known to be the best
+    one, because r.cost never looked past the edge. See `_window_ladder` and
+    config.ROUTING["region_buffer_retry_cap_m"].
+
+    Returns the smoothed line, the symmetric optimal cost, and the corridor.
+    """
+    import grass.script as gs
+
+    tag = f"{tour.fid}_{slug(tour.name)}"
+    start_pt, end_pt = f"start_{tag}", f"end_{tag}"
+    direction = f"dir_{tag}"
+    from_start, from_end = f"symstart_{tag}", f"symend_{tag}"
+    gap, gap_pos = f"gap_{tag}", f"gappos_{tag}"
+    line, smooth = f"line_{tag}", f"smooth_{tag}"
+    scored = f"score_{tag}"
+    scratch = [direction, from_start, from_end, gap, gap_pos, scored]
+
+    memory = int(config.ROUTING["grass_memory_mb"])
+    xs, ys = (tour.start[0], tour.end[0]), (tour.start[1], tour.end[1])
+    corridor_dir.mkdir(parents=True, exist_ok=True)
+    out_path = corridor_dir / f"{tour.fid:03d}_{slug(tour.name)}.tif"
+    params = config.CORRIDOR
+
+    # Widest window first would be simpler and is the wrong way round: the
+    # window is quadratic in the buffer and almost every tour is fine in its
+    # natural one. So try that, look at what came back, and widen only where
+    # the corridor says the box - not the terrain - is what stopped it.
+    ladder = _window_ladder(tour, buffer_m)
+    geometry, cost_opt = None, 0.0
+    for attempt, region_buffer_m in enumerate(ladder):
+        # The region is the pair's bounding box plus a buffer, snapped to the
+        # cost surface.
+        gs.run_command("g.region", raster=cost_raster, align=cost_raster,
+                       w=min(xs) - region_buffer_m, e=max(xs) + region_buffer_m,
+                       s=min(ys) - region_buffer_m, n=max(ys) + region_buffer_m)
+
+        # Re-imported per attempt: v.in.ascii writes into the current region,
+        # so points imported under the previous window are not reusable here.
+        _import_point(start_pt, tour.start)
+        _import_point(end_pt, tour.end)
+
+        geometry, cost_opt = _spread_and_trace(
+            tour, cost_raster=cost_raster, memory=memory, tag=tag,
+            start_pt=start_pt, end_pt=end_pt, direction=direction,
+            from_start=from_start, from_end=from_end, gap=gap, gap_pos=gap_pos,
+            line=line, smooth=smooth, scored=scored, params=params,
+            out_path=out_path,
+        )
+
+        touching = corridor_touches_edge(out_path)
+        if not touching:
+            break
+        if attempt == len(ladder) - 1:
+            # Out of ladder. Said out loud rather than letting a clipped
+            # corridor pass as a finished one: at this width it is likelier
+            # that the tour is wrong than that a route needs that much room.
+            where = ", ".join(f"{k} {v}px" for k, v in sorted(touching.items()))
+            print(f"    WARNING fid {tour.fid}: corridor still reaches the window "
+                  f"edge ({where}) at a {region_buffer_m:.0f} m buffer, the cap - "
+                  f"its route may not be the best one.")
+            break
+        sides = ", ".join(sorted(touching))
+        print(f"    fid {tour.fid}: corridor reaches the {sides} edge of a "
+              f"{region_buffer_m:.0f} m window - routing again at "
+              f"{ladder[attempt + 1]:.0f} m")
 
     # Each route leaves a dozen full-region rasters behind. Over a few hundred
     # tours that is tens of GB in the mapset, for maps nothing reads again.

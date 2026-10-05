@@ -1,0 +1,20 @@
+{
+  "name": "wider_window",
+  "note": "The 9 corridors whose live cells sit on their own routing window's border - clipped by the box, not by the terrain. The buffer is min(ceiling, max(floor, straight_line)), and all 9 are SHORT tours sitting below the 5000 m ceiling, so --buffer cannot widen them: it is a ceiling only. The lever is the floor. At 5000 every one of the 9 gets the full window, which answers both questions at once - does the corridor still reach the edge, and did the route itself move? RESULT: at a 5000 m floor all 9 corridors close - no cell touches a border anywhere. 8 of the 9 routes are byte-identical to production (0 m, cost unchanged), so for those the window truncated only the corridor picture. Tour 198 is the exception: its line moved 598 m and its cost fell 2532 -> 2445 (-86.7, -3.4%), so there its window was hiding a genuinely better route to the east. Note 198 also had the CHEAPEST border crossing of the nine (+2.3% of route cost, against 6-15% for the rest) - the crossing cost ranks the risk correctly, but it is an indicator, not a bound: the better route reached the far side more cheaply from outside the box than any in-window path to the border suggested.",
+  "tours": [
+    198,
+    491,
+    654,
+    819,
+    970,
+    1111,
+    1119,
+    1123,
+    1124
+  ],
+  "config": {
+    "ROUTING": {
+      "region_buffer_floor_m": 5000.0
+    }
+  }
+}

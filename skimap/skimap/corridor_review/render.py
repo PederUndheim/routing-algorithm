@@ -37,7 +37,7 @@ from typing import Optional
 import numpy as np
 from osgeo import gdal, osr
 
-from skimap import paths
+from skimap import lyrx, paths
 
 gdal.UseExceptions()
 
@@ -82,6 +82,11 @@ def _style(colour: str) -> tuple[np.ndarray, np.ndarray]:
 
     A class covers everything above the previous bound up to and including its
     own, which is what searchsorted's "left" side gives back.
+
+    Which colour space a break is written in is Pro's choice, not the style
+    author's - black.lyrx is a grey ramp and comes back as CIMHSVColor while
+    its neighbours are CIMRGBColor - so the stops go through lyrx.rgba255
+    rather than being read as RGB.
     """
     path = paths.STYLES / f"{colour}.lyrx"
     if not path.is_file():
@@ -103,15 +108,11 @@ def _style(colour: str) -> tuple[np.ndarray, np.ndarray]:
 
     bounds, colours = [], []
     for entry in breaks:
-        value = entry["color"]
-        if value.get("type") != "CIMRGBColor":
-            raise ValueError(
-                f"{path.name} uses {value.get('type')}; only CIMRGBColor is read"
-            )
-        red, green, blue, alpha = (float(v) for v in value["values"][:4])
+        try:
+            colours.append(lyrx.rgba255(entry["color"]))
+        except (KeyError, ValueError) as error:
+            raise ValueError(f"{path.name}: {error}") from error
         bounds.append(float(entry["upperBound"]))
-        # CIM alpha is a percentage, not a byte.
-        colours.append((red, green, blue, alpha * 255.0 / 100.0))
 
     return (np.array(bounds, dtype=np.float64),
             np.rint(np.array(colours, dtype=np.float64)).astype(np.uint8))

@@ -3,8 +3,8 @@ import type { LatLngTuple, PathOptions } from "leaflet";
 import type { LineString } from "geojson";
 
 import type { Route } from "../routes/routeList";
-import type { PickMode, SegmentClass } from "../types";
-import { COLORS, CRUX_COLORS } from "../theme";
+import type { CruxSegment, PickMode } from "../types";
+import { COLORS, CRUX_COLORS, dangerColor } from "../theme";
 
 // Lines are immutable once in the list, so each is converted once. A Route
 // uploaded from a GPS recording can be tens of thousands of points, and a
@@ -21,18 +21,15 @@ export const latLngsOf = (line: LineString): LatLngTuple[] => {
   return latLngs;
 };
 
-/** One red for every Danger class: which one it is, the Crux marker says. */
-const segmentStyle = (segmentClass: SegmentClass): PathOptions => {
-  switch (segmentClass) {
-    case "none":
-      return { color: CRUX_COLORS.none };
-    case "no_data":
-      // Dashed as well as grey, so it cannot be read as a paler green.
-      return { color: CRUX_COLORS.noData, dashArray: "8 10" };
-    default:
-      return { color: CRUX_COLORS.danger };
-  }
-};
+/** One colour per segment, the same one its Crux marker is drawn in: red
+ *  for steep ground that turns out to be a release area or a fall hazard,
+ *  dark orange where it is only steep, light orange for the lesser Runout
+ *  area. */
+const segmentStyle = (segment: CruxSegment): PathOptions =>
+  segment.class === "no_data"
+    // Dashed as well as grey, so it cannot be read as a paler green.
+    ? { color: CRUX_COLORS.noData, dashArray: "8 10" }
+    : { color: dangerColor(segment) };
 
 type RouteLinesProps = {
   routes: readonly Route[];
@@ -84,7 +81,7 @@ const RouteLines = ({ routes, selectedId, pickMode, onSelect }: RouteLinesProps)
           <Polyline
             key={`${key}:${i}`}
             positions={latLngsOf(segment.line)}
-            pathOptions={{ ...segmentStyle(segment.class), ...stroke }}
+            pathOptions={{ ...segmentStyle(segment), ...stroke }}
             eventHandlers={eventHandlers}
           />
         ));

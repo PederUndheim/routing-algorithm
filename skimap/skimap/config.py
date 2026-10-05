@@ -176,6 +176,19 @@ ROUTING = {
     "smooth_threshold": 7.5,          # v.generalize Douglas-Peucker, metres
     "region_buffer_m": 5000.0,        # ceiling: buffer around start/end bbox
     "region_buffer_floor_m": 1500.0,  # floor: room to detour on short tours
+    # A corridor whose live cells reach the edge of its own window was cut by
+    # the box, not by the terrain - and the route inside it may not be the
+    # best one, because r.cost never looked past the edge. Where that shows,
+    # the tour is routed again in a window twice as wide, repeatedly, up to
+    # this cap. Measured on 817 tours: 9 of them reach an edge, 8 of those
+    # only had the corridor picture truncated, and 1 - a short tour whose
+    # window sat well below the ceiling - had a route 3.4% dearer than the
+    # one a wider window finds. Raising the floor for everyone would fix it
+    # too, at roughly double the window area on every short tour; retrying
+    # only where it shows costs the extra pass on about 1%.
+    #
+    # 0 disables the retry and restores the single-window behaviour.
+    "region_buffer_retry_cap_m": 20000.0,
     "grass_memory_mb": 2500,
 }
 
@@ -202,15 +215,45 @@ EXPOSURE = {
 }
 
 # (lower bound, colour) - lower inclusive, upper exclusive, last unbounded.
-# Set from the p50/p85/p97 of the national routed set. Re-derive after a
-# weight change or a national reroute; a score only compares within the
-# surface that produced it.
+# Originally the p50/p85/p97 of the national routed set (3.2/9.5/20.8).
+# Replaced 2026-09-18 with the least-wrong split against round 1 of the
+# corridor review - data/review/stats/exposure_thresholds.csv, produced by
+# `python -m skimap.corridor_review stats` - which showed green/blue in
+# particular pulling far too low: 89 reviewed tours scored under 3.2 but
+# were still called blue. Re-derive the same way after a weight change or a
+# national reroute; a score only compares within the surface that produced
+# it.
 EXPOSURE_CLASSES = (
     (0.0, "green"),
-    (3.2, "blue"),
-    (9.5, "red"),
-    (20.8, "black"),
+    (2.3, "blue"),
+    (9.0, "red"),
+    (20.4, "black"),
 )
+
+# Where an easier tour's line runs along a harder one, the harder corridor
+# fades out so the shared ground draws once, in the easier colour - see
+# skimap.overlap. Weight 0 closer than near_m, 1 beyond far_m; keep far_m
+# under a typical corridor half-width or a gap opens where the lines split.
+# A faded stretch must add up to min_shared_m, so a crossing is not sharing.
+# Where bands still compete, a tour one class harder must be easier_priority
+# times stronger to take a cell - raise it if harder bands eat the easier one.
+# Only where the easier membership is at least priority_floor, or its faint
+# fringe holds the harder band back and it starts along a hard edge.
+OVERLAP = {
+    "step_m": 5.0,
+    "near_m": 30.0,
+    "far_m": 100.0,
+    "min_shared_m": 200.0,
+    "easier_priority": 2.0,
+    "priority_floor": 0.25,
+    # Softening where colours meet, 0 = off. seam_m: width of the cross-fade
+    # between two colours - 40 m tried best on Isfjorden. fade_in_m: the
+    # harder tour comes in over this much route past a shared stretch; off,
+    # because on Isfjorden it moved the hard edge rather than softening it,
+    # and drew more of the harder tour's own ground in the easier colour.
+    "fade_in_m": 0.0,
+    "seam_m": 40.0,
+}
 
 
 # --- Crux Identifier ---
@@ -218,11 +261,24 @@ EXPOSURE_CLASSES = (
 # Separate from PRA_RUNOUT and SLOPE: those price ground for the router,
 # these decide what a ski tourer is told about the line it came back with.
 CRUX = {
-    "pra_threshold": 50.0,       # PRA % above this: Probable release area
-    "slope_threshold": 30.0,     # degrees, at or above: Fall hazard. No cap
+    # What a sample is. Slope decides; runout is the fallback.
+    "steep_threshold": 30.0,     # degrees, at or above: Steep slope
     "runout_reach": 10_000.0,    # runout >= 0 and below this: Runout area
     "sample_spacing_m": 10.0,    # one sample per cell of the 10 m rasters
-    "max_dip_m": 30.0,           # a shorter lower-ranked dip does not split a zone
+
+    # What a Steep slope area turns out to be. Neither makes a class of its
+    # own: they mark the area's Crux and turn it red. PRA is a percentage,
+    # 0 to 100 - the raster's own scale, not a 0-1 probability.
+    "pra_threshold": 50.0,       # PRA % above this anywhere: probable release area
+    "fall_threshold": 50.0,      # degrees, at or above anywhere: fall hazard
+
+    # --- Merging runs into areas (see crux._areas) ---
+    # One area is one segment, one colour and at most one Crux, so these
+    # decide both what the line looks like and how many markers it carries.
+    "min_runout_m": 20.0,        # a shorter Runout area reads as none
+    "split_gap_m": 40.0,         # safe ground shorter than this is no break
+    "steep_gap_m": 100.0,        # runout shorter than this between two steep
+                                 # areas joins them into one
 }
 
 

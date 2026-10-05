@@ -12,6 +12,21 @@ have yet, build it first - `skimap.lab` for a tour subset, or
 `skimap.track_variants` for the country - then add it here.
 
 Paths are relative to data/, so the config stays portable between machines.
+
+## Groups
+
+A model may name a `group`. Models with none are in "main", which is the set
+the review opens on; any other group is a second bench the page can switch
+the panels to, without reloading and without the two sets ever being on
+screen at once. That exists because a follow-up question - here, "these
+tours wanted more track reduction, what does it look like?" - is asked of a
+handful of tours against models built only for them, and hanging three
+mostly-empty panels off every tour in the main set would cost a panel of
+width on all 817 to answer something about 27.
+
+A group's models are ordinary models in every other way: a verdict records
+the model name, so picking one of them is recorded exactly as picking a main
+one is, and nothing downstream has to know which bench it came from.
 """
 
 from __future__ import annotations
@@ -50,6 +65,11 @@ DEFAULT_MODELS = [
     },
 ]
 
+# The group a model with no "group" belongs to, and the one the page opens
+# on. Named rather than "": the JS switches on it, and an empty string is
+# indistinguishable from a missing field in a dozen places.
+MAIN_GROUP = "main"
+
 DEFAULT_CONFIG = {
     "round": 1,
     "note": "round 1: does track weighting change which corridor is best?",
@@ -63,6 +83,7 @@ class Model:
     label: str
     routes: Path
     corridors: Path
+    group: str = MAIN_GROUP
 
     @property
     def ok(self) -> bool:
@@ -75,9 +96,28 @@ class Config:
     round: int
     note: str
     models: tuple[Model, ...]
+    labels: dict[str, str]    # group name -> what the switch calls it
 
     def model(self, name: str) -> Optional[Model]:
         return next((m for m in self.models if m.name == name), None)
+
+    def groups(self) -> list[tuple[str, str, tuple[Model, ...]]]:
+        """(name, label, models) per group, main first, then config order.
+
+        Order is taken off the model list rather than a separate section, so
+        a group exists exactly as long as a model is in it and the panels
+        within it run in the order they are written.
+        """
+        order: list[str] = [MAIN_GROUP]
+        for model in self.models:
+            if model.group not in order:
+                order.append(model.group)
+        out = []
+        for group in order:
+            members = tuple(m for m in self.models if m.group == group)
+            if members:
+                out.append((group, self.labels.get(group, group), members))
+        return out
 
 
 def write_default(path: Optional[Path] = None, *, overwrite: bool = False) -> Path:
@@ -119,6 +159,7 @@ def load(path: Optional[Path] = None) -> Config:
             label=str(entry.get("label") or name),
             routes=paths.DATA / entry["routes"],
             corridors=paths.DATA / entry["corridors"],
+            group=str(entry.get("group") or MAIN_GROUP),
         ))
 
     missing = [m for m in models if not m.ok]
@@ -133,5 +174,16 @@ def load(path: Optional[Path] = None) -> Config:
         )
         raise SystemExit(f"{where.name} names output that is not on disk:\n{lines}")
 
+    labels = {MAIN_GROUP: "main"}
+    labels.update({str(k): str(v) for k, v in (body.get("group_labels") or {}).items()})
+
+    if not any(m.group == MAIN_GROUP for m in models):
+        raise SystemExit(
+            f"{where.name}: every model names a group, so the review has no "
+            f"set to open on. Leave \"group\" off the ones that belong in the "
+            f"main bench."
+        )
+
     return Config(path=where, round=int(body.get("round", 1)),
-                  note=str(body.get("note", "")), models=tuple(models))
+                  note=str(body.get("note", "")), models=tuple(models),
+                  labels=labels)

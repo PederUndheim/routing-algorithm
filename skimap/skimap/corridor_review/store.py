@@ -15,7 +15,8 @@ closed laptop.
 
     model            which model's corridor was picked
     colour_computed  what exposure.classify() said about that corridor
-    shift            -1, 0 or +1: the reviewer's disagreement with it
+    shift            the reviewer's disagreement with it, in ladder steps
+                     (-3..+3 for four classes; 0 is agreement)
     colour           the class after the shift - what export writes
 
 Both the computed class and the shift are kept, never just the result. The
@@ -44,7 +45,7 @@ import json
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Container, Optional
 
 from skimap import config, paths
 
@@ -54,6 +55,12 @@ REVIEW = paths.DATA / "review" / "review.json"
 # Shifting is a step along this list, so "more severe" means the same thing
 # here as it does everywhere else in the repo.
 LADDER = tuple(colour for _, colour in config.EXPOSURE_CLASSES)
+
+
+# The widest disagreement the ladder can express: green to black, or back.
+# The reviewer picks a class outright rather than nudging one rung, so a
+# verdict may legitimately be three rungs from what classify() said.
+MAX_SHIFT = len(LADDER) - 1
 
 
 def shift_colour(colour: str, shift: int) -> str:
@@ -116,7 +123,12 @@ class Store:
     def record(self, fid: int, *, model: str, colour_computed: str,
                shift: int = 0, note: str = "") -> dict[str, Any]:
         fid = int(fid)
-        shift = max(-1, min(1, int(shift)))
+        # Clamped to the ladder, not to one step. It used to be one step,
+        # from when the control could only say "more severe" or "less" - and
+        # a picker that can name any class would have had every longer
+        # disagreement quietly truncated to a single rung, recording a
+        # verdict the reviewer did not give.
+        shift = max(-MAX_SHIFT, min(MAX_SHIFT, int(shift)))
 
         previous = self.verdicts.get(fid)
         # Editing only the note is not a changed mind, so it does not go to
@@ -188,8 +200,9 @@ class Store:
     def fix(self, fid: int) -> Optional[dict[str, Any]]:
         return self.needs_fix.get(int(fid))
 
-    def fix_list(self) -> list[tuple[int, dict[str, Any]]]:
-        return sorted(self.needs_fix.items())
+    def fix_list(self, among: Optional[Container[int]] = None
+                 ) -> list[tuple[int, dict[str, Any]]]:
+        return sorted(_among(self.needs_fix, among).items())
 
     def start_round(self, number: Optional[int] = None) -> int:
         """Begin a new round. Verdicts stay; they carry their own round, so
@@ -199,24 +212,43 @@ class Store:
         return self.round
 
     # --- reporting -------------------------------------------------------
+    #
+    # `among` narrows a report to the tours that still exist. A tour deleted
+    # from tours.gpkg keeps its verdict here - it is still a record of what was
+    # decided, and a tour deleted by mistake and restored under the same fid
+    # gets it back - but it is not progress on the tours there are now, and
+    # counting it would put "510 / 819 reviewed" on a review that is at 500.
 
-    def counts_by_model(self) -> dict[str, int]:
+    def current(self, among: Optional[Container[int]] = None
+                ) -> dict[int, dict[str, Any]]:
+        """The verdicts, optionally only for fids in `among`."""
+        return _among(self.verdicts, among)
+
+    def counts_by_model(self, among: Optional[Container[int]] = None) -> dict[str, int]:
         counts: dict[str, int] = {}
-        for verdict in self.verdicts.values():
+        for verdict in self.current(among).values():
             counts[verdict["model"]] = counts.get(verdict["model"], 0) + 1
         return counts
 
-    def counts_by_colour(self) -> dict[str, int]:
+    def counts_by_colour(self, among: Optional[Container[int]] = None) -> dict[str, int]:
         counts = {colour: 0 for colour in LADDER}
-        for verdict in self.verdicts.values():
+        for verdict in self.current(among).values():
             colour = verdict.get("colour")
             if colour in counts:
                 counts[colour] += 1
         return counts
 
-    def shifted(self) -> list[tuple[int, dict[str, Any]]]:
+    def shifted(self, among: Optional[Container[int]] = None
+                ) -> list[tuple[int, dict[str, Any]]]:
         """Tours where the reviewer disagreed with classify(), worst first."""
         return sorted(
-            ((fid, v) for fid, v in self.verdicts.items() if v.get("shift")),
+            ((fid, v) for fid, v in self.current(among).items() if v.get("shift")),
             key=lambda item: (-abs(item[1]["shift"]), item[0]),
         )
+
+
+def _among(entries: dict[int, dict[str, Any]],
+           among: Optional[Container[int]]) -> dict[int, dict[str, Any]]:
+    if among is None:
+        return entries
+    return {fid: entry for fid, entry in entries.items() if fid in among}

@@ -1,0 +1,12 @@
+{
+  "name": "more_tracks_25",
+  "note": "Ceiling 25.0 in and out of forest, and presence_floor 0.5 so every pixel with 3+ passes is credited, not only the top half of its tile - the 4/5/6 sweep found the ceiling alone only amplifies cells above the 50th percentile, so a route could not be pulled onto a lightly-used track at any price. The ceiling is the only thing that differs between more_tracks_5, _10, _15 and _25. Measured on the 30 review-flagged tours against the re-routed national baseline of 2026-09-18 (production on this set: 66.3% on tracked ground, exposure/km 3.558). Result: Coverage 87.5% (+31.9%) for exposure/km +73.4% - the worst trade in the sweep. NOTE this did NOT saturate, which is what was expected of it: coverage rose 3.0 points from 15.0, MORE than 15.0 gained over 10.0 (1.5), while exposure/km jumped 1.41 against that step's 0.44. The reading is that a 25.0 ceiling drives a tracked pixel to MIN_COST even on ground that was previously far too dear to cross - so the routes go on finding new track to follow, and the new track they find is through avalanche terrain. More coverage, bought worse. 8 of 30 moved more than a kilometre, and three corridors needed a wider routing window (1024 hit two edges at once), which is itself the cheap ground spreading the slack band out.",
+  "extends": "flagged_tracks",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 25.0,
+      "max_reduction_forest": 25.0,
+      "presence_floor": 0.5
+    }
+  }
+}

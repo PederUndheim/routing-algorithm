@@ -24,6 +24,7 @@
   </div>
 
   <div class="bar-right">
+    <span id="groups" class="groups" hidden></span>
     <button id="prev" title="Previous tour (left arrow)">&larr;</button>
     <button id="next" title="Next tour (right arrow)">&rarr;</button>
     <button id="skip" title="Jump to next unreviewed (Enter)">next unreviewed</button>
@@ -34,11 +35,10 @@
 <section id="controls">
   <div class="control-group">
     <span class="control-label">Exposure class</span>
-    <div class="shift-buttons" id="shift">
-      <button data-shift="-1" title="One class less severe (D)">less severe</button>
-      <button data-shift="0" class="on" title="Keep the computed class (S)">keep</button>
-      <button data-shift="1" title="One class more severe (U)">more severe</button>
-    </div>
+    <!-- One button per class, filled in from the ladder the session sends,
+         so the classes and their order stay config.EXPOSURE_CLASSES' business
+         and this file never names a colour. -->
+    <div class="class-buttons" id="class-pick"></div>
     <span id="shift-hint" class="muted"></span>
   </div>
 
@@ -63,7 +63,7 @@
 <main id="panels"><p class="empty">loading</p></main>
 
 <footer id="legend">
-  <span class="muted">click a panel or press its number to pick &middot; arrows to step, Enter for the next unreviewed</span>
+  <span class="muted">click a panel or press its number to pick &middot; click a class to set it, S back to computed, U/D to step &middot; arrows to step, Enter for the next unreviewed &middot; G switches model set</span>
   <span class="spacer"></span>
   <label class="check"><input type="checkbox" id="show-slope" checked> slope WMTS</label>
   <label class="check"><input type="checkbox" id="show-runout"> runout</label>

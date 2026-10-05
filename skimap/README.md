@@ -36,6 +36,16 @@ hazards begin. It reads the same surface through the same
 `routing.route_one`, takes no parameters and writes nothing you keep. See
 [app/README.md](app/README.md).
 
+`data/crux_identifier/trips/` holds eight example routes to try it on. How
+many markers a route ends up with is set by the grouping dials in
+`config.CRUX`; this prints the counts for a sweep of them, which is quicker
+than opening the app for each:
+
+```powershell
+& "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m skimap.cli crux
+& "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m skimap.cli crux --detail trip6_track_2024-03-07_12.3km
+```
+
 `tests/` holds the one automated suite, for `skimap.crux`. It needs none of
 the national data - each test writes its own tiny rasters:
 
@@ -412,6 +422,50 @@ full run too.
 Re-run `exposure` afterwards to rebuild the class rasters from the corrected
 set.
 
+The test builds prune the same way, each against its own `routes.gpkg`:
+`python -m skimap.track_test route` and `python -m skimap.track_variants route
+<name>` keep themselves in step with `tours.gpkg`, and turn pruning off for
+`--fid` and `--limit`. Route production first - the variants compare
+themselves against it.
+
+### The routing window, and when it is wrong
+
+The region is set per route to the start/end bounding box plus a buffer, and
+the buffer is the tour's own straight-line length, floored at
+`region_buffer_floor_m` and capped at `region_buffer_m`. Everything outside
+that box is invisible to `r.cost`.
+
+A corridor is written at exactly that extent, so a corridor with live cells
+sitting **on its own border** was cut by the box and not by the terrain - and
+worse, the route inside it is not known to be the best one, because nothing
+ever looked past the edge. A corridor stopped by cost instead fades to null
+before it gets there.
+
+`route_one` now checks for that and routes again in a window twice as wide,
+repeatedly, up to `region_buffer_retry_cap_m` (0 disables it). It prints a
+line each time it widens, and a warning if a corridor still reaches an edge
+at the cap - at that width the tour is likelier to be wrong than the route.
+
+Measured on 817 tours: 9 reached an edge. Eight had only the corridor picture
+truncated, their lines identical either way. One - fid 198, a 2.07 km tour
+whose window was therefore 2073 m - had a route **3.4% dearer** than the one
+a wider window finds. One tour needed two widenings, because opening the
+south edge exposed a north one.
+
+Note what does **not** help: `--buffer` is a *ceiling*. All 9 sat well below
+it, on the straight-line rule, so no value of `--buffer` would have widened
+any of them. Raising `region_buffer_floor_m` for everyone would, at roughly
+double the window area on every short tour; retrying only where the corridor
+says so costs the extra pass on about 1% of them.
+
+The check runs on tours routed **since** it went in. A corridor built before
+that can still be clipped and will not fix itself - re-route the tour to
+clear it. `routing.corridor_touches_edge` is the test, and it is worth
+sweeping a model's corridors with it after any bulk route, per model: each
+cost surface produces its own corridors, so the tours that press against a
+window differ between them.
+
+
 ## Exposure
 
 ```bash
@@ -450,6 +504,33 @@ Four files, and nothing else: the per-route corridors and
 them. The trade is that this directory does **not** stand alone - these
 rasters describe the routes that existed when `exposure` last ran, so
 re-running `route` leaves them stale. Re-run `exposure` after `route`.
+
+### Overlapping corridors
+
+Tours share ground - most often the kilometre in from a car park - and where
+two of different classes do, merging each class on its own draws both bands
+on top of each other: the harder one's fringe shows round the easier one, and
+which colour the shared ground takes depends on draw order. So `exposure`
+writes the classes through `skimap.overlap`:
+
+- a route fades out wherever the **line** of an easier route runs along it -
+  weight 0 closer than `near_m`, 1 beyond `far_m` - so shared ground is drawn
+  once, in the easier colour, and the harder band comes back where the lines
+  split, with no gap. A faded stretch must add up to `min_shared_m`, so a
+  crossing does not count.
+- each cell goes to the strongest faded corridor, and against a solid easier
+  band (at least `priority_floor`) a harder one has to be `easier_priority`
+  times stronger per class between them.
+- where two colours meet they cross-fade over `seam_m`.
+
+The four rasters are disjoint everywhere except inside those seams. All of it
+is `config.OVERLAP`, tuned on Isfjorden with `python -m skimap.overlap_test`,
+which routes that test set and draws before/after pictures. `--stacked` writes
+the old per-class merge instead.
+
+It runs in 2048 px tiles padded by the seam's reach, so memory stays flat
+however much of the country the corridors span, and a tile only reads the
+corridors that reach it.
 
 ### Class breaks
 
@@ -498,6 +579,36 @@ re-rendering figures does not re-route and re-routing does not rebuild.
 
 Everything lands in `data/test/lab/<name>/`, and nothing there touches
 `data/cost_surface` or `data/routing_output`.
+
+### Adding a tour to a set
+
+```bash
+python -m skimap.lab add flagged_tracks --fid 1150 --fid 1151
+```
+
+Then the stages it prints, which skip everything they already have - so for a
+sweep of four ceilings over 26 tours, adding two rebuilds a tile or two and
+routes two tours per ceiling, not 104:
+
+```bash
+foreach ($n in 5,10,15,25) {
+  & $py -m skimap.lab surface "more_tracks_$n" --jobs 8
+  & $py -m skimap.lab route   "more_tracks_$n"
+}
+& $py -m skimap.corridor_review prepare
+```
+
+`add` edits only the set. Every profile that `extends` it picks the change up
+on its next stage, which is what inheriting a set is for: add the tour once
+and every ceiling in the sweep covers it.
+
+It also drops tours that no longer exist, and says which. That is not
+tidying. `_tours` RAISES on a fid missing from tours.gpkg rather than skipping
+it, so one tour deleted mid-review makes every stage of every profile
+extending that set refuse to run, with an error naming the fid but not the
+file holding it. A fid you pass that does not exist is refused outright and
+nothing is written - worth knowing, because a `needs_fix` note survives its
+tour being deleted, so a note naming a fid is not evidence the tour is there.
 
 ### Profiles
 
@@ -885,9 +996,37 @@ python -m skimap.corridor_review export
 ```
 
 Keyboard: `1`..`9` pick that panel, `left`/`right` step, `Enter`
-jumps to the next unreviewed tour, `u`/`s`/`d` set the class shift before you
-pick, `f` flags the tour as needing fixing, `Backspace` drops a verdict, `l`
-opens the tour list.
+jumps to the next unreviewed tour, `u`/`d` step the class up and down the
+ladder and `s` puts it back to the computed one, `f` flags the tour as
+needing fixing, `Backspace` drops a verdict, `l` opens the tour list, `g`
+switches model set.
+
+### More than one bench of models
+
+A model may name a `group`. Models with none are in `main`, the set the page
+opens on; any other group is a second bench the switch in the header swaps
+the whole screen to, one bench on screen at a time.
+
+That exists because a follow-up question is usually asked of a handful of
+tours, against models built only for them. Round one's notes kept saying
+*more track red* on the same tours - so there is a `more_tracks` group of
+three lab builds over exactly those 27, and the other 790 tours never give
+up a panel of width to answer something that was never asked of them.
+
+```json
+{"name": "more_tracks_10", "label": "10.0, every track >= 3",
+ "group": "more_tracks",
+ "routes": "test/lab/more_tracks_10/routes.gpkg",
+ "corridors": "test/lab/more_tracks_10/corridors"}
+```
+
+`group_labels` names them for the switch. A group's button is greyed on a
+tour it was not built for; the arrows and `Enter` move within the active
+group's tours rather than through all 817, so paging inside a 27-tour set
+stops at its ends instead of walking off into empty maps; and the tour list
+gains a scope per group, to work through one as a list. A verdict is
+recorded the same either way - it stores the model name, and nothing
+downstream knows or cares which bench it came from.
 
 Layers, per the footer: slope and runout from NVE, the route line, and the
 GPS tracks. Tracks are off by default and fetched only when switched on -
@@ -932,6 +1071,35 @@ about avalanche exposure, because scoring is a separate stage nobody ran on
 them - and a corridor with no class has no colour to be drawn in. Scoring is
 a pass along each line against `pra.tif` and `runout.tif`: minutes for 842
 routes, against a day to route them.
+
+### Picking the class
+
+One button per class, in the ladder's order, each wearing its own colour.
+The button marked `*` is what `classify()` computed; the outlined one is
+what will be recorded. They start as the same button.
+
+Any class can be chosen from any class - a green corridor you think is
+actually black is one click, not three. The control used to be `less severe`
+/ `keep` / `more severe`, which said which DIRECTION you were going but never
+where you ended up, and could not express a jump of more than one rung at
+all. `u` and `d` still step one rung for muscle memory, and `s` goes back to
+the computed class.
+
+The buttons are built from the `ladder` the session sends, which is
+`config.EXPOSURE_CLASSES`, so adding a class there adds a button and no
+colour is named anywhere in the front end.
+
+What is stored is still the **shift**, not the class - see below. The class
+you pick is absolute, and the shift is worked out at the moment you pick a
+panel, against what that panel's corridor computed. That matters because two
+models can compute different classes for the same tour: choosing `black`
+against a panel that computed `red` is `+1`, and against one that computed
+`green` is `+3`. Pick a different panel and the same wanted class is recorded
+as a different disagreement, which is the correct reading of it.
+
+Choosing no class at all records a shift of `0` - whatever the model you
+picked computed. It is not the same as choosing the class that model happens
+to compute, and paging to another tour resets to it.
 
 ### The shift is the point
 
@@ -981,6 +1149,12 @@ round it was made in, so a second pass that revisits only the doubtful tours
 leaves the rest standing as the current answer. Every superseded verdict goes
 to `history` in `review.json` rather than being overwritten - a changed mind
 is data too.
+
+Verdicts are keyed by tour fid, so editing `tours.gpkg` between sessions is
+safe as long as the fids stay put - edit the GeoPackage in place, never
+round-trip it through another format. A new tour arrives unreviewed. A deleted
+tour keeps its verdict and any `needs_fix` flag in `review.json`, but `status`,
+the progress bar and `export` count only the tours that exist now.
 
 `export` writes `tours_reviewed.gpkg`: every tour, with the review fields and
 the chosen model's route geometry. Tours with no verdict yet get the straight

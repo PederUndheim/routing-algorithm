@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 from osgeo import gdal, osr
 
-from skimap import paths
+from skimap import lyrx, paths
 
 gdal.UseExceptions()
 
@@ -76,13 +76,14 @@ def _style(name: str = STYLE) -> tuple[np.ndarray, np.ndarray]:
 
     bounds, colours = [], []
     for entry in breaks:
-        colour = entry["color"]
-        if colour.get("type") != "CIMRGBColor":
-            raise ValueError(f"{name} uses {colour.get('type')}; only CIMRGBColor is read")
-        red, green, blue, alpha = (float(v) for v in colour["values"][:4])
+        # Pro picks the colour space per stop - a grey ramp saves as HSV, a
+        # coloured one as RGB - so the stops go through lyrx rather than
+        # being read as RGB and rejected the moment blue.lyrx is re-styled.
+        try:
+            colours.append(lyrx.rgba255(entry["color"]))
+        except (KeyError, ValueError) as error:
+            raise ValueError(f"{name}: {error}") from error
         bounds.append(float(entry["upperBound"]))
-        # CIM alpha is a percentage, not a byte.
-        colours.append((red, green, blue, alpha * 255.0 / 100.0))
 
     return (np.array(bounds, dtype=np.float64),
             np.rint(np.array(colours, dtype=np.float64)).astype(np.uint8))

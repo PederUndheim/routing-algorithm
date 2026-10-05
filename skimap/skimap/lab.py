@@ -1209,6 +1209,88 @@ def init(name: str, fids: Optional[list[int]] = None, *, note: str = "",
     return out
 
 
+def add(name: str, fids: list[int]) -> Path:
+    """Add tours to a profile's set, and drop any that no longer exist.
+
+    Hand-editing the JSON is the obvious alternative and it has one sharp
+    edge: `_tours` RAISES on a fid that is not in tours.gpkg rather than
+    skipping it, so one tour deleted since the set was written makes every
+    stage of every profile that extends it refuse to run, with an error that
+    names the fid but not the file it is in. Deleting a tour is normal in the
+    middle of a review, so that happens often enough to be worth a command.
+
+    Pruning is not optional and not silent. A set is "the tours to test this
+    on", a deleted tour cannot be tested on, and leaving it in only breaks
+    the next run - so it goes, and every one that goes is printed.
+
+    Only the set is touched. Profiles that `extends` this one pick the change
+    up on their next stage, which is the point of inheriting the set: add a
+    tour once, and every ceiling in the sweep covers it.
+    """
+    from skimap import tours as tours_mod
+
+    path = resolve(name)
+    data = _read_json(path)
+    if "tours" not in data:
+        raise SystemExit(
+            f"{path.name} has no \"tours\" of its own"
+            + (f" - it extends {data['extends']!r}. Add them there instead."
+               if data.get("extends") else ".")
+        )
+
+    live = {t.fid: t.label for t in tours_mod.read_tours()}
+    missing = sorted({int(f) for f in fids} - set(live))
+    if missing:
+        raise SystemExit(
+            f"No tour with fid {missing} in {paths.TOURS}. Nothing written.\n"
+            "  A needs_fix note survives its tour being deleted, so a note "
+            "naming a fid is not evidence the tour is still there."
+        )
+
+    before = [int(f) for f in data["tours"]]
+    dead = sorted(f for f in before if f not in live)
+    wanted = sorted({int(f) for f in fids})
+    added = [f for f in wanted if f not in before]
+    data["tours"] = sorted((set(before) - set(dead)) | set(wanted))
+
+    path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    for fid in added:
+        print(f"  + {fid}  {live[fid]}")
+    for fid in dead:
+        print(f"  - {fid}  (deleted from tours.gpkg)")
+    for fid in wanted:
+        if fid not in added:
+            print(f"  = {fid}  {live[fid]}  (already in the set)")
+    print(f"{path.name}: {len(before)} -> {len(data['tours'])} tours")
+
+    users = _extenders(path)
+    if users:
+        print("\nProfiles using this set: " + ", ".join(users))
+        print("Bring them up to date - each stage skips what it already has:")
+        for who in users:
+            print(f"  python -m skimap.lab surface {who} --jobs 8")
+            print(f"  python -m skimap.lab route   {who}")
+        print("  python -m skimap.corridor_review prepare")
+    return path
+
+
+def _extenders(path: Path) -> list[str]:
+    """Profiles whose set is this one, so `add` can say what to rebuild."""
+    out = []
+    for other in sorted(PROFILES.glob("*.json")):
+        if other == path:
+            continue
+        try:
+            body = _read_json(other)
+        except (ValueError, OSError):
+            continue
+        parent = body.get("extends")
+        if parent and Path(str(parent)).stem == path.stem:
+            out.append(other.stem)
+    return out
+
+
 # --- cli -----------------------------------------------------------------
 
 
@@ -1227,6 +1309,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                                      "listing FIDs again")
     p.add_argument("--note", default="")
     p.add_argument("--overwrite", action="store_true")
+
+    p = sub.add_parser("add", help="add tours to a profile's set (and drop deleted ones)")
+    p.add_argument("name", help="the profile holding the set, e.g. flagged_tracks")
+    p.add_argument("--fid", action="append", type=int, dest="fids", required=True,
+                   help="a tour FID from data/tours/tours.gpkg; repeatable")
 
     for stage, help_text in (
         ("tiles", "just work out which tiles the tours reach"),
@@ -1270,6 +1357,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.stage == "init":
         init(args.name, args.fids, note=args.note, extends=args.extends,
              overwrite=args.overwrite)
+        return 0
+
+    if args.stage == "add":
+        add(args.name, args.fids)
         return 0
 
     # Before importing anything that reads a parameter. config applies the

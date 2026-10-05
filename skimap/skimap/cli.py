@@ -61,6 +61,9 @@ def main() -> None:
                    help="per-route corridors (default data/routing_output/corridors)")
     p.add_argument("--out", type=Path,
                    help="where the per-class rasters go (default data/colored_corridors)")
+    p.add_argument("--stacked", action="store_true",
+                   help="merge each class on its own, overlaps drawn in both "
+                        "(the output before config.OVERLAP)")
 
     p = sub.add_parser("alignment", help="check the surface is georeferenced where its data is")
     p.add_argument("--tile", action="append", dest="tiles", help="limit to these tiles")
@@ -69,7 +72,20 @@ def main() -> None:
     p = sub.add_parser("mosaic", help="merge tiles into the national surface")
     p.add_argument("--cog", action="store_true", help="also write a COG")
 
+    p = sub.add_parser("crux", help="how many Cruxes each grouping setting leaves, "
+                                    "over a folder of example routes")
+    p.add_argument("--routes", type=Path,
+                   default=Path("data/crux_identifier/trips"),
+                   help="folder of GPX/GeoJSON routes (default the example trips)")
+    p.add_argument("--detail", help="also list this route's markers per setting")
+
     args = parser.parse_args()
+
+    if args.stage == "crux":
+        from skimap import crux_sweep
+
+        crux_sweep.sweep(args.routes, detail=args.detail)
+        return
 
     if args.stage == "grid":
         from skimap import config, grid
@@ -139,7 +155,7 @@ def main() -> None:
     if args.stage == "exposure":
         from skimap import exposure
 
-        exposure.run(args.routes, args.corridors, args.out)
+        exposure.run(args.routes, args.corridors, args.out, stacked=args.stacked)
         return
 
     if args.stage == "alignment":

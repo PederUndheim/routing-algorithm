@@ -42,7 +42,7 @@ from typing import Any, Optional
 from skimap import config
 from skimap.corridor_review import models as models_module
 from skimap.corridor_review import render, sources
-from skimap.corridor_review.store import LADDER, Store, shift_colour
+from skimap.corridor_review.store import LADDER, Store
 
 STATIC = Path(__file__).resolve().parent / "static"
 
@@ -95,10 +95,33 @@ class Review:
         self.tours = sources.tour_order()
         self.index = {tour["fid"]: i for i, tour in enumerate(self.tours)}
 
-        for model in self.config.models:
-            print(f"  {model.name:14s} {len(self.rows[model.name]):4d} routes, "
-                  f"{len(self.corridors[model.name]):4d} corridors")
-        print(f"  {len(self.tours)} tours, {len(self.store.verdicts)} already reviewed")
+        # Which tours a non-main group can actually show. A group built for a
+        # handful of tours has nothing to say about the rest, and the page
+        # greys its switch rather than offering three empty maps - so the
+        # answer has to be known per tour, not per group.
+        self.group_fids = {
+            group: {fid for model in members
+                    for fid in set(self.rows[model.name]) | set(self.corridors[model.name])}
+            for group, _, members in self.config.groups()
+            if group != models_module.MAIN_GROUP
+        }
+
+        for group, label, members in self.config.groups():
+            if group != models_module.MAIN_GROUP:
+                print(f"  group {group!r} ({label}) - "
+                      f"{len(self.group_fids[group])} tours")
+            for model in members:
+                print(f"  {model.name:16s} {len(self.rows[model.name]):4d} routes, "
+                      f"{len(self.corridors[model.name]):4d} corridors")
+        print(f"  {len(self.tours)} tours, {self._reviewed()} already reviewed")
+        orphaned = len(self.store.verdicts) - self._reviewed()
+        if orphaned:
+            print(f"  ({orphaned} verdicts on tours no longer in tours.gpkg, "
+                  f"kept in review.json but not counted)")
+
+    def _reviewed(self) -> int:
+        """Verdicts on tours that still exist. See Store.current."""
+        return len(self.store.current(self.index))
 
     # --- payloads --------------------------------------------------------
 
@@ -106,15 +129,23 @@ class Review:
         return {
             "round": self.store.round,
             "note": self.config.note,
-            "models": [{"name": m.name, "label": m.label} for m in self.config.models],
+            "models": [{"name": m.name, "label": m.label, "group": m.group}
+                       for m in self.config.models],
+            # The page builds one bench of panels per group and swaps between
+            # them, so it needs them grouped rather than flat - and it must
+            # not have to guess which one to open on. main is first.
+            "groups": [{"name": group, "label": label,
+                        "models": [{"name": m.name, "label": m.label} for m in members],
+                        "tours": len(self.group_fids.get(group, self.index))}
+                       for group, label, members in self.config.groups()],
             "classes": [{"from": lower, "colour": colour}
                         for lower, colour in config.EXPOSURE_CLASSES],
             "ladder": list(LADDER),
             "total": len(self.tours),
-            "reviewed": len(self.store.verdicts),
-            "needs_fix": len(self.store.needs_fix),
-            "by_model": self.store.counts_by_model(),
-            "by_colour": self.store.counts_by_colour(),
+            "reviewed": self._reviewed(),
+            "needs_fix": len(self.store.fix_list(self.index)),
+            "by_model": self.store.counts_by_model(self.index),
+            "by_colour": self.store.counts_by_colour(self.index),
         }
 
     def tour_list(self) -> list[dict[str, Any]]:
@@ -128,6 +159,10 @@ class Review:
                 "colour": verdict["colour"] if verdict else None,
                 "shift": verdict["shift"] if verdict else 0,
                 "needs_fix": self.store.fix(tour["fid"]) is not None,
+                # The non-main groups with something to show for this tour.
+                # Drives both the greyed switch and the list's own filter.
+                "groups": sorted(g for g, fids in self.group_fids.items()
+                                 if tour["fid"] in fids),
             })
         return out
 
@@ -147,6 +182,7 @@ class Review:
             panels.append({
                 "model": model.name,
                 "label": model.label,
+                "group": model.group,
                 "colour": colour,
                 "has_corridor": corridor is not None,
                 "png": f"/corridor/{model.name}/{fid}.png" if corridor else None,
@@ -167,23 +203,9 @@ class Review:
             "next": (self.tours[position + 1]["fid"]
                      if position + 1 < len(self.tours) else None),
             "panels": panels,
+            "groups": sorted({panel["group"] for panel in panels}),
             "verdict": verdict,
             "needs_fix": self.store.fix(fid),
-            "preview": self._shift_preview(panels, verdict),
-        }
-
-    def _shift_preview(self, panels: list[dict[str, Any]],
-                       verdict: Optional[dict[str, Any]]) -> dict[str, Any]:
-        """What each shift would make the colour, per model.
-
-        Computed here rather than in the browser so the ladder lives in one
-        place - config.EXPOSURE_CLASSES - and the page never has to know the
-        order the classes come in.
-        """
-        return {
-            panel["model"]: {str(s): shift_colour(panel["colour"], s)
-                             for s in (-1, 0, 1)}
-            for panel in panels
         }
 
     def next_unreviewed(self, after: int) -> Optional[int]:
@@ -219,7 +241,7 @@ class Review:
         return {
             "verdict": verdict,
             "next": self.next_unreviewed(fid),
-            "reviewed": len(self.store.verdicts),
+            "reviewed": self._reviewed(),
         }
 
     def flag(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -235,13 +257,13 @@ class Review:
         with self.lock:
             entry = self.store.set_fix(fid, bool(body.get("on", True)),
                                        str(body.get("note", "")))
-        return {"needs_fix": entry, "count": len(self.store.needs_fix)}
+        return {"needs_fix": entry, "count": len(self.store.fix_list(self.index))}
 
     def clear(self, body: dict[str, Any]) -> dict[str, Any]:
         fid = int(body["fid"])
         with self.lock:
             dropped = self.store.clear(fid)
-        return {"cleared": dropped, "reviewed": len(self.store.verdicts)}
+        return {"cleared": dropped, "reviewed": self._reviewed()}
 
     def _tracks(self, fid: int) -> Optional[tuple[Path, dict]]:
         if fid not in self.index:

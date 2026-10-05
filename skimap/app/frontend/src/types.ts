@@ -30,32 +30,47 @@ export type Corridor = {
 
 /** A Danger class, as POST /crux names it. Ranked in this order; see
  *  CONTEXT.md for what each means. */
-export type DangerClass = "probable_release_area" | "fall_hazard" | "runout_area";
+export type DangerClass = "steep_slope" | "runout_area";
 
 /** What one stretch of a Route turned out to be. `no_data` is never safe. */
 export type SegmentClass = DangerClass | "none" | "no_data";
 
+/** What a Steep slope area turns out to be, over the whole area. Not classes
+ *  of their own: they mark the area's Crux and turn it red. A Runout area
+ *  carries none of them, and an area can be both at once. */
+export type Hazards = {
+  probable_release_area?: boolean;
+  fall_hazard?: boolean;
+  /** Steepest ground in the area, for a Steep slope. */
+  max_slope_deg?: number;
+  /** Highest release probability in the area, when it is a release area. */
+  max_pra_percent?: number;
+};
+
 /** A run of samples of one class, drawn between the midpoints on either
  *  side. Distances are metres from the Route's start. */
-export type CruxSegment = {
+export type CruxSegment = Hazards & {
   class: SegmentClass;
   start_m: number;
   end_m: number;
   line: LineString;
 };
 
-/** Where a Danger zone begins, in the Route's direction of travel. */
-export type Crux = {
+/** Where an area begins that outranks the one before it, in the Route's
+ *  direction of travel - so arriving at steep ground always places one, and
+ *  so does the first runout off safe ground. Runout below a slope you have
+ *  just crossed does not: the line turns orange with no marker of its own.
+ *
+ *  Its fields are the ones its segment carries, so a marker and the stretch
+ *  it stands on always say and show the same thing. */
+export type Crux = Hazards & {
   number: number;
   class: DangerClass;
   position: LatLng;
+  /** Where the area starts, from the start of the Route. */
   distance_m: number;
-  /** The whole Danger zone this Crux starts. */
+  /** The whole area, runout merged into it included. */
   length_m: number;
-  /** Highest release probability over the zone, for a Probable release area. */
-  max_pra_percent?: number;
-  /** Steepest ground over the zone, for a Fall hazard. */
-  max_slope_deg?: number;
 };
 
 /** What POST /crux answers with. */
