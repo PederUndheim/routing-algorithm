@@ -73,6 +73,7 @@ app() {
   # containerapp extension has --environment-mode; Cloud Shell's built-in
   # az does not, and does not report the mode either. An Express one left
   # over from before is replaced.
+  echo "== environment"
   az extension add --name containerapp --upgrade -y -o none
   is_express() {
     az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o json 2>/dev/null | grep -qi '"express"'
@@ -92,7 +93,14 @@ app() {
     echo "$ENVIRONMENT was created as Express again, and Express cannot mount the share." >&2
     exit 1
   fi
+  az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o json | grep -i '"[a-z]*mode"' || true
 
+  # The extension is preview-only and takes over every containerapp command,
+  # and its storage and app commands fail where the built-in ones work. It
+  # was only needed for the mode, so it goes again.
+  az extension remove --name containerapp
+
+  echo "== mounting the share in the environment"
   az containerapp env storage set -n "$ENVIRONMENT" -g "$RG" \
     --storage-name "$SHARE" --access-mode ReadOnly \
     --azure-file-account-name "$STORAGE" --azure-file-account-key "$(storage_key)" \
@@ -151,6 +159,7 @@ properties:
         storageType: AzureFile
         storageName: $SHARE
 EOF
+  echo "== the app"
   if az containerapp show -n "$APP" -g "$RG" -o none 2>/dev/null; then
     az containerapp update -n "$APP" -g "$RG" --yaml "$spec" -o none
   else
@@ -160,6 +169,7 @@ EOF
   # GitHub Actions signs in as this identity with a short-lived OIDC token,
   # so there is no password to store. It may only touch rg-skimap, and only
   # from a push to main.
+  echo "== the identity GitHub deploys with"
   az identity create -n "$IDENTITY" -g "$RG" -l "$LOCATION" -o none
   if ! az identity federated-credential show --identity-name "$IDENTITY" -g "$RG" -n github-main -o none 2>/dev/null; then
     az identity federated-credential create --identity-name "$IDENTITY" -g "$RG" -n github-main \
