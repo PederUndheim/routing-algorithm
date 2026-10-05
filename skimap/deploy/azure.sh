@@ -67,21 +67,28 @@ app() {
   # workspace-<rg><random>.
   az monitor log-analytics workspace create -g "$RG" -n "$LOGS" -l "$LOCATION" -o none
 
-  # The mode is spelled out because it is not always WorkloadProfiles, despite
-  # the docs: on Azure for Students, a plain env create came back as Express,
-  # and Express cannot mount a file share. An Express one left from that is
-  # replaced here.
-  if az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o json 2>/dev/null \
-      | grep -qi '"express"'; then
+  # Workload profiles are asked for explicitly. A plain env create on Azure for
+  # Students came back as an Express environment, which cannot mount a file
+  # share, and Express has no workload profiles - so asking for them rules it
+  # out. (--environment-mode says so directly, but Cloud Shell's az does not
+  # have it yet.) An Express one left over from before is replaced.
+  is_express() {
+    az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o json 2>/dev/null | grep -qi '"express"'
+  }
+  if is_express; then
     echo "Replacing $ENVIRONMENT: it is an Express environment, which cannot mount the share."
     az containerapp env delete -n "$ENVIRONMENT" -g "$RG" --yes
   fi
   if ! az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o none 2>/dev/null; then
     az containerapp env create -n "$ENVIRONMENT" -g "$RG" -l "$LOCATION" \
-      --environment-mode WorkloadProfiles \
+      --enable-workload-profiles true \
       --logs-workspace-id "$(az monitor log-analytics workspace show -g "$RG" -n "$LOGS" --query customerId -o tsv)" \
       --logs-workspace-key "$(az monitor log-analytics workspace get-shared-keys -g "$RG" -n "$LOGS" --query primarySharedKey -o tsv)" \
       -o none
+  fi
+  if is_express; then
+    echo "$ENVIRONMENT was created as Express again, and Express cannot mount the share." >&2
+    exit 1
   fi
 
   az containerapp env storage set -n "$ENVIRONMENT" -g "$RG" \
