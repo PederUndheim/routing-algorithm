@@ -111,6 +111,32 @@ missing, copy it from `node_modules/@esbuild/win32-x64/esbuild.exe` after
 installing. Moving the repo somewhere outside `C:\Users\` removes the whole
 problem, if that is ever convenient.
 
+## Deployed
+
+The front end is on GitHub Pages at
+<https://pederundheim.github.io/routing-algorithm/>, and the backend is a
+Container App on Azure (Azure for Students, `rg-skimap`). Both deploy from a
+push to `main`:
+
+- `.github/workflows/deploy-pages.yml` tests and builds the front end. The API
+  address comes from `frontend/.env.production`.
+- `.github/workflows/deploy-skimap-api.yml` builds `skimap/Dockerfile`: GRASS
+  8.5 plus this code, smoke-tested to check that GRASS starts. The workflow
+  pushes the image to `ghcr.io/pederundheim/skimap-api` and points the
+  Container App at it.
+
+The rasters are not in the image. `cost_surface.tif`, `pra.tif`, `runout.tif`
+and `slope.tif` (~20 GB) are on the Azure Files share `skimap-data`, laid out
+like `data/` and mounted read-only over `data/input` and `data/cost_surface`.
+A rebuilt layer is uploaded there with azcopy, and the app restarted. The
+Azure resources themselves come from `skimap/deploy/azure.sh`, run in Cloud
+Shell.
+
+The deployed backend runs one replica. Routes run one at a time behind a
+lock, and each corridor PNG is on the disk of the replica that drew it, so a
+second replica would break both. It scales to zero when idle, so the first
+request after a quiet spell waits for a cold start.
+
 ## What it does
 
 **Routing.** Pick the two points, drag either marker to nudge it, press

@@ -62,7 +62,7 @@ jobs:
 
   deploy:
     needs: build
-    # Off until the Azure side exists - see skimap/deploy/README.md.
+    # Off until the Azure side exists - see skimap/deploy/azure.sh.
     if: vars.AZURE_RESOURCE_GROUP != ''
     runs-on: ubuntu-latest
     steps:
