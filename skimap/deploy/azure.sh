@@ -66,8 +66,19 @@ app() {
   # Named explicitly. Left to itself, env create makes a workspace called
   # workspace-<rg><random>.
   az monitor log-analytics workspace create -g "$RG" -n "$LOGS" -l "$LOCATION" -o none
+
+  # The mode is spelled out because it is not always WorkloadProfiles, despite
+  # the docs: on Azure for Students, a plain env create came back as Express,
+  # and Express cannot mount a file share. An Express one left from that is
+  # replaced here.
+  if az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o json 2>/dev/null \
+      | grep -qi '"express"'; then
+    echo "Replacing $ENVIRONMENT: it is an Express environment, which cannot mount the share."
+    az containerapp env delete -n "$ENVIRONMENT" -g "$RG" --yes
+  fi
   if ! az containerapp env show -n "$ENVIRONMENT" -g "$RG" -o none 2>/dev/null; then
     az containerapp env create -n "$ENVIRONMENT" -g "$RG" -l "$LOCATION" \
+      --environment-mode WorkloadProfiles \
       --logs-workspace-id "$(az monitor log-analytics workspace show -g "$RG" -n "$LOGS" --query customerId -o tsv)" \
       --logs-workspace-key "$(az monitor log-analytics workspace get-shared-keys -g "$RG" -n "$LOGS" --query primarySharedKey -o tsv)" \
       -o none
@@ -90,6 +101,7 @@ app() {
 location: $LOCATION
 properties:
   managedEnvironmentId: $(az containerapp env show -n "$ENVIRONMENT" -g "$RG" --query id -o tsv)
+  workloadProfileName: Consumption
   configuration:
     activeRevisionsMode: Single
     ingress:
