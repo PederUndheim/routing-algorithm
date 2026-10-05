@@ -1,0 +1,80 @@
+name: Deploy skimap API
+
+# Builds the backend image, checks that it can start GRASS, pushes it to GHCR
+# and points the Azure Container App at it. The rasters are not in the image -
+# they are on the Azure Files share the app mounts - so only code changes
+# trigger this.
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "skimap/skimap/**"
+      - "skimap/app/backend/**"
+      - "skimap/data/styles_arcgis/**"
+      - "skimap/Dockerfile"
+      - "skimap/.dockerignore"
+      - ".github/workflows/deploy-skimap-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+# Never two deploys racing for the one replica.
+concurrency:
+  group: skimap-api
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/pederundheim/skimap-api
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build
+        run: docker build -t "$IMAGE:${{ github.sha }}" -t "$IMAGE:latest" skimap
+
+      # Everything short of routing itself, which needs the rasters: the
+      # imports resolve, the corridor style parses, and GRASS opens a project.
+      - name: Smoke test
+        run: |
+          docker run --rm "$IMAGE:${{ github.sha }}" python3 -c "
+          from app.backend import corridor, server
+          corridor._style()
+          from skimap import routing
+          routing.open_project()
+          print('imports, style and GRASS: ok')
+          "
+
+      - name: Push
+        run: docker push --all-tags "$IMAGE"
+
+  deploy:
+    needs: build
+    # Off until the Azure side exists - see skimap/deploy/README.md.
+    if: vars.AZURE_RESOURCE_GROUP != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Point the Container App at the new image
+        run: |
+          az containerapp update \
+            --name skimap-api \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --image "$IMAGE:${{ github.sha }}"

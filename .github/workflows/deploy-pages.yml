@@ -1,8 +1,11 @@
-name: Deploy frontend to GitHub Pages
+name: Deploy skimap frontend to GitHub Pages
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - "skimap/app/frontend/**"
+      - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -19,26 +22,31 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: skimap/app/frontend
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/setup-node@v5
         with:
-          node-version: 20.19.0
+          node-version: 22
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: skimap/app/frontend/package-lock.json
 
       - name: Install
         run: npm ci
 
-      - name: Build
-        run: npm run build
+      - name: Test
+        run: npm test
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      # Pages serves the site under the repo name. The base is passed here
+      # rather than set in vite.config.ts, so the dev server still serves
+      # from the root.
+      - name: Build
+        run: npm run build -- --base=/routing-algorithm/
+
+      - uses: actions/upload-pages-artifact@v3
         with:
-          path: frontend/dist
+          path: skimap/app/frontend/dist
 
   deploy:
     runs-on: ubuntu-latest

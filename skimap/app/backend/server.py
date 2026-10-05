@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -44,6 +45,11 @@ MAX_CRUX_BODY_BYTES = 4 * 1024 * 1024
 # Anchored and hex-only, so nothing that reaches the filesystem can contain a
 # separator or a "..". The whole path is matched, not searched.
 CORRIDOR_PATH = re.compile(r"/corridor/(?P<id>[0-9a-f]{12})\.png")
+
+# Vite serves the page from :5173 and this answers on :8000, so every request
+# is cross-origin. Locally anything goes; the deployed copy sets this to the
+# GitHub Pages origin, so only the published front end can call it.
+ALLOWED_ORIGIN = os.environ.get("SKIMAP_ALLOWED_ORIGIN", "*")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -173,10 +179,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _cors(self) -> None:
-        # Vite serves the page from :5173 and this answers on :8000, so every
-        # request is cross-origin. Permissive is fine: it only ever binds
-        # localhost, and there is nothing here to protect.
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 

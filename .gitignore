@@ -123,3 +123,7 @@ skimap/data/test/lab/*
 skimap/data/review/*
 !skimap/data/review/config.json
 !skimap/data/review/review.json
+
+# The ArcGIS styles the app colours corridors with. Hand-made, a few KB each,
+# and the deployed backend is built from a checkout, so it needs them in git.
+!skimap/data/styles_arcgis/
