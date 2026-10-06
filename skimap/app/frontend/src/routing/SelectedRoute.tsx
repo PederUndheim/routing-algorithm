@@ -10,7 +10,6 @@ import { km } from "../format";
 import type { Route } from "../routes/routeList";
 import type { Crux, CruxResult } from "../types";
 import { COLORS, CRUX_COLORS, dangerColor } from "../theme";
-import { InfoButton } from "./RouteInfo";
 
 type CorridorControlsProps = {
   showCorridor: boolean;
@@ -26,34 +25,22 @@ const CorridorControls = ({
   onCorridorOpacityChange,
 }: CorridorControlsProps) => (
   <Box sx={{ mt: 1.5 }}>
-    <Box sx={{ display: "flex", alignItems: "center" }}>
-      <FormControlLabel
-        control={
-          <Switch
-            checked={showCorridor}
-            onChange={(e) => onShowCorridorChange(e.target.checked)}
-            sx={{
-              "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
-              "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
-                backgroundColor: COLORS.teal,
-              },
-            }}
-          />
-        }
-        label="Show corridor"
-        sx={{ color: "white", mr: 0.5, "& .MuiFormControlLabel-label": { fontSize: 14 } }}
-      />
-
-      <InfoButton label="What the corridor is">
-        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.85)" }}>
-          The corridor is the ground you could cross instead without the trip
-          costing much more - navy along the route, fading out at the edge of
-          the band, in the blue ArcGIS draws it. At 100% that is exactly the
-          ArcGIS rendering. No parameters otherwise: the route is the cheapest
-          line through the cost surface as it was last built.
-        </Typography>
-      </InfoButton>
-    </Box>
+    <FormControlLabel
+      control={
+        <Switch
+          checked={showCorridor}
+          onChange={(e) => onShowCorridorChange(e.target.checked)}
+          sx={{
+            "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
+            "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+              backgroundColor: COLORS.teal,
+            },
+          }}
+        />
+      }
+      label="Show corridor"
+      sx={{ color: "white", "& .MuiFormControlLabel-label": { fontSize: 14 } }}
+    />
 
     {/* Kept in the layout but dimmed when the corridor is off, so the
         panel does not jump as you toggle it - same as the map overlays. */}

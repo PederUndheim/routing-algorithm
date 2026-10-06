@@ -72,22 +72,24 @@ const PointRow = ({ title, what, point, picking, onPick, onClear }: PointRowProp
     <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
       <Button
         variant="outlined"
+        size="small"
         fullWidth
         onClick={onPick}
-        sx={{ ...outlinedSx, flex: 4, fontSize: { xs: 12, sm: 14 } }}
+        sx={{ ...outlinedSx, flex: 4, fontSize: 13 }}
       >
         {pickLabel(picking, Boolean(point), what)}
       </Button>
 
       <Button
         variant="outlined"
+        size="small"
         disabled={!point}
         onClick={onClear}
         sx={{
           ...outlinedSx,
           flex: 1,
           borderColor: "rgba(255,255,255,0.35)",
-          fontSize: { xs: 12, sm: 14 },
+          fontSize: 13,
         }}
       >
         Clear
@@ -194,6 +196,10 @@ const RoutePanel = ({
           ...scrollbarSx,
         }}
       >
+        <Typography sx={{ color: "white", fontWeight: 600, fontSize: 16, mb: 1 }}>
+          Generate route
+        </Typography>
+
         <PointRow
           title="Choose start point"
           what="start point"
@@ -222,12 +228,12 @@ const RoutePanel = ({
         <Button
           variant="contained"
           fullWidth
-          size="large"
+          size="small"
           disabled={!canRoute}
           onClick={onGenerate}
           sx={{
             backgroundColor: COLORS.orange,
-            fontSize: { xs: 14, sm: 16 },
+            fontSize: 13,
             "&:hover": { backgroundColor: COLORS.orange, transform: "scale(1.01)" },
             "&.Mui-disabled": {
               backgroundColor: "rgba(255,255,255,0.12)",

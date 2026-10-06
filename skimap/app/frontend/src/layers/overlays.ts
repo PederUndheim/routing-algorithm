@@ -10,6 +10,7 @@ export type OverlayDef = {
   label: string;
   tileUrl: string;
   opacityDefault: number;
+  onByDefault: boolean;
   thumbUrl: string;
 };
 
@@ -20,7 +21,8 @@ export const OVERLAYS: OverlayDef[] = [
     id: "slope",
     label: "Slope",
     tileUrl: `${NVE}/Bratthet_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
-    opacityDefault: 0.55,
+    opacityDefault: 0.35,
+    onByDefault: true,
     thumbUrl: slopeThumb,
   },
   {
@@ -28,13 +30,14 @@ export const OVERLAYS: OverlayDef[] = [
     label: "Slope and runout",
     tileUrl: `${NVE}/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
     opacityDefault: 0.38,
+    onByDefault: false,
     thumbUrl: runoutThumb,
   },
 ];
 
 /** Both derived from OVERLAYS, so adding a layer above is the only edit. */
-export const OVERLAYS_OFF = OVERLAYS.reduce(
-  (acc, o) => ({ ...acc, [o.id]: false }),
+export const DEFAULT_OVERLAYS = OVERLAYS.reduce(
+  (acc, o) => ({ ...acc, [o.id]: o.onByDefault }),
   {} as Record<OverlayId, boolean>
 );
 

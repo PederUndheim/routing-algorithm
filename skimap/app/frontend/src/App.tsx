@@ -10,7 +10,7 @@ import Typography from "@mui/material/Typography";
 import { checkHealth, requestCrux, requestRoute } from "./api";
 import { DEFAULT_BASEMAP } from "./layers/basemaps";
 import type { BasemapId } from "./layers/basemaps";
-import { DEFAULT_OPACITY, OVERLAYS_OFF } from "./layers/overlays";
+import { DEFAULT_OPACITY, DEFAULT_OVERLAYS } from "./layers/overlays";
 import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
 import { createRouteList } from "./routes/routeList";
@@ -20,7 +20,7 @@ import type { LatLng, MapFocus, PickMode } from "./types";
 
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP);
-  const [overlays, setOverlays] = useState<Record<OverlayId, boolean>>(OVERLAYS_OFF);
+  const [overlays, setOverlays] = useState<Record<OverlayId, boolean>>(DEFAULT_OVERLAYS);
   const [overlayOpacity, setOverlayOpacity] =
     useState<Record<OverlayId, number>>(DEFAULT_OPACITY);
 
