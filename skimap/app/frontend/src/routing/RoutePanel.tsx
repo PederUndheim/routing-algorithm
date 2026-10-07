@@ -1,5 +1,6 @@
+import { useState } from "react";
+
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Divider from "@mui/material/Divider";
 import Drawer from "@mui/material/Drawer";
 import IconButton from "@mui/material/IconButton";
@@ -9,13 +10,15 @@ import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
 import type { Route } from "../routes/routeList";
-import type { Crux, LatLng, PickMode } from "../types";
+import type { AddMode, CruxEntry, Factor, LatLng, PickMode } from "../types";
 import { COLORS, PANEL_WIDTH } from "../theme";
 
+import { DrawPane, GeneratePane, ModePicker, UploadPane } from "./AddRoute";
+import { SectionHeading } from "./CollapseToggle";
 import ResizeHandle from "./ResizeHandle";
-import RouteListSection from "./RouteListSection";
-import SelectedRoute from "./SelectedRoute";
-import { outlinedSx, scrollbarSx } from "./styles";
+import RouteListSection, { IdentifyButton } from "./RouteListSection";
+import SelectedRoute, { CorridorControls } from "./SelectedRoute";
+import { scrollbarSx } from "./styles";
 
 type RoutePanelProps = {
   open: boolean;
@@ -23,6 +26,8 @@ type RoutePanelProps = {
   panelWidth: number;
   onPanelWidthChange: (width: number) => void;
   onResetPanelWidth: () => void;
+  addMode: AddMode;
+  onAddModeChange: (mode: AddMode) => void;
   startPoint: LatLng | null;
   endPoint: LatLng | null;
   pickMode: PickMode;
@@ -32,84 +37,35 @@ type RoutePanelProps = {
   onGenerate: () => void;
   isRouting: boolean;
   backendReady: boolean | null;
+  isDrawing: boolean;
+  onStartDrawing: () => void;
+  draft: readonly LatLng[];
+  editingName: string | null;
+  onUndoDraft: () => void;
+  onClearDraft: () => void;
+  onFinishDraft: () => void;
+  onCancelDraw: () => void;
   routes: readonly Route[];
   selectedId: string | null;
   onSelectRoute: (id: string) => void;
   onToggleRoute: (id: string) => void;
   onDeleteRoute: (id: string) => void;
+  onEditRoute: (id: string) => void;
   onUpload: (files: File[]) => void;
   isIdentifying: boolean;
   onIdentify: () => void;
-  onFocusCrux: (routeId: string, crux: Crux) => void;
+  activeCruxId: string | null;
+  onActivateCrux: (routeId: string, crux: CruxEntry) => void;
+  onAnswer: (routeId: string, cruxId: string, factor: Factor, value: boolean | undefined) => void;
+  onRestoreCrux: (routeId: string, cruxId: string) => void;
+  onRemoveCrux: (routeId: string, cruxId: string) => void;
+  placingCrux: boolean;
+  onPlaceCrux: () => void;
   showCorridor: boolean;
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
   onCorridorOpacityChange: (opacity: number) => void;
 };
-
-const formatCoord = (p: LatLng) => p.lat.toFixed(4) + "°N, " + p.lng.toFixed(4) + "°E";
-
-const pickLabel = (picking: boolean, chosen: boolean, what: string) => {
-  if (picking) return "Click on map...";
-  return (chosen ? "Re-pick " : "Pick ") + what;
-};
-
-type PointRowProps = {
-  title: string;
-  what: string;
-  point: LatLng | null;
-  picking: boolean;
-  onPick: () => void;
-  onClear: () => void;
-};
-
-const PointRow = ({ title, what, point, picking, onPick, onClear }: PointRowProps) => (
-  <Box sx={{ mb: 2 }}>
-    <Typography sx={{ color: "white", fontSize: { xs: 12, sm: 14 }, mb: 1 }}>
-      {title}
-    </Typography>
-
-    <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
-      <Button
-        variant="outlined"
-        size="small"
-        fullWidth
-        onClick={onPick}
-        sx={{ ...outlinedSx, flex: 4, fontSize: 13 }}
-      >
-        {pickLabel(picking, Boolean(point), what)}
-      </Button>
-
-      <Button
-        variant="outlined"
-        size="small"
-        disabled={!point}
-        onClick={onClear}
-        sx={{
-          ...outlinedSx,
-          flex: 1,
-          borderColor: "rgba(255,255,255,0.35)",
-          fontSize: 13,
-        }}
-      >
-        Clear
-      </Button>
-    </Box>
-
-    {/* Fixed height either way, so the panel does not jump as points land. */}
-    <Typography
-      sx={{
-        mt: 0.75,
-        minHeight: 18,
-        fontSize: 12,
-        color: point ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.4)",
-        fontVariantNumeric: "tabular-nums",
-      }}
-    >
-      {point ? formatCoord(point) : "Not set - drag the marker to adjust it later."}
-    </Typography>
-  </Box>
-);
 
 const RoutePanel = ({
   open,
@@ -117,6 +73,8 @@ const RoutePanel = ({
   panelWidth,
   onPanelWidthChange,
   onResetPanelWidth,
+  addMode,
+  onAddModeChange,
   startPoint,
   endPoint,
   pickMode,
@@ -126,15 +84,30 @@ const RoutePanel = ({
   onGenerate,
   isRouting,
   backendReady,
+  isDrawing,
+  onStartDrawing,
+  draft,
+  editingName,
+  onUndoDraft,
+  onClearDraft,
+  onFinishDraft,
+  onCancelDraw,
   routes,
   selectedId,
   onSelectRoute,
   onToggleRoute,
   onDeleteRoute,
+  onEditRoute,
   onUpload,
   isIdentifying,
   onIdentify,
-  onFocusCrux,
+  activeCruxId,
+  onActivateCrux,
+  onAnswer,
+  onRestoreCrux,
+  onRemoveCrux,
+  placingCrux,
+  onPlaceCrux,
   showCorridor,
   onShowCorridorChange,
   corridorOpacity,
@@ -146,8 +119,11 @@ const RoutePanel = ({
   // and takes its usual share of the screen instead.
   const width = isMobile ? Math.min(window.innerWidth * 0.8, PANEL_WIDTH) : panelWidth;
 
-  const canRoute = Boolean(startPoint) && Boolean(endPoint) && !pickMode && !isRouting;
   const selected = routes.find((r) => r.id === selectedId) ?? null;
+  // Folding a section only hides it here: a line being drawn or a point
+  // being picked carries on on the map.
+  const [addOpen, setAddOpen] = useState(true);
+  const [routesOpen, setRoutesOpen] = useState(true);
 
   return (
     <Drawer
@@ -177,7 +153,7 @@ const RoutePanel = ({
           variant={isMobile ? "h6" : "h5"}
           sx={{ flex: 1, color: "white", fontWeight: 540 }}
         >
-          Routing
+          Crux identifier
         </Typography>
         <IconButton onClick={onClose}>
           <CloseIcon sx={{ color: "white" }} />
@@ -196,53 +172,52 @@ const RoutePanel = ({
           ...scrollbarSx,
         }}
       >
-        <Typography sx={{ color: "white", fontWeight: 600, fontSize: 16, mb: 1 }}>
-          Generate route
+        <Typography sx={{ fontSize: 13, color: "rgba(255,255,255,0.85)", mb: 2 }}>
+          This application identifies the cruxes of a ski tour. Add a route by either automatic
+          generation, drawing or uploading of GPX/GeoJSON.
         </Typography>
 
-        <PointRow
-          title="Choose start point"
-          what="start point"
-          point={startPoint}
-          picking={pickMode === "start"}
-          onPick={() => onPickModeChange("start")}
-          onClear={onClearStart}
+        <SectionHeading
+          title="Add a route"
+          open={addOpen}
+          onToggle={() => setAddOpen((prev) => !prev)}
+          what="the ways to add a route"
         />
 
-        <PointRow
-          title="Choose end point"
-          what="end point"
-          point={endPoint}
-          picking={pickMode === "end"}
-          onPick={() => onPickModeChange("end")}
-          onClear={onClearEnd}
-        />
+        {addOpen && (
+          <>
+            <ModePicker mode={addMode} onChange={onAddModeChange} />
 
-        {backendReady === false && (
-          <Typography sx={{ fontSize: 12, color: COLORS.orange, mb: 1.5 }}>
-            Backend not reachable on localhost:8000. Start it with
-            {" python-qgis.bat -m app.backend.server"}, then reload.
-          </Typography>
+            <Box sx={{ mt: 1.5 }}>
+              {addMode === "generate" && (
+                <GeneratePane
+                  startPoint={startPoint}
+                  endPoint={endPoint}
+                  pickMode={pickMode}
+                  onPickModeChange={onPickModeChange}
+                  onClearStart={onClearStart}
+                  onClearEnd={onClearEnd}
+                  onGenerate={onGenerate}
+                  isRouting={isRouting}
+                  backendReady={backendReady}
+                />
+              )}
+              {addMode === "draw" && (
+                <DrawPane
+                  isDrawing={isDrawing}
+                  onStart={onStartDrawing}
+                  points={draft}
+                  editingName={editingName}
+                  onUndo={onUndoDraft}
+                  onClear={onClearDraft}
+                  onFinish={onFinishDraft}
+                  onCancel={onCancelDraw}
+                />
+              )}
+              {addMode === "upload" && <UploadPane onUpload={onUpload} />}
+            </Box>
+          </>
         )}
-
-        <Button
-          variant="contained"
-          fullWidth
-          size="small"
-          disabled={!canRoute}
-          onClick={onGenerate}
-          sx={{
-            backgroundColor: COLORS.orange,
-            fontSize: 13,
-            "&:hover": { backgroundColor: COLORS.orange, transform: "scale(1.01)" },
-            "&.Mui-disabled": {
-              backgroundColor: "rgba(255,255,255,0.12)",
-              color: "rgba(255,255,255,0.4)",
-            },
-          }}
-        >
-          {isRouting ? "Routing..." : "Generate route"}
-        </Button>
 
         <Divider sx={{ my: 2, borderColor: "rgba(255,255,255,0.15)" }} />
 
@@ -252,19 +227,42 @@ const RoutePanel = ({
           onSelect={onSelectRoute}
           onToggleVisible={onToggleRoute}
           onDelete={onDeleteRoute}
-          onUpload={onUpload}
-          isIdentifying={isIdentifying}
-          onIdentify={onIdentify}
+          onEdit={onEditRoute}
+          open={routesOpen}
+          onToggle={() => setRoutesOpen((prev) => !prev)}
         />
+
+        {/* Above the button, so the button always closes the route part
+            and the Cruxes it finds come straight under it. */}
+        {selected?.routed && (
+          <Box sx={{ mt: 1.5 }}>
+            <CorridorControls
+              showCorridor={showCorridor}
+              onShowCorridorChange={onShowCorridorChange}
+              corridorOpacity={corridorOpacity}
+              onCorridorOpacityChange={onCorridorOpacityChange}
+            />
+          </Box>
+        )}
+
+        <Box sx={{ mt: selected?.routed ? 1.5 : 2.5 }}>
+          <IdentifyButton
+            disabled={selected === null}
+            isIdentifying={isIdentifying}
+            onIdentify={onIdentify}
+          />
+        </Box>
 
         {selected && (
           <SelectedRoute
             route={selected}
-            onFocusCrux={(crux) => onFocusCrux(selected.id, crux)}
-            showCorridor={showCorridor}
-            onShowCorridorChange={onShowCorridorChange}
-            corridorOpacity={corridorOpacity}
-            onCorridorOpacityChange={onCorridorOpacityChange}
+            activeCruxId={activeCruxId}
+            onActivateCrux={(crux) => onActivateCrux(selected.id, crux)}
+            onAnswer={(cruxId, factor, value) => onAnswer(selected.id, cruxId, factor, value)}
+            onRestoreCrux={(cruxId) => onRestoreCrux(selected.id, cruxId)}
+            onRemoveCrux={(cruxId) => onRemoveCrux(selected.id, cruxId)}
+            placingCrux={placingCrux}
+            onPlaceCrux={onPlaceCrux}
           />
         )}
       </Box>

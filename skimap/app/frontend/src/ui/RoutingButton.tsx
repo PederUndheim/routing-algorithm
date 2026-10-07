@@ -5,13 +5,13 @@ import RouteIcon from "@mui/icons-material/RouteOutlined";
 
 import { COLORS, SHADOW, SHADOW_HOVER } from "../theme";
 
-/** Opens the routing panel. Hidden while the panel itself is open. */
+/** Opens the Crux identifier panel. Hidden while the panel itself is open. */
 const RoutingButton = ({ onClick, hidden }: { onClick: () => void; hidden: boolean }) => {
   if (hidden) return null;
 
   return (
     <Box sx={{ position: "fixed", left: 16, top: "50%", transform: "translateY(-50%)", zIndex: 1300 }}>
-      <Tooltip title="Routing" placement="right">
+      <Tooltip title="Crux identifier" placement="right">
         <Fab
           onClick={onClick}
           sx={{

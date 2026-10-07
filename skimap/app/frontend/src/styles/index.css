@@ -18,3 +18,14 @@ body {
   margin: 0 !important;
   pointer-events: none;
 }
+
+/* Drawing a route: every click on the map is a point, so say so. Two
+   classes, to outrank Leaflet's own grab cursor on the same element. */
+.leaflet-container.drawing {
+  cursor: crosshair;
+}
+
+/* Placing a crux by hand: a cursor that says "add" rather than "draw". */
+.leaflet-container.placing-crux {
+  cursor: copy;
+}

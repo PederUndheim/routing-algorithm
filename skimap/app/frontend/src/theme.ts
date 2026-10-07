@@ -32,6 +32,7 @@ export const CRUX_COLORS = {
  *  Steep ground is red once it turns out to be a release area or a fall
  *  hazard, and dark orange while it is only steep. */
 export const dangerColor = (area: DangerArea): string => {
+  if (area.color) return area.color;
   switch (area.class) {
     case "none":
       return CRUX_COLORS.none;

@@ -7,7 +7,13 @@ import type { DangerClass, Hazards, SegmentClass } from "./types";
 
 /** A Crux or a segment: both carry a class and the same hazard marks, and
  *  everything here reads either. */
-export type DangerArea = Hazards & { class: SegmentClass };
+export type DangerArea = Hazards & {
+  class: SegmentClass;
+  /** A hand-placed Crux's own colour, in place of its class's. */
+  color?: string;
+  /** Judged critical from the user's answers: drawn with a warning. */
+  critical?: boolean;
+};
 
 /** What each Danger class is called on screen - the names CONTEXT.md gives. */
 export const DANGER_CLASS_NAMES: Record<DangerClass, string> = {
@@ -28,6 +34,11 @@ export const dangerName = (area: DangerArea): string => {
   if (area.fall_hazard) return "Fall hazard";
   return "Steep slope";
 };
+
+/** What a Crux is called in the list and its popup: the user's own words
+ *  for one placed by hand, else what the identifier calls its area. */
+export const cruxTitle = (crux: DangerArea & { description?: string }): string =>
+  crux.description || dangerName(crux);
 
 /** The icons a marker carries between its number and its degrees.
  *

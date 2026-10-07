@@ -4,6 +4,8 @@ import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DrawIcon from "@mui/icons-material/Draw";
+import EditIcon from "@mui/icons-material/Edit";
 import RouteIcon from "@mui/icons-material/Route";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -11,8 +13,14 @@ import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
 import type { Route } from "../routes/routeList";
 import { COLORS } from "../theme";
-import RouteInfoButton from "./RouteInfo";
-import { outlinedSx, scrollbarSx } from "./styles";
+import { SectionHeading } from "./CollapseToggle";
+import { primarySx, scrollbarSx } from "./styles";
+
+const SOURCE = {
+  routed: { Icon: RouteIcon, title: "Generated" },
+  drawn: { Icon: DrawIcon, title: "Drawn" },
+  uploaded: { Icon: UploadFileIcon, title: "Uploaded" },
+} as const;
 
 type RouteRowProps = {
   route: Route;
@@ -20,12 +28,13 @@ type RouteRowProps = {
   onSelect: () => void;
   onToggleVisible: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 };
 
-/** One Route: eye, where it came from, its name, delete. Clicking anywhere
- *  else on the row selects it. */
-const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete }: RouteRowProps) => {
-  const SourceIcon = route.source === "routed" ? RouteIcon : UploadFileIcon;
+/** One Route: eye, where it came from, its name, edit for a drawn
+ *  one, delete. Clicking anywhere else on the row selects it. */
+const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit }: RouteRowProps) => {
+  const { Icon: SourceIcon, title: sourceTitle } = SOURCE[route.source];
 
   return (
     <Box
@@ -59,7 +68,7 @@ const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete }: Rout
       </IconButton>
 
       <SourceIcon
-        titleAccess={route.source === "routed" ? "Routed" : "Uploaded"}
+        titleAccess={sourceTitle}
         sx={{ color: "rgba(255,255,255,0.65)", fontSize: 18 }}
       />
 
@@ -77,7 +86,20 @@ const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete }: Rout
         {route.name}
       </Typography>
 
-      <RouteInfoButton route={route} />
+      {/* Only a drawn line has points few enough to drag about. */}
+      {route.source === "drawn" && (
+        <IconButton
+          size="small"
+          aria-label={`Edit ${route.name}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          sx={{ p: 0.25 }}
+        >
+          <EditIcon sx={{ color: "rgba(255,255,255,0.65)", fontSize: 18 }} />
+        </IconButton>
+      )}
 
       <IconButton
         size="small"
@@ -99,9 +121,9 @@ type RouteListSectionProps = {
   onSelect: (id: string) => void;
   onToggleVisible: (id: string) => void;
   onDelete: (id: string) => void;
-  onUpload: (files: File[]) => void;
-  isIdentifying: boolean;
-  onIdentify: () => void;
+  onEdit: (id: string) => void;
+  open: boolean;
+  onToggle: () => void;
 };
 
 const RouteListSection = ({
@@ -110,82 +132,69 @@ const RouteListSection = ({
   onSelect,
   onToggleVisible,
   onDelete,
-  onUpload,
-  isIdentifying,
-  onIdentify,
+  onEdit,
+  open,
+  onToggle,
 }: RouteListSectionProps) => (
   <Box>
-    <Typography sx={{ color: "white", fontWeight: 600, fontSize: 16, mb: 1 }}>
-      Routes
-    </Typography>
+    <SectionHeading title="Routes" open={open} onToggle={onToggle} what="the routes" />
 
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 0.5,
-        maxHeight: 250,
-        overflowY: "auto",
-        p: "1px",
-        ...scrollbarSx,
-      }}
-    >
-      {routes.length === 0 && (
-        <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-          No routes yet. Generate one above, or upload a GPX or GeoJSON - or
-          drop the files on the map.
-        </Typography>
-      )}
-
-      {routes.map((route) => (
-        <RouteRow
-          key={route.id}
-          route={route}
-          selected={route.id === selectedId}
-          onSelect={() => onSelect(route.id)}
-          onToggleVisible={() => onToggleVisible(route.id)}
-          onDelete={() => onDelete(route.id)}
-        />
-      ))}
-    </Box>
-
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1, mt: 1 }}>
-      <Button
-        variant="outlined"
-        component="label"
-        size="small"
-        startIcon={<UploadFileIcon />}
-        sx={{ ...outlinedSx, fontSize: 13 }}
+    {open && (
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 0.5,
+          maxHeight: 250,
+          overflowY: "auto",
+          p: "1px",
+          ...scrollbarSx,
+        }}
       >
-        Upload GPX/GeoJSON
-        <input
-          hidden
-          multiple
-          type="file"
-          accept=".gpx,.geojson,.json,application/gpx+xml,application/geo+json,application/json"
-          onChange={(e) => {
-            const files = Array.from(e.target.files ?? []);
-            // Cleared so picking the same file again still fires a change.
-            e.currentTarget.value = "";
-            if (files.length > 0) onUpload(files);
-          }}
-        />
-      </Button>
+        {routes.length === 0 && (
+          <Typography sx={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+            No routes yet - add one above.
+          </Typography>
+        )}
 
-      {/* Runs only when pressed - never on selecting or uploading - and on
-          the Selected route, so it is off while nothing is selected. */}
-      <Button
-        variant="outlined"
-        size="small"
-        disabled={selectedId === null || isIdentifying}
-        onClick={onIdentify}
-        startIcon={isIdentifying ? <CircularProgress size={14} color="inherit" /> : undefined}
-        sx={{ ...outlinedSx, borderColor: COLORS.orange, fontSize: 13 }}
-      >
-        {isIdentifying ? "Identifying cruxes..." : "Identify cruxes"}
-      </Button>
-    </Box>
+        {routes.map((route) => (
+          <RouteRow
+            key={route.id}
+            route={route}
+            selected={route.id === selectedId}
+            onSelect={() => onSelect(route.id)}
+            onToggleVisible={() => onToggleVisible(route.id)}
+            onDelete={() => onDelete(route.id)}
+            onEdit={() => onEdit(route.id)}
+          />
+        ))}
+      </Box>
+    )}
   </Box>
+);
+
+/** Runs only when pressed - never on selecting or uploading - and on the
+ *  Selected route, so it is off while nothing is selected. */
+export const IdentifyButton = ({
+  disabled,
+  isIdentifying,
+  onIdentify,
+}: {
+  disabled: boolean;
+  isIdentifying: boolean;
+  onIdentify: () => void;
+}) => (
+  <Button
+    variant="contained"
+    fullWidth
+    size="small"
+    disabled={disabled || isIdentifying}
+    onClick={onIdentify}
+    startIcon={isIdentifying ? <CircularProgress size={14} color="inherit" /> : undefined}
+    sx={primarySx}
+  >
+    {isIdentifying ? "Identifying cruxes..." : "Identify cruxes"}
+  </Button>
 );
 
 export default RouteListSection;

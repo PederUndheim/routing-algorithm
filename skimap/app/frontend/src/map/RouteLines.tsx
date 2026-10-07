@@ -3,7 +3,7 @@ import type { LatLngTuple, PathOptions } from "leaflet";
 import type { LineString } from "geojson";
 
 import type { Route } from "../routes/routeList";
-import type { CruxSegment, PickMode } from "../types";
+import type { CruxSegment } from "../types";
 import { COLORS, CRUX_COLORS, dangerColor } from "../theme";
 
 // Lines are immutable once in the list, so each is converted once. A Route
@@ -34,7 +34,9 @@ const segmentStyle = (segment: CruxSegment): PathOptions =>
 type RouteLinesProps = {
   routes: readonly Route[];
   selectedId: string | null;
-  pickMode: PickMode;
+  /** Map clicks are taken - a point is being picked or a line drawn - so a
+   *  click on a Route is not a selection. */
+  clickTaken: boolean;
   onSelect: (id: string) => void;
 };
 
@@ -45,7 +47,7 @@ type RouteLinesProps = {
  * Keyed on the selection as well as the id, so a Route that becomes selected
  * is added afresh. Leaflet stacks vectors in the order they were added, and
  * re-adding is the only way to lift one above a line it overlaps. */
-const RouteLines = ({ routes, selectedId, pickMode, onSelect }: RouteLinesProps) => {
+const RouteLines = ({ routes, selectedId, clickTaken, onSelect }: RouteLinesProps) => {
   const visible = routes.filter((r) => r.visible);
   const ordered = [
     ...visible.filter((r) => r.id !== selectedId),
@@ -59,10 +61,10 @@ const RouteLines = ({ routes, selectedId, pickMode, onSelect }: RouteLinesProps)
         const key = `${route.id}:${selected}`;
         const stroke: PathOptions = { weight: selected ? 6 : 3, opacity: selected ? 1 : 0.55 };
         const eventHandlers = {
-          // While a start or end is being picked the click belongs to the
-          // picker - it reaches the map as well, and sets the point there.
+          // While a point is picked or a line drawn the click belongs to
+          // that - it reaches the map as well, and is used there.
           click: () => {
-            if (!pickMode) onSelect(route.id);
+            if (!clickTaken) onSelect(route.id);
           },
         };
 

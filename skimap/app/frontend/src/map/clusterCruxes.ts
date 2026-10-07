@@ -7,13 +7,13 @@ import type { Crux } from "../types";
  *  Clustering is not a separate display mode: markers merge exactly when
  *  they would collide and split the moment there is room, so zooming is the
  *  only control and nothing is ever hidden without saying so. */
-export type CruxCluster = {
+export type CruxCluster<C extends Crux = Crux> = {
   /** In route order, never empty. A cluster of one is a plain Crux. */
-  members: Crux[];
+  members: C[];
   /** Whose colour, marks and degrees the cluster is drawn with. */
-  worst: Crux;
+  worst: C;
   /** Where it is drawn: the first member, where the route reaches it. */
-  head: Crux;
+  head: C;
 };
 
 /** A pill's box in absolute layer pixels - the coordinates `map.project`
@@ -24,7 +24,9 @@ type Box = { left: number; top: number; right: number; bottom: number };
  *  ground that turns out to be a release area or a fall hazard beats plain
  *  steep ground, which beats a runout - the same order the line is
  *  coloured in. */
-const severity = (crux: Crux): number => {
+const severity = (crux: Crux & { critical?: boolean }): number => {
+  // Judged critical by the user beats anything the terrain alone says.
+  if (crux.critical) return 3;
   if (crux.class !== "steep_slope") return 0;
   return crux.probable_release_area || crux.fall_hazard ? 2 : 1;
 };
@@ -32,7 +34,7 @@ const severity = (crux: Crux): number => {
 /** The worst of them, and the steepest where two are equally bad. Ties
  *  after that go to the earlier one, so the answer does not depend on the
  *  order the reduce happens to see them in. */
-const worstOf = (members: readonly Crux[]): Crux =>
+const worstOf = <C extends Crux>(members: readonly C[]): C =>
   members.reduce((worst, crux) => {
     const bySeverity = severity(crux) - severity(worst);
     if (bySeverity !== 0) return bySeverity > 0 ? crux : worst;
@@ -63,13 +65,13 @@ const union = (a: Box, b: Box): Box => ({
  *  `project` and `size` are passed in so this stays a function of numbers -
  *  Leaflet is the caller's business, and this is the part worth testing.
  */
-export const clusterCruxes = (
-  cruxes: readonly Crux[],
-  project: (crux: Crux) => { x: number; y: number },
-  size: (crux: Crux) => readonly [number, number],
+export const clusterCruxes = <C extends Crux>(
+  cruxes: readonly C[],
+  project: (crux: C) => { x: number; y: number },
+  size: (crux: C) => readonly [number, number],
   padding = 2
-): CruxCluster[] => {
-  const boxOf = (crux: Crux): Box => {
+): CruxCluster<C>[] => {
+  const boxOf = (crux: C): Box => {
     const { x, y } = project(crux);
     const [width, height] = size(crux);
     // The pill is anchored by its number disc, which sits at its left end,
@@ -82,7 +84,7 @@ export const clusterCruxes = (
     };
   };
 
-  const groups: Crux[][] = [];
+  const groups: C[][] = [];
   let box: Box | null = null;
   for (const crux of cruxes) {
     const next = boxOf(crux);
@@ -104,7 +106,7 @@ export const clusterCruxes = (
 /** What a cluster's marker is numbered: the one Crux it holds, or the span
  *  it covers. The numbers run along the route, so a span says both which
  *  ones are in there and how many. */
-export const clusterLabel = (cluster: CruxCluster): string => {
+export const clusterLabel = <C extends Crux>(cluster: CruxCluster<C>): string => {
   const { members } = cluster;
   return members.length === 1
     ? `${members[0].number}`

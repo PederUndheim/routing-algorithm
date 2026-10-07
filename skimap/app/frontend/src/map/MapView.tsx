@@ -12,7 +12,9 @@ import type { BasemapId } from "../layers/basemaps";
 import { OVERLAYS } from "../layers/overlays";
 import type { OverlayId } from "../layers/overlays";
 import type { Route } from "../routes/routeList";
-import type { Corridor, LatLng, MapFocus, PickMode } from "../types";
+import type { LineString } from "geojson";
+
+import type { AddMode, Corridor, LatLng, MapFocus, PickMode } from "../types";
 import { COLORS } from "../theme";
 
 import { endIcon, startIcon } from "../ui/MarkerIcons";
@@ -23,6 +25,8 @@ import ScaleBar from "../ui/ScaleBar";
 
 import CorridorOverlay from "./CorridorOverlay";
 import CruxMarkers from "./CruxMarkers";
+import CruxPlacer from "./CruxPlacer";
+import DrawLayer from "./DrawLayer";
 import FocusController from "./FocusController";
 import LayerControl from "./LayerControl";
 import MapActions from "./MapActions";
@@ -70,6 +74,12 @@ type MapViewProps = {
   /** The drawer's live width, so what the map zooms to stays clear of it. */
   panelWidth: number;
   onOpenPanel: () => void;
+  addMode: AddMode;
+  /** Start drawing has been pressed, so map clicks add points. */
+  isDrawing: boolean;
+  /** The line being drawn, in drawing order. */
+  draft: readonly LatLng[];
+  onDraftChange: (points: LatLng[]) => void;
   pickMode: PickMode;
   onPickModeChange: (mode: PickMode) => void;
   startPoint: LatLng | null;
@@ -84,6 +94,12 @@ type MapViewProps = {
   corridor: Corridor | null;
   showCorridor: boolean;
   corridorOpacity: number;
+  onCruxClick: (routeId: string, cruxId: string) => void;
+  /** The line a Crux is being placed on, while Add crux is pressed. */
+  placeCruxOn: LineString | null;
+  pendingCrux: LatLng | null;
+  onPlaceCrux: (spot: { position: LatLng; distance_m: number }) => void;
+  onCancelPlaceCrux: () => void;
 };
 
 /** Covers the map while files are dragged over it, and takes the drop.
@@ -141,6 +157,10 @@ const MapView = ({
   panelOpen,
   panelWidth,
   onOpenPanel,
+  addMode,
+  isDrawing,
+  draft,
+  onDraftChange,
   pickMode,
   onPickModeChange,
   startPoint,
@@ -155,6 +175,11 @@ const MapView = ({
   corridor,
   showCorridor,
   corridorOpacity,
+  onCruxClick,
+  placeCruxOn,
+  pendingCrux,
+  onPlaceCrux,
+  onCancelPlaceCrux,
 }: MapViewProps) => {
   const bm = useMemo(() => getBasemap(basemap), [basemap]);
   const mapApiRef = useRef<MapApi | null>(null);
@@ -165,6 +190,14 @@ const MapView = ({
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
   const leftInset = panelOpen && !isMobile ? panelWidth : 0;
+
+  // Drawing only while the drawer can say so - except on a phone, where the
+  // drawer covers the map and has to be closed to draw at all.
+  // Placing a Crux takes the clicks for itself while it is on.
+  const placing = placeCruxOn !== null;
+  const drawing = addMode === "draw" && isDrawing && (panelOpen || isMobile) && !placing;
+  // The start and end only mean something to the router.
+  const showPoints = addMode === "generate";
 
   return (
     <Box
@@ -217,7 +250,7 @@ const MapView = ({
           <RouteLines
             routes={routes}
             selectedId={selectedId}
-            pickMode={pickMode}
+            clickTaken={Boolean(pickMode) || drawing || placing}
             onSelect={onSelectRoute}
           />
         </Pane>
@@ -225,18 +258,23 @@ const MapView = ({
         {/* Above the routes, so a Crux is never under its own red line, and
             below the start and end you drag. */}
         <Pane name="cruxes" style={{ zIndex: 500 }} />
-        <CruxMarkers routes={routes} selectedId={selectedId} focus={focus} />
+        <CruxMarkers
+          routes={routes}
+          selectedId={selectedId}
+          focus={focus}
+          onCruxClick={onCruxClick}
+        />
 
         <Pane name="markers" style={{ zIndex: 600, pointerEvents: "auto" }} />
 
-        {startPoint && (
+        {showPoints && startPoint && (
           <DraggableMarker
             position={startPoint}
             icon={startIcon}
             onPositionChange={onStartPointChange}
           />
         )}
-        {endPoint && (
+        {showPoints && endPoint && (
           <DraggableMarker
             position={endPoint}
             icon={endIcon}
@@ -249,6 +287,15 @@ const MapView = ({
           onPickModeChange={onPickModeChange}
           onStartPointChange={onStartPointChange}
           onEndPointChange={onEndPointChange}
+        />
+
+        <DrawLayer active={drawing} points={draft} onChange={onDraftChange} />
+
+        <CruxPlacer
+          line={placeCruxOn}
+          pending={pendingCrux}
+          onPlace={onPlaceCrux}
+          onCancel={onCancelPlaceCrux}
         />
 
         <MapController

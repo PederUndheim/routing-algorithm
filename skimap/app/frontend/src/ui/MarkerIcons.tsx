@@ -3,6 +3,7 @@ import type { DivIcon } from "leaflet";
 import { renderToStaticMarkup } from "react-dom/server";
 import PlaceIcon from "@mui/icons-material/Place";
 import FlagIcon from "@mui/icons-material/Flag";
+import WarningIcon from "@mui/icons-material/Warning";
 
 import { cruxBadge, dangerIcons } from "../dangerClasses";
 import type { DangerArea } from "../dangerClasses";
@@ -64,7 +65,7 @@ export const cruxIconSize = (
   label = "0"
 ): [number, number] => {
   const height = selected ? 26 : 20;
-  const marks = dangerIcons(area).length;
+  const marks = dangerIcons(area).length + (area.critical ? 1 : 0);
   const digits = Math.max(label.length - 1, 0) * 0.45;
   return [Math.round(height * (1 + digits + marks + (cruxBadge(area) ? 1.5 : 0))), height];
 };
@@ -78,7 +79,8 @@ export const cruxIconSize = (
  *  hazard puts its icon before them, both put both, and the pill turns red
  *  - so the icons say what kind of trouble and the number says how much. A
  *  Crux on a Route that is not selected is smaller and faded, so the
- *  Selected route's stand out. */
+ *  Selected route's stand out. A Crux the user has judged critical leads
+ *  with a warning sign and wears a red halo, whatever its own colour. */
 export const cruxIcon = (
   label: string,
   area: DangerArea,
@@ -89,7 +91,7 @@ export const cruxIcon = (
   const icons = dangerIcons(area);
   const key = `${label}:${area.class}:${selected}:${badge ?? ""}:${
     area.probable_release_area ? "R" : ""
-  }${area.fall_hazard ? "F" : ""}:${grouped}`;
+  }${area.fall_hazard ? "F" : ""}:${grouped}:${area.color ?? ""}:${area.critical ? "C" : ""}`;
   let icon = cruxIcons.get(key);
   if (!icon) {
     const [width, height] = cruxIconSize(area, selected, label);
@@ -115,7 +117,9 @@ export const cruxIcon = (
               ? `2px 2px 0 -1px ${dangerColor(area)}, 2px 2px 0 1px white,
                  4px 4px 0 -1px ${dangerColor(area)}, 4px 4px 0 1px white,
                  0 1px 4px rgba(0,0,0,0.45)`
-              : "0 1px 4px rgba(0,0,0,0.45)",
+              : area.critical
+                ? "0 0 0 3px rgba(211,47,47,0.85), 0 1px 6px rgba(0,0,0,0.55)"
+                : "0 1px 4px rgba(0,0,0,0.45)",
             opacity: selected ? 1 : 0.6,
           }}
         >
@@ -124,6 +128,7 @@ export const cruxIcon = (
           <span style={{ minWidth: height - 4, textAlign: "center", fontWeight: 500 }}>
             {label}
           </span>
+          {area.critical && <WarningIcon style={{ fontSize: selected ? 16 : 12 }} />}
           {icons.map((AreaIcon, i) => (
             <AreaIcon key={i} style={{ fontSize: selected ? 16 : 12 }} />
           ))}

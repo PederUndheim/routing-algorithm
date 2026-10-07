@@ -377,3 +377,122 @@ describe("deleting", () => {
     expect(selectedName(list)).toBe("Route 2");
   });
 });
+
+describe("drawn Routes", () => {
+  const line = [
+    [7.8, 62.6],
+    [7.81, 62.6],
+  ];
+
+  it("are named Drawn route 1, 2, measured, and the newest becomes the Selected route", () => {
+    const list = createRouteList();
+
+    list.addRouted(routed());
+    list.addDrawn(line);
+    const second = list.addDrawn(line);
+
+    expect(names(list)).toEqual(["Route 1", "Drawn route 1", "Drawn route 2"]);
+    expect(selectedName(list)).toBe("Drawn route 2");
+    expect(second.source).toBe("drawn");
+    // 0.01 deg of longitude at 62.6 N is about 512 m.
+    expect(second.lengthM).toBeGreaterThan(505);
+    expect(second.lengthM).toBeLessThan(520);
+  });
+
+  it("edited get the new line and length, lose their stale crux result, and are shown", () => {
+    const list = createRouteList();
+    const route = list.addDrawn(line);
+    list.attachCrux(route.id, cruxResult(40));
+    list.toggleVisible(route.id);
+
+    const longer = [...line, [7.82, 62.6]];
+    list.updateLine(route.id, longer);
+
+    const edited = list.getState().routes[0];
+    expect(edited.line.coordinates).toEqual(longer);
+    expect(edited.lengthM).toBeGreaterThan(route.lengthM * 1.9);
+    expect(edited.crux).toBeNull();
+    expect(edited.visible).toBe(true);
+    expect(edited.name).toBe("Drawn route 1");
+  });
+});
+
+describe("cruxes on a Route", () => {
+  const manual = (distance: number) => ({
+    position: { lat: 62.6, lng: 7.8 },
+    distance_m: distance,
+    category: "35_39" as const,
+    problem: "release_area" as const,
+    color: "#D32F2F",
+    description: "  Wind-loaded lip  ",
+  });
+
+  const cruxesOf = (list: RouteList) => list.getState().routes[0].cruxes;
+
+  it("placed by hand fall into route order among the identified ones, numbered along it", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+
+    list.addManualCrux(route.id, manual(100));
+    list.addManualCrux(route.id, manual(900));
+
+    expect(cruxesOf(list).map((c) => [c.number, c.source, c.distance_m])).toEqual([
+      [1, "manual", 100],
+      [2, "identified", 400],
+      [3, "manual", 900],
+    ]);
+    const first = cruxesOf(list)[0];
+    expect(first.class).toBe("steep_slope");
+    expect(first.probable_release_area).toBe(true);
+    expect(first.description).toBe("Wind-loaded lip");
+  });
+
+  it("identified get their category from the steepest ground, and re-identifying keeps the hand-placed ones", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    list.addManualCrux(route.id, manual(100));
+    expect(cruxesOf(list)[1].category).toBe("gt39");
+
+    list.attachCrux(route.id, cruxResult(50));
+
+    expect(cruxesOf(list).map((c) => [c.source, c.distance_m])).toEqual([
+      ["identified", 50],
+      ["manual", 100],
+    ]);
+  });
+
+  it("keep their answers, can take one back, and are restored by forgetting them all", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    const crux = list.addManualCrux(route.id, manual(100))!;
+
+    list.setAnswer(route.id, crux.id, "slope_size", true);
+    list.setAnswer(route.id, crux.id, "safe_spots", false);
+    list.setAnswer(route.id, crux.id, "safe_spots", undefined);
+    expect(cruxesOf(list)[0].answers).toEqual({ slope_size: true });
+
+    list.restoreCrux(route.id, crux.id);
+    expect(cruxesOf(list)[0].answers).toEqual({});
+  });
+
+  it("placed by hand can be removed, and all go when the line is edited", () => {
+    const list = createRouteList();
+    const route = list.addDrawn([
+      [7.8, 62.6],
+      [7.81, 62.6],
+    ]);
+    const a = list.addManualCrux(route.id, manual(100))!;
+    list.addManualCrux(route.id, manual(200));
+
+    list.removeCrux(route.id, a.id);
+    expect(cruxesOf(list).map((c) => c.distance_m)).toEqual([200]);
+
+    list.updateLine(route.id, [
+      [7.8, 62.6],
+      [7.82, 62.6],
+    ]);
+    expect(cruxesOf(list)).toEqual([]);
+  });
+});

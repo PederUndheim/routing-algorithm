@@ -11,6 +11,33 @@ export const outlinedSx = {
   "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)" },
 };
 
+/** An outlined button that finishes something: adds a Route. Orange edge,
+ *  so it stands out from the teal ones around it without shouting. */
+export const accentOutlinedSx = {
+  ...outlinedSx,
+  borderColor: COLORS.orange,
+  fontSize: 13,
+  "&:hover": { borderColor: COLORS.orange, backgroundColor: "rgba(238,123,4,0.10)" },
+};
+
+/** The one filled button in the drawer - Identify cruxes, the thing you
+ *  came to press. */
+export const primarySx = {
+  backgroundColor: COLORS.orange,
+  fontSize: 13,
+  "&:hover": { backgroundColor: COLORS.orange, transform: "scale(1.01)" },
+  "&.Mui-disabled": {
+    backgroundColor: "rgba(255,255,255,0.12)",
+    color: "rgba(255,255,255,0.4)",
+  },
+};
+
+/** A section's heading in the drawer: "Add a route", "Routes". */
+export const headingSx = { color: "white", fontWeight: 600, fontSize: 16, mb: 1 };
+
+/** Help text under a heading: short, and quieter than what it explains. */
+export const hintSx = { fontSize: 12, color: "rgba(255,255,255,0.7)" };
+
 /** A scrollbar that belongs to the dark panel rather than to the browser:
  *  a thin teal thumb on a barely-there track. Both spellings, since Firefox
  *  has none of the ::-webkit- pseudo-elements. */

@@ -1,6 +1,14 @@
 import type { LineString, Position } from "geojson";
 
-import type { CruxResult, RouteResponse } from "../types";
+import { categoryOfCrux, problemHazards } from "../crux/assessment";
+import type {
+  Answers,
+  CruxEntry,
+  CruxResult,
+  Factor,
+  ManualCruxInput,
+  RouteResponse,
+} from "../types";
 import { RouteFileError, parseRouteFile } from "./parseRouteFile";
 
 const EARTH_RADIUS_M = 6_371_008.8;
@@ -8,7 +16,7 @@ const EARTH_RADIUS_M = 6_371_008.8;
 /** Length of a WGS84 line in metres, great circle between each pair. The
  *  backend measures a routed Route on the 25833 grid instead; the two agree
  *  to well under a percent at these latitudes. */
-const geodesicLength = (coordinates: Position[]): number => {
+export const geodesicLength = (coordinates: Position[]): number => {
   const rad = Math.PI / 180;
   let total = 0;
   for (let i = 1; i < coordinates.length; i++) {
@@ -34,8 +42,9 @@ const uniqueName = (name: string, taken: ReadonlySet<string>): string => {
   }
 };
 
-/** Where a Route came from: computed by the router, or uploaded as a file. */
-export type RouteSource = "routed" | "uploaded";
+/** Where a Route came from: computed by the router, drawn on the map, or
+ *  uploaded as a file. */
+export type RouteSource = "routed" | "drawn" | "uploaded";
 
 /** What only a routed Route has: the router's own numbers and its corridor. */
 export type RoutedExtras = Pick<
@@ -55,7 +64,16 @@ export type Route = {
   routed: RoutedExtras | null;
   /** The Crux Identifier's answer, once it has been run on this Route. */
   crux: CruxResult | null;
+  /** Every Crux on the Route - identified and placed by hand - in route
+   *  order, with what has been answered about each. */
+  cruxes: readonly CruxEntry[];
 };
+
+/** In route order, numbered 1, 2, 3 along it. */
+const ordered = (cruxes: readonly CruxEntry[]): CruxEntry[] =>
+  [...cruxes]
+    .sort((a, b) => a.distance_m - b.distance_m)
+    .map((crux, i) => ({ ...crux, number: i + 1 }));
 
 export type RouteListState = {
   routes: readonly Route[];
@@ -76,6 +94,11 @@ export type RouteList = {
   subscribe: (listener: () => void) => () => void;
   /** Append a freshly routed Route and make it the Selected route. */
   addRouted: (response: RouteResponse) => Route;
+  /** Append a Route drawn on the map and make it the Selected route. */
+  addDrawn: (coordinates: Position[]) => Route;
+  /** Replace a Route's line, as when a drawn one is edited. Its crux
+   *  result described the old line, so it goes; the Route is shown. */
+  updateLine: (id: string, coordinates: Position[]) => void;
   /** Read GPX/GeoJSON files into uploaded Routes, one per track or line.
    *  A bad file is reported and skipped; the rest still load, and the last
    *  Route added becomes the Selected route. */
@@ -90,6 +113,14 @@ export type RouteList = {
    *  if it was hidden - the result was asked for. A Route deleted while it
    *  was being analysed is simply not there to receive it. */
   attachCrux: (id: string, result: CruxResult) => void;
+  /** Place a Crux by hand on a Route, in its place along it. */
+  addManualCrux: (routeId: string, input: ManualCruxInput) => CruxEntry | null;
+  /** Take a hand-placed Crux off its Route. */
+  removeCrux: (routeId: string, cruxId: string) => void;
+  /** Record one yes/no about a Crux; undefined takes the answer back. */
+  setAnswer: (routeId: string, cruxId: string, factor: Factor, value: boolean | undefined) => void;
+  /** Bring back a dismissed Crux by forgetting what was answered. */
+  restoreCrux: (routeId: string, cruxId: string) => void;
 };
 
 /** The app's list of Routes and every action on it.
@@ -104,11 +135,32 @@ export const createRouteList = (): RouteList => {
   const listeners = new Set<() => void>();
   let nextId = 1;
   let routedCount = 0;
+  let drawnCount = 0;
+  let nextCruxId = 1;
 
   const set = (next: RouteListState) => {
     state = next;
     listeners.forEach((listener) => listener());
   };
+
+  const updateCruxes = (
+    routeId: string,
+    change: (cruxes: readonly CruxEntry[]) => CruxEntry[]
+  ) => {
+    if (!state.routes.some((r) => r.id === routeId)) return;
+    set({
+      ...state,
+      routes: state.routes.map((r) =>
+        r.id === routeId ? { ...r, cruxes: ordered(change(r.cruxes)) } : r
+      ),
+    });
+  };
+
+  const updateCrux = (
+    routeId: string,
+    cruxId: string,
+    change: (crux: CruxEntry) => CruxEntry
+  ) => updateCruxes(routeId, (cruxes) => cruxes.map((c) => (c.id === cruxId ? change(c) : c)));
 
   return {
     getState: () => state,
@@ -137,9 +189,46 @@ export const createRouteList = (): RouteList => {
           seconds: response.seconds,
         },
         crux: null,
+        cruxes: [],
       };
       set({ routes: [...state.routes, route], selectedId: route.id });
       return route;
+    },
+
+    addDrawn: (coordinates) => {
+      drawnCount += 1;
+      const route: Route = {
+        id: `route-${nextId++}`,
+        name: uniqueName(`Drawn route ${drawnCount}`, new Set(state.routes.map((r) => r.name))),
+        source: "drawn",
+        line: { type: "LineString", coordinates },
+        lengthM: geodesicLength(coordinates),
+        visible: true,
+        routed: null,
+        crux: null,
+        cruxes: [],
+      };
+      set({ routes: [...state.routes, route], selectedId: route.id });
+      return route;
+    },
+
+    updateLine: (id, coordinates) => {
+      set({
+        ...state,
+        routes: state.routes.map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                line: { type: "LineString", coordinates },
+                lengthM: geodesicLength(coordinates),
+                visible: true,
+                crux: null,
+                // Placed on the old line, so they no longer sit on this one.
+                cruxes: [],
+              }
+            : r
+        ),
+      });
     },
 
     upload: async (files) => {
@@ -175,6 +264,7 @@ export const createRouteList = (): RouteList => {
           visible: true,
           routed: null,
           crux: null,
+          cruxes: [],
         };
       });
 
@@ -208,12 +298,70 @@ export const createRouteList = (): RouteList => {
 
     attachCrux: (id, result) => {
       if (!state.routes.some((r) => r.id === id)) return;
+      // The new result replaces the identified Cruxes and what was answered
+      // about them - they may not be the same ones. Hand-placed ones stay.
       set({
         ...state,
-        routes: state.routes.map((r) =>
-          r.id === id ? { ...r, crux: result, visible: true } : r
-        ),
+        routes: state.routes.map((r) => {
+          if (r.id !== id) return r;
+          const identified = result.cruxes.map(
+            (crux): CruxEntry => ({
+              ...crux,
+              id: `crux-${nextCruxId++}`,
+              source: "identified",
+              category: categoryOfCrux(crux),
+              answers: {},
+            })
+          );
+          const manual = r.cruxes.filter((c) => c.source === "manual");
+          return { ...r, crux: result, cruxes: ordered([...identified, ...manual]), visible: true };
+        }),
       });
+    },
+
+    addManualCrux: (routeId, input) => {
+      if (!state.routes.some((r) => r.id === routeId)) return null;
+      const id = `crux-${nextCruxId++}`;
+      const description = input.description.trim();
+      updateCruxes(routeId, (cruxes) => [
+        ...cruxes,
+        {
+          ...problemHazards(input.problem),
+          number: 0,
+          position: input.position,
+          distance_m: input.distance_m,
+          length_m: 0,
+          id,
+          source: "manual",
+          category: input.category,
+          answers: {},
+          color: input.color,
+          ...(description ? { description } : {}),
+        },
+      ]);
+      set({
+        ...state,
+        routes: state.routes.map((r) => (r.id === routeId ? { ...r, visible: true } : r)),
+      });
+      const route = state.routes.find((r) => r.id === routeId)!;
+      return route.cruxes.find((c) => c.id === id) ?? null;
+    },
+
+    removeCrux: (routeId, cruxId) => {
+      updateCruxes(routeId, (cruxes) => cruxes.filter((c) => c.id !== cruxId));
+    },
+
+    setAnswer: (routeId, cruxId, factor, value) => {
+      updateCrux(routeId, cruxId, (crux) => {
+        const answers: Answers = { ...crux.answers };
+        if (value === undefined) delete answers[factor];
+        else answers[factor] = value;
+        return { ...crux, answers };
+      });
+    },
+
+    restoreCrux: (routeId, cruxId) => {
+      updateCrux(routeId, cruxId, (crux) => ({ ...crux, answers: {} }));
     },
   };
 };

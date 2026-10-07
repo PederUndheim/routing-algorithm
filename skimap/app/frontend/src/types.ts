@@ -5,6 +5,10 @@ export type LatLng = { lat: number; lng: number };
 /** Which point the next map click sets, or null for an ordinary click. */
 export type PickMode = "start" | "end" | null;
 
+/** The three ways to add a Route: the router between two points, a line
+ *  drawn on the map, or a GPX/GeoJSON file. Exactly one is chosen. */
+export type AddMode = "generate" | "draw" | "upload";
+
 /** Somewhere the map should move to: a whole Route, or one Crux with its
  *  popup open. A new object each time, so asking twice still moves it. */
 export type MapFocus =
@@ -91,4 +95,46 @@ export type RouteResponse = {
   detour: number;
   cost: number;
   seconds: number;
+};
+
+/** The slope categories a Crux is assessed in. The questions asked, and how
+ *  many yes answers make it critical, depend on which one it is in. */
+export type SlopeCategory = "lt30" | "30_34" | "35_39" | "gt39";
+
+/** What the user is asked about a Crux, one yes/no each. A yes always
+ *  means the Crux is more serious. */
+export type Factor =
+  | "slope_size"
+  | "release_volume"
+  | "terrain_traps"
+  | "safe_spots"
+  | "remote_triggering";
+
+export type Answers = Partial<Record<Factor, boolean>>;
+
+/** What a hand-placed Crux is: the same problems the identifier names, so it
+ *  is drawn with the same symbol. */
+export type CruxProblem = "steep_slope" | "release_area" | "fall_hazard" | "runout_area";
+
+/** A Crux in a Route's list: one the identifier found, or one placed by
+ *  hand, with what the user has answered about it. `number` is its place
+ *  along the Route among all of them, renumbered whenever one is added. */
+export type CruxEntry = Crux & {
+  id: string;
+  source: "identified" | "manual";
+  category: SlopeCategory;
+  answers: Answers;
+  /** A hand-placed Crux's own colour and words; the identifier's have none. */
+  color?: string;
+  description?: string;
+};
+
+/** What the Add crux form gives back. */
+export type ManualCruxInput = {
+  position: LatLng;
+  distance_m: number;
+  category: SlopeCategory;
+  problem: CruxProblem;
+  color: string;
+  description: string;
 };
