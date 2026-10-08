@@ -1,4 +1,5 @@
-"""One start/end pair in, one least-cost route out.
+"""One start/end pair in, one least-cost route out - or any line in, and
+the corridor around it.
 
 A thin wrapper over skimap.routing, which is where the actual routing lives.
 This only does the three things the browser makes necessary:
@@ -6,8 +7,8 @@ This only does the three things the browser makes necessary:
     - turn WGS84 lat/lng into the EPSG:25833 grid the cost surface is on,
       and the finished line back again
     - hold the single GRASS session the server routes through
-    - throw away the corridor, which route_one always writes and the app
-      never draws
+    - turn each corridor GeoTIFF into a PNG for the map, and keep only the
+      last few
 
 No parameters: the surface is whatever `skimap.cli cost` last built, and
 config.ROUTING supplies the rest. Anything tunable is tuned in config.py.
@@ -25,7 +26,7 @@ from uuid import uuid4
 from osgeo import ogr, osr
 
 from app.backend import corridor as corridor_png
-from skimap import config, paths, routing
+from skimap import config, crux, paths, routing
 from skimap.tours import Tour
 
 WGS84_EPSG = 4326
@@ -149,6 +150,35 @@ def route(start_latlng: tuple[float, float],
         "length_m": round(length_m, 1),
         "straight_m": round(straight_m, 1),
         "detour": round(length_m / max(straight_m, 1e-6), 2),
+        "cost": round(cost, 1),
+        "seconds": round(seconds, 1),
+    }
+
+
+def corridor(line: dict) -> dict:
+    """The corridor around a line that did not come from the router - drawn,
+    uploaded, or a routed one since edited. `line` is a WGS84 GeoJSON
+    LineString.
+
+    See routing.line_corridor for how it differs from a routed corridor.
+    Raises ValueError for a line that is not one, which the server turns
+    into a 400 like any other.
+    """
+    xy = crux.grid_vertices(line)
+
+    started = time.time()
+    with _LOCK:
+        line_tif = SCRATCH / "line_app.tif"
+        cost = routing.line_corridor(xy, line_tif, tag="app")
+        # Inside the lock for route()'s reason: the next one writes here too.
+        corridor_id = uuid4().hex[:12]
+        bounds = corridor_png.to_png(line_tif, SCRATCH / f"{corridor_id}.png")
+        line_tif.unlink(missing_ok=True)
+    seconds = time.time() - started
+
+    _prune_corridors()
+    return {
+        "corridor": {"png_path": f"/corridor/{corridor_id}.png", "bounds": bounds},
         "cost": round(cost, 1),
         "seconds": round(seconds, 1),
     }

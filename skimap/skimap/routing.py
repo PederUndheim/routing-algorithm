@@ -470,6 +470,149 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
     return geometry, cost_opt, out_path
 
 
+# --- a corridor around a given line --------------------------------------
+#
+# A drawn, uploaded or edited line has no optimum to be near, so it gets a
+# different corridor from a routed one: the ground within reach of the line
+# itself. One spread from every cell the line crosses gives each cell its
+# cost to reach from the line, and a step off the line and back costs twice
+# that. The budget and the fade work as the routed corridor's do, on the
+# line's own cost, so the two read alike on the map - but from their own
+# settings, config.LINE_CORRIDOR, which also floors the budget on short lines.
+#
+# Why not the routed corridor's own sum, seeded along the line: tried on real
+# and drawn tracks, and it fails on every line that is not already optimal -
+# which none drawn by hand or recorded by GPS is (27-50% dearer on three drawn
+# ones, 15%-6.8x on recorded ones). Anything cheaper than the line scores as
+# no detour at all, so it floods every cheaper way between the ends instead
+# of the room around the line. On the optimal line itself it does reproduce
+# the routed corridor exactly; that is all it is good for.
+
+
+def _line_cells(xy: np.ndarray, west: float, north: float, res: float) -> np.ndarray:
+    """(row, col) of each cell the line crosses, in order, 8-connected.
+
+    Densified to a metre so no cell is stepped over, then thinned wherever a
+    cell's neighbours are diagonal to each other: a supercover walk takes
+    every diagonal as two orthogonal steps where r.cost takes one, and left
+    in, those corner cells overstate a slanted line's cost by up to a fifth.
+    """
+    step = np.diff(xy, axis=0)
+    counts = np.maximum(1, np.ceil(np.hypot(step[:, 0], step[:, 1]))).astype(int)
+    within = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts)
+    fraction = (within / np.repeat(counts, counts))[:, None]
+    dense = np.vstack([np.repeat(xy[:-1], counts, axis=0) + fraction * np.repeat(step, counts, axis=0),
+                       xy[-1:]])
+
+    cells = np.column_stack([np.floor((north - dense[:, 1]) / res),
+                             np.floor((dense[:, 0] - west) / res)]).astype(int)
+    cells = cells[np.concatenate([[True], (np.diff(cells, axis=0) != 0).any(axis=1)])]
+
+    kept = [cells[0]]
+    for i in range(1, len(cells) - 1):
+        if np.abs(cells[i + 1] - kept[-1]).max() > 1:
+            kept.append(cells[i])
+    kept.append(cells[-1])
+    return np.array(kept)
+
+
+def line_corridor(line_xy: np.ndarray, out_path: Path, *,
+                  cost_raster: str = COST_RASTER, tag: str = "line") -> float:
+    """Write the corridor around `line_xy` (EPSG:25833, in order) to
+    `out_path`, and return the line's own cost.
+
+    The cost is what r.cost would charge to walk the cells the line crosses,
+    so it is on the same scale as a routed Route's.
+
+    Widens its window the way route_one does when the corridor comes back
+    touching an edge; see config.ROUTING["region_buffer_retry_cap_m"].
+    """
+    import grass.script as gs
+    from grass.script import array as garray
+
+    xy = np.asarray(line_xy, dtype=np.float64)
+    if xy.ndim != 2 or len(xy) < 2:
+        raise ValueError("A line needs at least two points.")
+    starts, reach, scored = f"lstart_{tag}", f"lreach_{tag}", f"lscore_{tag}"
+    params = config.LINE_CORRIDOR
+    memory = int(config.ROUTING["grass_memory_mb"])
+    west, east = xy[:, 0].min(), xy[:, 0].max()
+    south, north = xy[:, 1].min(), xy[:, 1].max()
+
+    # Costed and seeded in a window just big enough to hold the line, which
+    # stays small however long the line is. The spread then runs in a wider
+    # one; both are aligned to the surface, so the seeds land on the same
+    # cells, and outside its own window the seed raster reads as null.
+    gs.run_command("g.region", raster=cost_raster, align=cost_raster,
+                   w=west - 50, e=east + 50, s=south - 50, n=north + 50)
+    region = gs.region()
+    cells = _line_cells(xy, region["w"], region["n"], region["ewres"])
+    rows, cols = cells[:, 0], cells[:, 1]
+
+    # -1 stands in for null: r.out.bin writes nulls as 0 otherwise, which
+    # would read as free ground.
+    cost = np.array(garray.array(mapname=cost_raster, null=-1, dtype=np.float64))
+    on_line = cost[rows, cols]
+    on_line[on_line < 0] = np.nan
+    if np.isnan(on_line).all():
+        raise RuntimeError("The line does not cross the cost surface.")
+    # A gap in the surface under the line is charged as the dearest cell on
+    # it, not as nothing - it should not make the line look cheap.
+    on_line = np.where(np.isnan(on_line), np.nanmax(on_line), on_line)
+    steps = np.hypot(*np.diff(cells, axis=0).T)
+    line_cost = float(((on_line[:-1] + on_line[1:]) / 2.0 * steps).sum())
+
+    # A line shorter than min_length_m is budgeted as if it ran that far
+    # through the same ground - see config.LINE_CORRIDOR for why a length and
+    # not a cost.
+    length_m = float(np.hypot(*np.diff(xy, axis=0).T).sum())
+    stretch = max(1.0, float(params["min_length_m"]) / max(length_m, 1e-6))
+    max_gap = min(line_cost * float(params["slack"]) * stretch, float(params["max_gap"]))
+    if max_gap <= 0:
+        raise ValueError("The line is too short to have a corridor.")
+
+    seeds = garray.array(dtype=np.float32)
+    seeds[...] = -1
+    seeds[rows, cols] = 0
+    seeds.write(starts, null=-1, overwrite=True, quiet=True)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cap = float(config.ROUTING.get("region_buffer_retry_cap_m", 0.0))
+    ladder = [float(config.ROUTING["region_buffer_floor_m"])]
+    while cap and ladder[-1] * 2 <= cap:
+        ladder.append(ladder[-1] * 2)
+
+    for attempt, buffer_m in enumerate(ladder):
+        gs.run_command("g.region", raster=cost_raster, align=cost_raster,
+                       w=west - buffer_m, e=east + buffer_m,
+                       s=south - buffer_m, n=north + buffer_m)
+        gs.run_command("r.cost", input=cost_raster, start_raster=starts,
+                       output=reach, memory=memory, overwrite=True, quiet=True)
+        # Out to a cell and back to the line: twice the reach, which is what
+        # makes the budget an extra cost on the trip, as a routed one's is.
+        gs.mapcalc(
+            f"{scored} = float(pow(if(2 * {reach} <= {max_gap}, "
+            f"1 - (2 * {reach} / {max_gap}), null()), {params['gamma']}))",
+            overwrite=True, quiet=True,
+        )
+        gs.run_command("r.out.gdal", input=scored, output=str(out_path),
+                       format="GTiff", type="Float32", nodata=config.NODATA,
+                       createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
+                       flags="c", overwrite=True, quiet=True)
+
+        touching = corridor_touches_edge(out_path)
+        if not touching:
+            break
+        if attempt == len(ladder) - 1:
+            where = ", ".join(f"{k} {v}px" for k, v in sorted(touching.items()))
+            print(f"    WARNING line {tag}: corridor still reaches the window edge "
+                  f"({where}) at a {buffer_m:.0f} m buffer, the cap.")
+
+    gs.run_command("g.remove", type="raster", name=",".join([starts, reach, scored]),
+                   flags="f", quiet=True)
+    return line_cost
+
+
 # --- comparing two sets of routes ---------------------------------------
 
 

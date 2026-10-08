@@ -11,11 +11,16 @@ terrain asks for attention.
 ## Vocabulary
 
 - **Route** - one line in the app's list. Either *routed* (computed by the
-  backend, has cost/detour/corridor) or *uploaded* (GPX/GeoJSON, has only a
-  length). Routes are compared against each other, not tied to the start/end
-  markers currently on the map.
-- **Corridor** - the band of near-optimal ground around a routed Route:
-  everywhere you could go instead without the trip costing much more.
+  backend, has cost/detour and comes with a Corridor), *drawn* or *uploaded*
+  (GPX/GeoJSON, has only a length until a Corridor is made for it). Editing
+  any Route's line makes it like a drawn one: its router numbers and
+  Corridor go. Routes are compared against each other, not tied to the
+  start/end markers currently on the map.
+- **Corridor** - the band of ground around a Route that costs little extra
+  to cross instead. Two kinds, each with its own settings: a routed Route's
+  is the near-optimal ground between its ends (`config.CORRIDOR`); any other
+  Route's is the ground within reach of its own line, since such a line has
+  no optimum to be near (`routing.line_corridor`, `config.LINE_CORRIDOR`).
 - **Danger class** - what one stretch of ground is. Two of them, ranked;
   see Stable constraints.
 - **Area** - consecutive runs merged into one piece of ground to decide

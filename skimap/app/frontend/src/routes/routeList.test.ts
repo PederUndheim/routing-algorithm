@@ -417,6 +417,62 @@ describe("drawn Routes", () => {
   });
 });
 
+describe("corridors", () => {
+  const line = [
+    [7.8, 62.6],
+    [7.81, 62.6],
+  ];
+  const made = {
+    png_path: "/corridor/ba9876543210.png",
+    bounds: { west: 7.79, south: 62.59, east: 7.82, north: 62.61 },
+  };
+
+  it("come with a routed Route, and not with a drawn one", () => {
+    const list = createRouteList();
+
+    const generated = list.addRouted(routed());
+    const drawn = list.addDrawn(line);
+
+    expect(generated.corridor).toEqual(routed().corridor);
+    expect(drawn.corridor).toBeNull();
+  });
+
+  it("are attached when made, and show the Route", () => {
+    const list = createRouteList();
+    const route = list.addDrawn(line);
+    list.toggleVisible(route.id);
+
+    list.attachCorridor(route.id, route.line, made);
+
+    const after = list.getState().routes[0];
+    expect(after.corridor).toEqual(made);
+    expect(after.visible).toBe(true);
+  });
+
+  it("go when the line is edited - routed Routes' too", () => {
+    const list = createRouteList();
+    const generated = list.addRouted(routed());
+    const drawn = list.addDrawn(line);
+    list.attachCorridor(drawn.id, drawn.line, made);
+
+    list.updateLine(generated.id, line);
+    list.updateLine(drawn.id, [...line, [7.82, 62.6]]);
+
+    expect(list.getState().routes.map((r) => r.corridor)).toEqual([null, null]);
+  });
+
+  it("made for a line since edited are dropped", () => {
+    const list = createRouteList();
+    const route = list.addDrawn(line);
+
+    // Edited while its corridor was being made.
+    list.updateLine(route.id, line);
+    list.attachCorridor(route.id, route.line, made);
+
+    expect(list.getState().routes[0].corridor).toBeNull();
+  });
+});
+
 describe("cruxes on a Route", () => {
   const manual = (distance: number) => ({
     position: { lat: 62.6, lng: 7.8 },

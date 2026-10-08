@@ -134,7 +134,7 @@ def identify(route: dict, sources: Optional[Sources] = None) -> dict:
     sources = sources or Sources.national()
     settings = config.CRUX
 
-    vertices = _grid_vertices(route)
+    vertices = grid_vertices(route)
     vertex_along = np.concatenate(
         [[0.0], np.cumsum(np.hypot(*np.diff(vertices, axis=0).T))])
     total = float(vertex_along[-1])
@@ -190,8 +190,12 @@ def identify(route: dict, sources: Optional[Sources] = None) -> dict:
 # --- the line --------------------------------------------------------------
 
 
-def _grid_vertices(route: dict) -> np.ndarray:
-    """The route's vertices on the metric grid, repeats dropped."""
+def grid_vertices(route: dict) -> np.ndarray:
+    """The route's vertices on the metric grid, repeats dropped.
+
+    Public because the app's /corridor takes the same GeoJSON line and
+    needs the same checks on it.
+    """
     if not isinstance(route, dict) or route.get("type") != "LineString":
         raise ValueError("Expected the route as a GeoJSON LineString.")
     try:

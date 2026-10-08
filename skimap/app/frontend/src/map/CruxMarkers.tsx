@@ -14,7 +14,7 @@ import {
 import { cruxTitle, dangerName } from "../dangerClasses";
 import { km, stretchLength } from "../format";
 import type { Route } from "../routes/routeList";
-import { markerSpot } from "../routes/snap";
+import { markerPositionOf } from "../routes/snap";
 import type { CruxEntry, LatLng, MapFocus } from "../types";
 import { cruxIcon, cruxIconSize } from "../ui/MarkerIcons";
 import RatingMark from "../ui/RatingMark";
@@ -186,12 +186,7 @@ const CruxMarkers = ({ routes, selectedId, focus, onCruxClick }: CruxMarkersProp
                   {
                     ...crux,
                     critical: isCritical(overallOf(crux)),
-                    // Placed or moved by the user: marked right where they put
-                    // it. Identified: ahead of the area they are walking into.
-                    markerPosition:
-                      crux.source === "manual" || crux.moved
-                        ? crux.position
-                        : markerSpot(route.line, crux.position),
+                    markerPosition: markerPositionOf(route.line, crux),
                   },
                 ]
               : []

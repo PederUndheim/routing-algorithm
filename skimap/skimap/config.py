@@ -198,6 +198,22 @@ ROUTING = {
 # sharpens the edge falloff.
 CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0}
 
+# Band around a line the router did not make - drawn, uploaded or edited; see
+# routing.line_corridor. Its own settings so the two kinds can be tuned apart;
+# slack, gamma and max_gap start equal to CORRIDOR's so they read alike on the
+# map.
+#
+# `min_length_m` floors the budget for short lines: one shorter than this gets
+# the budget it would have at this length, through the same ground. The budget
+# scales with the line's cost and so with its length, which in even terrain
+# makes the band reach about slack/2 of the length to each side - a 1 km line
+# had ~100 m, half of it faded below what the map draws. A floor in cost units
+# instead would mean ten times the room on cheap ground as on dear ground.
+#
+# Not on CORRIDOR: a routed corridor grows from both ends, and extra budget on
+# a short tour turns it into a disc instead of a wider band.
+LINE_CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0, "min_length_m": 2000.0}
+
 # --- Exposure ---
 # Avalanche exposure of a finished route, summed along the line. Separate
 # from PRA_RUNOUT: that shapes the surface the router walks, this scores

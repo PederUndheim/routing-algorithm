@@ -1,16 +1,20 @@
 import { useState } from "react";
 
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import CircularProgress from "@mui/material/CircularProgress";
 import FormControlLabel from "@mui/material/FormControlLabel";
 import Slider from "@mui/material/Slider";
 import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
+import InsightsIcon from "@mui/icons-material/Insights";
 
 import { km } from "../format";
 import type { Route } from "../routes/routeList";
 import type { CruxEntry, Factor, Rating } from "../types";
 import { COLORS } from "../theme";
 import CruxList from "./CruxList";
+import { outlinedSx } from "./styles";
 
 type CorridorControlsProps = {
   showCorridor: boolean;
@@ -19,7 +23,7 @@ type CorridorControlsProps = {
   onCorridorOpacityChange: (opacity: number) => void;
 };
 
-/** A routed Route's corridor: on or off, and how strong. Compact - it is a
+/** A Route's corridor: on or off, and how strong. Compact - it is a
  *  setting, not something to read. */
 export const CorridorControls = ({
   showCorridor,
@@ -27,7 +31,7 @@ export const CorridorControls = ({
   corridorOpacity,
   onCorridorOpacityChange,
 }: CorridorControlsProps) => (
-  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+  <Box sx={{ flex: 1, display: "flex", alignItems: "center", gap: 1 }}>
     <FormControlLabel
       control={
         <Switch
@@ -92,6 +96,29 @@ export const CorridorControls = ({
       </Typography>
     </Box>
   </Box>
+);
+
+/** Where CorridorControls go on a Route that has no corridor yet: drawn,
+ *  uploaded, or edited since it was made. Outlined, so it does not compete
+ *  with Identify cruxes right below it. */
+export const MakeCorridorButton = ({
+  isMaking,
+  onMake,
+}: {
+  isMaking: boolean;
+  onMake: () => void;
+}) => (
+  <Button
+    variant="outlined"
+    fullWidth
+    size="small"
+    disabled={isMaking}
+    onClick={onMake}
+    startIcon={isMaking ? <CircularProgress size={14} color="inherit" /> : <InsightsIcon />}
+    sx={{ ...outlinedSx, fontSize: 12 }}
+  >
+    {isMaking ? "Making corridor..." : "Make corridor to route"}
+  </Button>
 );
 
 type SelectedRouteProps = {

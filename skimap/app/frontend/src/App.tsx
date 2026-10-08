@@ -7,7 +7,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Snackbar from "@mui/material/Snackbar";
 import Typography from "@mui/material/Typography";
 
-import { checkHealth, requestCrux, requestRoute } from "./api";
+import { checkHealth, requestCorridor, requestCrux, requestRoute } from "./api";
 import { defaultsAt, problemOf } from "./crux/assessment";
 import { cruxTitle } from "./dangerClasses";
 import { DEFAULT_BASEMAP } from "./layers/basemaps";
@@ -97,6 +97,9 @@ const App = () => {
   const [corridorOpacity, setCorridorOpacity] = useState(0.5);
   const [isRouting, setIsRouting] = useState(false);
   const [isIdentifying, setIsIdentifying] = useState(false);
+  // The Route a corridor is being made for, so the button spins on that one
+  // only - another Route selected meanwhile can still ask for its own.
+  const [makingCorridorId, setMakingCorridorId] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // null until the first ping answers, so the panel does not flash a
@@ -150,6 +153,29 @@ const App = () => {
       if (err instanceof TypeError) setBackendReady(false);
     } finally {
       setIsIdentifying(false);
+    }
+  };
+
+  /** The corridor around the Selected route's line, for one the router did
+   *  not make. It goes to the Route and line it was asked for, by id and by
+   *  line: a Route edited meanwhile does not get the old line's corridor. */
+  const makeCorridor = async () => {
+    if (!selected) return;
+    const { id, line } = selected;
+
+    setMakingCorridorId(id);
+    setErrorMsg(null);
+    try {
+      const { corridor } = await requestCorridor(line);
+      routeList.attachCorridor(id, line, corridor);
+      // Asked for, so shown, even if the switch was left off on another Route.
+      setShowCorridor(true);
+      setBackendReady(true);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Making the corridor failed.");
+      if (err instanceof TypeError) setBackendReady(false);
+    } finally {
+      setMakingCorridorId((current) => (current === id ? null : current));
     }
   };
 
@@ -364,7 +390,7 @@ const App = () => {
 
   // Only the Selected route's corridor, and only while it is on the map:
   // several overlapping bands would make the terrain under them unreadable.
-  const corridor = selected?.visible ? (selected.routed?.corridor ?? null) : null;
+  const corridor = selected?.visible ? selected.corridor : null;
 
   return (
     <div style={{ height: "100dvh" }}>
@@ -488,6 +514,8 @@ const App = () => {
         onShowCorridorChange={setShowCorridor}
         corridorOpacity={corridorOpacity}
         onCorridorOpacityChange={setCorridorOpacity}
+        isMakingCorridor={makingCorridorId !== null && makingCorridorId === selectedId}
+        onMakeCorridor={() => void makeCorridor()}
       />
 
       <ConfirmDialog

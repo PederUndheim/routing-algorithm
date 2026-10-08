@@ -100,6 +100,17 @@ export type RouteResponse = {
   seconds: number;
 };
 
+/** What POST /corridor answers with: the corridor around a line the router
+ *  did not make - drawn, uploaded, or a routed one since edited. Not the
+ *  routed kind: it is the ground within reach of the line itself, on the
+ *  same budget, since such a line has no optimum to be near. */
+export type CorridorResponse = {
+  corridor: Corridor;
+  /** The line's own cost, on the same scale as RouteResponse's. */
+  cost: number;
+  seconds: number;
+};
+
 /** The aspects of a Crux the user weighs up. */
 export type Factor =
   | "slope_size"

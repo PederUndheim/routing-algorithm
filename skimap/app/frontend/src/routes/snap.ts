@@ -117,3 +117,10 @@ export const MARKER_LEAD_M = 30;
  *  is measured on here. */
 export const markerSpot = (line: LineString, crux: LatLng): LatLng =>
   pointAtDistance(line, nearestOnLine(line, crux).distance_m - MARKER_LEAD_M);
+
+/** Where a Crux's marker stands: exactly where the user put it, if they
+ *  placed or moved it; ahead of it, by `markerSpot`, if it was identified. */
+export const markerPositionOf = (
+  line: LineString,
+  crux: { position: LatLng; source: "identified" | "manual"; moved?: boolean }
+): LatLng => (crux.source === "manual" || crux.moved ? crux.position : markerSpot(line, crux.position));

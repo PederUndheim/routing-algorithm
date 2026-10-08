@@ -5,6 +5,7 @@ import { dangerName } from "../dangerClasses";
 import { dangerColor } from "../theme";
 import type {
   Answers,
+  Corridor,
   CruxEntry,
   CruxProblem,
   CruxResult,
@@ -52,11 +53,8 @@ const uniqueName = (name: string, taken: ReadonlySet<string>): string => {
  *  uploaded as a file. */
 export type RouteSource = "routed" | "drawn" | "uploaded";
 
-/** What only a routed Route has: the router's own numbers and its corridor. */
-export type RoutedExtras = Pick<
-  RouteResponse,
-  "corridor" | "straight_m" | "detour" | "cost" | "seconds"
->;
+/** What only a routed Route has: the router's own numbers. */
+export type RoutedExtras = Pick<RouteResponse, "straight_m" | "detour" | "cost" | "seconds">;
 
 /** One entry in the route list. See CONTEXT.md: whatever its origin, a Route. */
 export type Route = {
@@ -68,6 +66,10 @@ export type Route = {
   lengthM: number;
   visible: boolean;
   routed: RoutedExtras | null;
+  /** The band of ground around the line. A routed Route comes with one;
+   *  any other is made on request, and editing the line drops it - it
+   *  described the old line. */
+  corridor: Corridor | null;
   /** The Crux Identifier's answer, once it has been run on this Route. */
   crux: CruxResult | null;
   /** Every Crux on the Route - identified and placed by hand - in route
@@ -120,9 +122,9 @@ export type RouteList = {
   addRouted: (response: RouteResponse) => Route;
   /** Append a Route drawn on the map and make it the Selected route. */
   addDrawn: (coordinates: Position[]) => Route;
-  /** Replace a Route's line, as when it is edited. Its crux result and the
-   *  router's corridor and numbers described the old line, so they go; the
-   *  Route is shown. */
+  /** Replace a Route's line, as when it is edited. Its crux result, its
+   *  corridor and the router's numbers described the old line, so they go;
+   *  the Route is shown. */
   updateLine: (id: string, coordinates: Position[]) => void;
   /** Read GPX/GeoJSON files into uploaded Routes, one per track or line.
    *  A bad file is reported and skipped; the rest still load, and the last
@@ -134,6 +136,10 @@ export type RouteList = {
   /** Drop a Route. If it was the Selected route, the one above it takes
    *  over - or the one below, when it was at the top. */
   remove: (id: string) => void;
+  /** Give a Route the corridor made for `line`, and show it. Dropped if the
+   *  Route has since been deleted or its line edited: it was made for a line
+   *  the Route no longer has. */
+  attachCorridor: (id: string, line: LineString, corridor: Corridor) => void;
   /** Give a Route its crux result, replacing any earlier one, and show it
    *  if it was hidden - the result was asked for. A Route deleted while it
    *  was being analysed is simply not there to receive it. */
@@ -237,12 +243,12 @@ export const createRouteList = (): RouteList => {
         lengthM: response.length_m,
         visible: true,
         routed: {
-          corridor: response.corridor,
           straight_m: response.straight_m,
           detour: response.detour,
           cost: response.cost,
           seconds: response.seconds,
         },
+        corridor: response.corridor,
         crux: null,
         cruxes: [],
       };
@@ -260,6 +266,7 @@ export const createRouteList = (): RouteList => {
         lengthM: geodesicLength(coordinates),
         visible: true,
         routed: null,
+        corridor: null,
         crux: null,
         cruxes: [],
       };
@@ -278,6 +285,7 @@ export const createRouteList = (): RouteList => {
                 lengthM: geodesicLength(coordinates),
                 visible: true,
                 routed: null,
+                corridor: null,
                 crux: null,
                 // Placed on the old line, so they no longer sit on this one.
                 cruxes: [],
@@ -319,6 +327,7 @@ export const createRouteList = (): RouteList => {
           lengthM: geodesicLength(coordinates),
           visible: true,
           routed: null,
+          corridor: null,
           crux: null,
           cruxes: [],
         };
@@ -350,6 +359,16 @@ export const createRouteList = (): RouteList => {
           ? (routes[Math.max(index - 1, 0)]?.id ?? null)
           : state.selectedId;
       set({ routes, selectedId });
+    },
+
+    attachCorridor: (id, line, corridor) => {
+      // By identity: updateLine always puts a new line object in, so the
+      // same object means the line this corridor was made for.
+      if (!state.routes.some((r) => r.id === id && r.line === line)) return;
+      set({
+        ...state,
+        routes: state.routes.map((r) => (r.id === id ? { ...r, corridor, visible: true } : r)),
+      });
     },
 
     attachCrux: (id, result) => {

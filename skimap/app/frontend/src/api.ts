@@ -1,6 +1,6 @@
 import type { LineString } from "geojson";
 
-import type { CruxResult, LatLng, RouteResponse } from "./types";
+import type { CorridorResponse, CruxResult, LatLng, RouteResponse } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
@@ -42,3 +42,7 @@ export const requestRoute = (start: LatLng, end: LatLng): Promise<RouteResponse>
 /** Run the Crux Identifier on one Route's line. */
 export const requestCrux = (line: LineString): Promise<CruxResult> =>
   postJson("/crux", { route: line }, "Identifying cruxes failed");
+
+/** The corridor around a line the router did not make. */
+export const requestCorridor = (line: LineString): Promise<CorridorResponse> =>
+  postJson("/corridor", { line }, "Making the corridor failed");

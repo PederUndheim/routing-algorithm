@@ -14,6 +14,9 @@ Run it from the project directory - `skimap/`, the one holding `skimap/`,
                               -> the line as WGS84 GeoJSON, its length and
                                  cost, and where to fetch its corridor
     GET  /corridor/<id>.png   that corridor, as an overlay for the map
+    POST /corridor            {"line": <GeoJSON LineString, WGS84>}
+                              -> the corridor around a drawn, uploaded or
+                                 edited line, and the line's cost
     POST /crux                {"route": <GeoJSON LineString, WGS84>}
                               -> its Danger zones and Cruxes - see
                                  skimap.crux for the shape
@@ -41,6 +44,9 @@ MAX_ROUTE_BODY_BYTES = 8 * 1024
 # A route to find cruxes on is a whole line, and an uploaded Route recorded
 # over a long day is tens of thousands of points - around a megabyte as GeoJSON.
 MAX_CRUX_BODY_BYTES = 4 * 1024 * 1024
+
+# The same whole lines, for the same reason.
+MAX_CORRIDOR_BODY_BYTES = MAX_CRUX_BODY_BYTES
 
 # Anchored and hex-only, so nothing that reaches the filesystem can contain a
 # separator or a "..". The whole path is matched, not searched.
@@ -100,6 +106,8 @@ class Handler(BaseHTTPRequestHandler):
             self._post_route()
         elif self.path == "/crux":
             self._post_crux()
+        elif self.path == "/corridor":
+            self._post_corridor()
         else:
             self._send(404, {"message": f"No such endpoint: POST {self.path}"})
 
@@ -130,6 +138,24 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json(MAX_CRUX_BODY_BYTES, "a route")
             result = crux.identify(payload.get("route"))
+        except ValueError as exc:
+            self._send(400, {"message": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - reported, the server stays up
+            traceback.print_exc()
+            self._send(400, {"message": f"{type(exc).__name__}: {exc}"})
+            return
+        self._send(200, result)
+
+    def _post_corridor(self) -> None:
+        """The corridor around a line the router did not make.
+
+        Inside service's GRASS lock, unlike /crux: it spreads through the
+        cost surface the way a route does.
+        """
+        try:
+            payload = self._read_json(MAX_CORRIDOR_BODY_BYTES, "a line")
+            result = service.corridor(payload.get("line"))
         except ValueError as exc:
             self._send(400, {"message": str(exc)})
             return

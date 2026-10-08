@@ -1,9 +1,12 @@
+import type { ReactNode } from "react";
+
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DownloadIcon from "@mui/icons-material/Download";
 import DrawIcon from "@mui/icons-material/Draw";
 import EditIcon from "@mui/icons-material/Edit";
 import RouteIcon from "@mui/icons-material/Route";
@@ -11,6 +14,7 @@ import UploadFileIcon from "@mui/icons-material/UploadFile";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
+import { downloadRoute } from "../routes/exportRoute";
 import type { Route } from "../routes/routeList";
 import { COLORS } from "../theme";
 import { SectionHeading } from "./CollapseToggle";
@@ -31,8 +35,8 @@ type RouteRowProps = {
   onEdit: () => void;
 };
 
-/** One Route: eye, where it came from, its name, edit, delete. Clicking
- *  anywhere else on the row selects it. */
+/** One Route: eye, where it came from, its name, download, edit, delete.
+ *  Clicking anywhere else on the row selects it. */
 const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit }: RouteRowProps) => {
   const { Icon: SourceIcon, title: sourceTitle } = SOURCE[route.source];
 
@@ -86,6 +90,21 @@ const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit
         {route.name}
       </Typography>
 
+      {/* GPX: the line as a track and the cruxes in play as waypoints - what
+          GPS watches and phone apps read. */}
+      <IconButton
+        size="small"
+        aria-label={`Download ${route.name} as GPX`}
+        title="Download GPX"
+        onClick={(e) => {
+          e.stopPropagation();
+          downloadRoute(route, "gpx");
+        }}
+        sx={{ p: 0.25 }}
+      >
+        <DownloadIcon sx={{ color: "rgba(255,255,255,0.65)", fontSize: 18 }} />
+      </IconButton>
+
       {/* Any Route: a routed or uploaded line is opened simplified, to
           points few enough to drag about. */}
       <IconButton
@@ -123,6 +142,9 @@ type RouteListSectionProps = {
   onEdit: (id: string) => void;
   open: boolean;
   onToggle: () => void;
+  /** Under the list and folded with it - the Selected route's corridor -
+   *  but outside its scroll, so it stays put however long the list is. */
+  children?: ReactNode;
 };
 
 const RouteListSection = ({
@@ -134,6 +156,7 @@ const RouteListSection = ({
   onEdit,
   open,
   onToggle,
+  children,
 }: RouteListSectionProps) => (
   <Box>
     <SectionHeading title="Routes" open={open} onToggle={onToggle} what="the routes" />
@@ -169,6 +192,8 @@ const RouteListSection = ({
         ))}
       </Box>
     )}
+
+    {open && children}
   </Box>
 );
 

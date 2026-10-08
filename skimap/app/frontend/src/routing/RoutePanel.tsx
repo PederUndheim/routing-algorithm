@@ -17,7 +17,7 @@ import { DrawPane, GeneratePane, ModePicker, UploadPane } from "./AddRoute";
 import { SectionHeading } from "./CollapseToggle";
 import ResizeHandle from "./ResizeHandle";
 import RouteListSection, { IdentifyButton } from "./RouteListSection";
-import SelectedRoute, { CorridorControls } from "./SelectedRoute";
+import SelectedRoute, { CorridorControls, MakeCorridorButton } from "./SelectedRoute";
 import { scrollbarSx } from "./styles";
 
 type RoutePanelProps = {
@@ -77,6 +77,8 @@ type RoutePanelProps = {
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
   onCorridorOpacityChange: (opacity: number) => void;
+  isMakingCorridor: boolean;
+  onMakeCorridor: () => void;
 };
 
 const RoutePanel = ({
@@ -135,6 +137,8 @@ const RoutePanel = ({
   onShowCorridorChange,
   corridorOpacity,
   onCorridorOpacityChange,
+  isMakingCorridor,
+  onMakeCorridor,
 }: RoutePanelProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -253,22 +257,32 @@ const RoutePanel = ({
           onEdit={onEditRoute}
           open={routesOpen}
           onToggle={() => setRoutesOpen((prev) => !prev)}
-        />
+        >
+          {/* Part of the route part, folded with the list, and above the
+              button so the Cruxes it finds come straight under it. A Route
+              without a corridor gets the button that makes one in the same
+              place, so the controls take over where it was once it is made.
+              Both inset the same on either side - narrower than Identify
+              cruxes below, and still centred under it - and in a box of one
+              fixed height, taller than either, so swapping one for the other
+              moves nothing below it. */}
+          {selected && (
+            <Box sx={{ mt: 1, px: 2, height: 48, display: "flex", alignItems: "center" }}>
+              {selected.corridor ? (
+                <CorridorControls
+                  showCorridor={showCorridor}
+                  onShowCorridorChange={onShowCorridorChange}
+                  corridorOpacity={corridorOpacity}
+                  onCorridorOpacityChange={onCorridorOpacityChange}
+                />
+              ) : (
+                <MakeCorridorButton isMaking={isMakingCorridor} onMake={onMakeCorridor} />
+              )}
+            </Box>
+          )}
+        </RouteListSection>
 
-        {/* Above the button, so the button always closes the route part
-            and the Cruxes it finds come straight under it. */}
-        {selected?.routed && (
-          <Box sx={{ mt: 1.5 }}>
-            <CorridorControls
-              showCorridor={showCorridor}
-              onShowCorridorChange={onShowCorridorChange}
-              corridorOpacity={corridorOpacity}
-              onCorridorOpacityChange={onCorridorOpacityChange}
-            />
-          </Box>
-        )}
-
-        <Box sx={{ mt: selected?.routed ? 1.5 : 2.5 }}>
+        <Box sx={{ mt: selected && routesOpen ? 1 : 2.5 }}>
           <IdentifyButton
             disabled={selected === null}
             isIdentifying={isIdentifying}

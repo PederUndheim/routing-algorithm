@@ -167,8 +167,14 @@ long it took. Its **corridor** is drawn under the line: the band of
 near-optimal ground around it, everywhere you could cross instead without
 the trip costing much more. Navy along the route, fading out to nothing at
 the edge of the band, in the same blue ArcGIS draws it. Only the Selected
-route's, and only a routed one's - several overlapping bands would bury the
-terrain. The panel toggles it and sets how strongly it is drawn - it starts
+route's - several overlapping bands would bury the terrain. A routed Route
+comes with one; a drawn, uploaded or edited one has **Make corridor around
+route** in its place, which asks `POST /corridor` for the band around that
+line instead - the ground within reach of the line itself, because a line
+drawn by hand has no optimum to be near. Its settings are
+`config.LINE_CORRIDOR`, which gives a short line at least the room a 2 km
+one would have. Editing a
+Route's line drops its corridor, routed or not, and the button comes back. The panel toggles it and sets how strongly it is drawn - it starts
 at 50%, because the terrain under it is usually the reason you are looking,
 and 100% is the ArcGIS rendering exactly.
 
@@ -228,7 +234,8 @@ cells. The Crux Identifier reads both as "no hazard here" and treats only
 slope nodata, and anything off a raster's edge, as No data. See the
 docstring in `skimap/crux.py`.
 
-**The corridor is a picture, not a raster.** `route_one` writes it as a
+**The corridor is a picture, not a raster.** `route_one` - or
+`line_corridor`, for `/corridor` - writes it as a
 Float32 GeoTIFF on the 25833 grid; `corridor.py` warps that to EPSG:3857 and
 writes an RGBA PNG, because Web Mercator is the projection Leaflet stretches
 an image overlay in - pinning the 25833 grid to WGS84 corners instead would
