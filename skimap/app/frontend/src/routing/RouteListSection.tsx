@@ -31,8 +31,8 @@ type RouteRowProps = {
   onEdit: () => void;
 };
 
-/** One Route: eye, where it came from, its name, edit for a drawn
- *  one, delete. Clicking anywhere else on the row selects it. */
+/** One Route: eye, where it came from, its name, edit, delete. Clicking
+ *  anywhere else on the row selects it. */
 const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit }: RouteRowProps) => {
   const { Icon: SourceIcon, title: sourceTitle } = SOURCE[route.source];
 
@@ -86,20 +86,19 @@ const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit
         {route.name}
       </Typography>
 
-      {/* Only a drawn line has points few enough to drag about. */}
-      {route.source === "drawn" && (
-        <IconButton
-          size="small"
-          aria-label={`Edit ${route.name}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          sx={{ p: 0.25 }}
-        >
-          <EditIcon sx={{ color: "rgba(255,255,255,0.65)", fontSize: 18 }} />
-        </IconButton>
-      )}
+      {/* Any Route: a routed or uploaded line is opened simplified, to
+          points few enough to drag about. */}
+      <IconButton
+        size="small"
+        aria-label={`Edit ${route.name}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEdit();
+        }}
+        sx={{ p: 0.25 }}
+      >
+        <EditIcon sx={{ color: "rgba(255,255,255,0.65)", fontSize: 18 }} />
+      </IconButton>
 
       <IconButton
         size="small"

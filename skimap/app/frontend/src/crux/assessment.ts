@@ -61,6 +61,15 @@ export const QUESTIONS: ({ factor: Factor; title: string } & RatingInfo)[] = [
   },
 ];
 
+/** A snow conditions check has no aspects to rate: the overall rating is
+ *  what the snow told the user there. */
+export const SNOW_CHECK_INFO: RatingInfo = {
+  question:
+    "What did the snow tell you here - layers, tests, signs of instability? Weigh it together with today's avalanche forecast.",
+  up: "A well-bonded snowpack, no worrying layers, and no cracking or collapsing.",
+  down: "Weak layers, cracking or whumpfs, or test results that point to instability.",
+};
+
 /** What the overall verdict asks for: the user's own weighing, not a count. */
 export const OVERALL_INFO: RatingInfo = {
   question:
@@ -72,29 +81,30 @@ export const OVERALL_INFO: RatingInfo = {
 /** A Runout area is the flatter ground below a slope: it only slides when set
  *  off from the steeper ground above, so remote triggering is all there is to
  *  weigh. Everything else - 30° and steeper - gets all five. */
-export const questionsFor = (crux: Pick<Crux, "class">) =>
-  crux.class === "runout_area"
-    ? QUESTIONS.filter((q) => q.factor === "remote_triggering")
-    : QUESTIONS;
+export const questionsFor = (crux: Pick<Crux, "class" | "snow_check">) =>
+  crux.snow_check
+    ? []
+    : crux.class === "runout_area"
+      ? QUESTIONS.filter((q) => q.factor === "remote_triggering")
+      : QUESTIONS;
 
-/** The five ratings, in the order they are offered: what each says about
- *  an aspect, what it says as the overall verdict, and its colour. The
- *  colour carries the step - dark and light at each end - since thumbs of
- *  two sizes are hard to tell apart at button size. */
+/** The five ratings, in the order they are offered: what each is called -
+ *  the same for an aspect, an overall rating and a snow check - and its
+ *  colour. The colour carries the step - dark and light at each end - since
+ *  thumbs of two sizes are hard to tell apart at button size. */
 export const RATINGS: {
   id: Rating;
   label: string;
-  overall: string;
   color: string;
   /** Which way the thumb points, if any, and whether it is the big one. */
   thumb: "up" | "down" | null;
   strong: boolean;
 }[] = [
-  { id: "very_good", label: "Clearly in your favour", overall: "Good", color: "#1B7F3B", thumb: "up", strong: true },
-  { id: "good", label: "Somewhat in your favour", overall: "Fairly good", color: "#66BB6A", thumb: "up", strong: false },
-  { id: "neutral", label: "No clear effect", overall: "Uncertain", color: "#8C8C8C", thumb: null, strong: false },
-  { id: "bad", label: "Somewhat against you", overall: "Fairly critical", color: "#E57373", thumb: "down", strong: false },
-  { id: "very_bad", label: "Clearly against you", overall: "Critical", color: "#C62828", thumb: "down", strong: true },
+  { id: "very_good", label: "Very positive", color: "#1B7F3B", thumb: "up", strong: true },
+  { id: "good", label: "Positive", color: "#66BB6A", thumb: "up", strong: false },
+  { id: "neutral", label: "No effect", color: "#8C8C8C", thumb: null, strong: false },
+  { id: "bad", label: "Negative", color: "#E57373", thumb: "down", strong: false },
+  { id: "very_bad", label: "Very negative", color: "#C62828", thumb: "down", strong: true },
 ];
 
 export const ratingOf = (id: Rating) => RATINGS.find((r) => r.id === id)!;
@@ -102,11 +112,11 @@ export const ratingOf = (id: Rating) => RATINGS.find((r) => r.id === id)!;
 /** A Runout area is asked only one thing, so its one rating is its overall
  *  rating too - asking for the same judgement twice would only be noise.
  *  Everything else has the overall the user gave it. */
-export const hasOwnOverall = (crux: Pick<Crux, "class">): boolean =>
-  questionsFor(crux).length > 1;
+export const hasOwnOverall = (crux: Pick<Crux, "class" | "snow_check">): boolean =>
+  questionsFor(crux).length !== 1;
 
 export const overallOf = (
-  crux: Pick<Crux, "class"> & { answers: Answers; overall?: Rating }
+  crux: Pick<Crux, "class" | "snow_check"> & { answers: Answers; overall?: Rating }
 ): Rating | undefined => (hasOwnOverall(crux) ? crux.overall : crux.answers.remote_triggering);
 
 /** The user has evaluated the Crux and chosen to keep it. Until then it is
@@ -120,7 +130,7 @@ export const isDecided = (crux: { keep?: boolean }): boolean => crux.keep === tr
 export type Verdict = Rating | "kept" | null;
 
 export const verdictOf = (
-  crux: Pick<Crux, "class"> & { answers: Answers; overall?: Rating; keep?: boolean }
+  crux: Pick<Crux, "class" | "snow_check"> & { answers: Answers; overall?: Rating; keep?: boolean }
 ): Verdict => (isDecided(crux) ? (overallOf(crux) ?? "kept") : null);
 
 /** Rated against the user overall - either step - which is what the map
@@ -154,6 +164,8 @@ export const problemHazards = (problem: CruxProblem): Hazards & { class: Crux["c
       return { class: "steep_slope", fall_hazard: true };
     case "runout_area":
       return { class: "runout_area" };
+    case "snow_check":
+      return { class: "steep_slope", snow_check: true };
   }
 };
 
@@ -161,6 +173,7 @@ export const problemHazards = (problem: CruxProblem): Hazards & { class: Crux["c
  *  An identified area can be a release area and a fall hazard at once; it
  *  reads as a release area here, which is what it is named first. */
 export const problemOf = (crux: Hazards & { class: Crux["class"] }): CruxProblem => {
+  if (crux.snow_check) return "snow_check";
   if (crux.class === "runout_area") return "runout_area";
   if (crux.probable_release_area) return "release_area";
   if (crux.fall_hazard) return "fall_hazard";

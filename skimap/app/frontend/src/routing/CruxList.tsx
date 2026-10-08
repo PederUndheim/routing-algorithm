@@ -24,6 +24,7 @@ import ThumbUpIcon from "@mui/icons-material/ThumbUp";
 
 import {
   OVERALL_INFO,
+  SNOW_CHECK_INFO,
   RATINGS,
   hasOwnOverall,
   isDecided,
@@ -57,12 +58,10 @@ const RatingPicker = ({
   value,
   onChange,
   title,
-  overall = false,
 }: {
   value: Rating | undefined;
   onChange: (value: Rating | undefined) => void;
   title: string;
-  overall?: boolean;
 }) => (
   <Box
     role="group"
@@ -71,12 +70,11 @@ const RatingPicker = ({
   >
     {RATINGS.map((r) => {
       const chosen = value === r.id;
-      const label = overall ? r.overall : r.label;
       return (
-        <Tooltip key={r.id} title={label} placement="top">
+        <Tooltip key={r.id} title={r.label} placement="top">
           <IconButton
             size="small"
-            aria-label={label}
+            aria-label={r.label}
             aria-pressed={chosen}
             onClick={() => onChange(chosen ? undefined : r.id)}
             sx={{
@@ -171,13 +169,11 @@ const RatingRow = ({
   info,
   value,
   onChange,
-  overall,
 }: {
   title: string;
   info: RatingInfo;
   value: Rating | undefined;
   onChange: (value: Rating | undefined) => void;
-  overall?: boolean;
 }) => (
   <Box sx={{ display: "flex", gap: 1, alignItems: "center" }}>
     <Box sx={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 0.25 }}>
@@ -186,7 +182,7 @@ const RatingRow = ({
       </Typography>
       <InfoButton title={title} info={info} />
     </Box>
-    <RatingPicker title={title} value={value} onChange={onChange} overall={overall} />
+    <RatingPicker title={title} value={value} onChange={onChange} />
   </Box>
 );
 
@@ -202,91 +198,103 @@ type AssessmentProps = {
  *  pattern of their answers is in view - gives their own overall verdict,
  *  and decides whether the Crux stays in the list. Nothing is worked out
  *  for them. */
-const Assessment = ({ crux, onAnswer, onOverall, onKeep }: AssessmentProps) => (
-  <Box
-    sx={{
-      mx: 0.5,
-      mb: 0.5,
-      px: 1.25,
-      py: 1,
-      borderRadius: "0 0 8px 8px",
-      backgroundColor: "rgba(0,0,0,0.18)",
-      border: "1px solid rgba(255,255,255,0.10)",
-      borderTop: "none",
-    }}
-  >
-    {crux.description && (
-      <Typography sx={{ fontSize: 12, color: "white", fontStyle: "italic", mb: 0.75 }}>
-        {crux.description}
+const Assessment = ({ crux, onAnswer, onOverall, onKeep }: AssessmentProps) => {
+  const questions = questionsFor(crux);
+  return (
+    <Box
+      sx={{
+        mx: 0.5,
+        mb: 0.5,
+        px: 1.25,
+        py: 1,
+        borderRadius: "0 0 8px 8px",
+        backgroundColor: "rgba(0,0,0,0.18)",
+        border: "1px solid rgba(255,255,255,0.10)",
+        borderTop: "none",
+      }}
+    >
+      {crux.description && (
+        <Typography sx={{ fontSize: 12, color: "white", fontStyle: "italic", mb: 0.75 }}>
+          {crux.description}
+        </Typography>
+      )}
+
+      <Typography sx={{ fontSize: 11.5, color: MUTED, mb: 1 }}>
+        {questions.length > 0
+          ? "Rate how each aspect weighs: from very positive (big thumb up) to very negative (big thumb down)."
+          : "Rate what the snow told you here: from very positive (big thumb up) to very negative (big thumb down)."}
       </Typography>
-    )}
 
-    <Typography sx={{ fontSize: 11.5, color: MUTED, mb: 1 }}>
-      Rate how each aspect weighs: from clearly in your favour (big thumb up) to clearly
-      against you (big thumb down).
-    </Typography>
+      {questions.length > 0 && (
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          {questions.map((q) => (
+            <RatingRow
+              key={q.factor}
+              title={q.title}
+              info={q}
+              value={crux.answers[q.factor]}
+              onChange={(v) => onAnswer(q.factor, v)}
+            />
+          ))}
+        </Box>
+      )}
 
-    <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-      {questionsFor(crux).map((q) => (
-        <RatingRow
-          key={q.factor}
-          title={q.title}
-          info={q}
-          value={crux.answers[q.factor]}
-          onChange={(v) => onAnswer(q.factor, v)}
-        />
-      ))}
-    </Box>
+      {/* A Runout area's one rating is its overall rating already. A snow
+          conditions check has nothing but the overall to rate. */}
+      {hasOwnOverall(crux) && (
+        <Box
+          sx={
+            questions.length > 0
+              ? { borderTop: "1px solid rgba(255,255,255,0.18)", mt: 1, pt: 1 }
+              : undefined
+          }
+        >
+          <RatingRow
+            title={crux.snow_check ? "Snow conditions" : "Overall assessment"}
+            info={crux.snow_check ? SNOW_CHECK_INFO : OVERALL_INFO}
+            value={crux.overall}
+            onChange={onOverall}
+          />
+        </Box>
+      )}
 
-    {/* A Runout area's one rating is its overall rating already. */}
-    {hasOwnOverall(crux) && (
-      <Box sx={{ borderTop: "1px solid rgba(255,255,255,0.18)", mt: 1, pt: 1 }}>
-        <RatingRow
-          overall
-          title="Overall assessment"
-          info={OVERALL_INFO}
-          value={crux.overall}
-          onChange={onOverall}
-        />
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1.25 }}>
+        <Typography sx={{ flex: 1, fontSize: 12, color: "white", fontWeight: 600 }}>
+          Keep the crux?
+        </Typography>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={crux.keep === undefined ? null : crux.keep ? "keep" : "remove"}
+          onChange={(_, next: "keep" | "remove" | null) =>
+            onKeep(next === null ? undefined : next === "keep")
+          }
+          sx={{
+            width: PICKER_WIDTH_PX,
+            flexShrink: 0,
+            "& .MuiToggleButton-root": {
+              flex: 1,
+              px: 0,
+              py: 0.25,
+              fontSize: 11.5,
+              textTransform: "none",
+              color: MUTED,
+              borderColor: "rgba(255,255,255,0.25)",
+            },
+            "& .MuiToggleButton-root.Mui-selected": {
+              color: "white",
+              backgroundColor: COLORS.teal,
+              "&:hover": { backgroundColor: COLORS.teal },
+            },
+          }}
+        >
+          <ToggleButton value="remove">Remove</ToggleButton>
+          <ToggleButton value="keep">Keep</ToggleButton>
+        </ToggleButtonGroup>
       </Box>
-    )}
-
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1.25 }}>
-      <Typography sx={{ flex: 1, fontSize: 12, color: "white", fontWeight: 600 }}>
-        Keep the crux?
-      </Typography>
-      <ToggleButtonGroup
-        exclusive
-        size="small"
-        value={crux.keep === undefined ? null : crux.keep ? "keep" : "remove"}
-        onChange={(_, next: "keep" | "remove" | null) =>
-          onKeep(next === null ? undefined : next === "keep")
-        }
-        sx={{
-          width: PICKER_WIDTH_PX,
-          flexShrink: 0,
-          "& .MuiToggleButton-root": {
-            flex: 1,
-            px: 0,
-            py: 0.25,
-            fontSize: 11.5,
-            textTransform: "none",
-            color: MUTED,
-            borderColor: "rgba(255,255,255,0.25)",
-          },
-          "& .MuiToggleButton-root.Mui-selected": {
-            color: "white",
-            backgroundColor: COLORS.teal,
-            "&:hover": { backgroundColor: COLORS.teal },
-          },
-        }}
-      >
-        <ToggleButton value="remove">Remove</ToggleButton>
-        <ToggleButton value="keep">Keep</ToggleButton>
-      </ToggleButtonGroup>
     </Box>
-  </Box>
-);
+  );
+};
 
 type CruxRowProps = {
   crux: CruxEntry;
@@ -394,7 +402,7 @@ const CruxRow = ({
         {verdict && (
           <Box
             component="span"
-            title={verdict === "kept" ? "Kept - not rated" : `Kept - ${ratingOf(verdict).overall}`}
+            title={verdict === "kept" ? "Kept - not rated" : `Kept - ${ratingOf(verdict).label}`}
             sx={{ display: "flex" }}
           >
             <VerdictDisc verdict={verdict} size={18} />

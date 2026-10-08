@@ -17,6 +17,7 @@ import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
 import { createRouteList, geodesicLength, isEdited } from "./routes/routeList";
 import type { CruxMarker } from "./routes/routeList";
+import { simplifyForEditing } from "./routes/simplify";
 import { MARKER_LEAD_M, pointAtDistance, sliceLine } from "./routes/snap";
 import AddCruxDialog, { EditCruxDialog, problemColor } from "./routing/AddCruxDialog";
 import type { StretchPreview } from "./routing/AddCruxDialog";
@@ -182,11 +183,13 @@ const App = () => {
     setIsDrawing(false);
   };
 
-  /** Open a drawn Route's points for dragging about, in the Draw mode. */
+  /** Open a Route's points for dragging about, in the Draw mode. A routed or
+   *  uploaded line is opened simplified - its shape kept, but few enough
+   *  points to be handles - and is only changed if the edit is finished. */
   const editRoute = (id: string) => {
     const route = routes.find((r) => r.id === id);
     if (!route) return;
-    setDraft(route.line.coordinates.map(([lng, lat]) => ({ lat, lng })));
+    setDraft(simplifyForEditing(route.line.coordinates).map(([lng, lat]) => ({ lat, lng })));
     setEditingId(id);
     setIsDrawing(true);
     changeAddMode("draw");

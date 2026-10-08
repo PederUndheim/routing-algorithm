@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   RATINGS,
   defaultsAt,
+  problemHazards,
   problemOf,
   verdictOf,
   hasOwnOverall,
@@ -63,6 +64,16 @@ describe("a crux's verdict on the map and in the list", () => {
       "release_area"
     );
     expect(problemOf({ class: "steep_slope" })).toBe("steep_slope");
+  });
+});
+
+describe("a snow conditions check", () => {
+  it("has no aspects to rate, only an overall rating of its own", () => {
+    const check = { ...problemHazards("snow_check"), answers: {}, overall: "bad" as const };
+    expect(questionsFor(check)).toEqual([]);
+    expect(hasOwnOverall(check)).toBe(true);
+    expect(overallOf(check)).toBe("bad");
+    expect(problemOf(check)).toBe("snow_check");
   });
 });
 

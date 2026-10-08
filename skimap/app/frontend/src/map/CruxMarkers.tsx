@@ -66,7 +66,7 @@ const CruxPopup = ({ crux }: { crux: ShownCrux }) => {
             }}
           >
             <RatingMark rating={rating} size={16} />
-            {ratingOf(rating).overall}
+            {ratingOf(rating).label}
           </strong>
         </>
       )}

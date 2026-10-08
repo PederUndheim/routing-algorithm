@@ -23,6 +23,8 @@ export const CRUX_COLORS = {
   steep: "#E65100",
   runout: "#FFA726",
   noData: "#8C8C8C",
+  /** A snow conditions check: not a danger, so a colour of its own. */
+  snow: "#1E88E5",
 } as const;
 
 /** The colour an area is drawn in, on the line and on its marker - one
@@ -33,6 +35,7 @@ export const CRUX_COLORS = {
  *  hazard, and dark orange while it is only steep. */
 export const dangerColor = (area: DangerArea): string => {
   if (area.color) return area.color;
+  if (area.snow_check) return CRUX_COLORS.snow;
   switch (area.class) {
     case "none":
       return CRUX_COLORS.none;

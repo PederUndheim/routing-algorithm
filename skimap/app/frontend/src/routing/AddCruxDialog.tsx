@@ -23,6 +23,7 @@ const COLOR_CHOICES = [
   { color: CRUX_COLORS.danger, name: "Red" },
   { color: CRUX_COLORS.steep, name: "Dark orange" },
   { color: CRUX_COLORS.runout, name: "Light orange" },
+  { color: CRUX_COLORS.snow, name: "Blue" },
 ];
 
 /** The symbols a Crux can be drawn with: the problems the identifier names,
@@ -33,6 +34,7 @@ const SYMBOL_CHOICES: { problem: CruxProblem; name: string }[] = [
   { problem: "release_area", name: "Probable release area" },
   { problem: "fall_hazard", name: "Fall hazard" },
   { problem: "runout_area", name: "Runout area" },
+  { problem: "snow_check", name: "Snow conditions check" },
 ];
 
 /** The colour a problem is drawn in when the user has not chosen one. */

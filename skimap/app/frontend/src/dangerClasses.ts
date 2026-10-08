@@ -2,6 +2,7 @@ import type { SvgIconComponent } from "@mui/icons-material";
 import AirIcon from "@mui/icons-material/Air";
 import SignalCellular4BarIcon from "@mui/icons-material/SignalCellular4Bar";
 import SignalCellularConnectedNoInternet4BarIcon from "@mui/icons-material/SignalCellularConnectedNoInternet4Bar";
+import SevereColdIcon from "@mui/icons-material/SevereCold";
 import SouthIcon from "@mui/icons-material/South";
 
 import type { CruxProblem, DangerClass, Hazards, SegmentClass } from "./types";
@@ -9,12 +10,14 @@ import type { CruxProblem, DangerClass, Hazards, SegmentClass } from "./types";
 /** The symbol for each problem, wherever it is drawn - marker, list, and
  *  the symbol picker. A slope is a filled triangle; a release area is that
  *  slope with an exclamation mark; a fall hazard is a straight drop; a
- *  runout is the air blast below a slide. */
+ *  runout is the air blast below a slide; a snow conditions check is a
+ *  snowflake. */
 export const PROBLEM_ICONS: Record<CruxProblem, SvgIconComponent> = {
   steep_slope: SignalCellular4BarIcon,
   release_area: SignalCellularConnectedNoInternet4BarIcon,
   fall_hazard: SouthIcon,
   runout_area: AirIcon,
+  snow_check: SevereColdIcon,
 };
 
 /** A Crux or a segment: both carry a class and the same hazard marks, and
@@ -34,6 +37,7 @@ export const DANGER_CLASS_NAMES: Record<DangerClass, string> = {
 /** What an area is, in words: the marks first, because a release area on
  *  steep ground is a release area before it is steep. */
 export const dangerName = (area: DangerArea): string => {
+  if (area.snow_check) return "Snow conditions check";
   if (area.class !== "steep_slope") {
     return DANGER_CLASS_NAMES[area.class as DangerClass] ?? "";
   }
@@ -58,6 +62,7 @@ export const cruxTitle = (crux: DangerArea & { description?: string }): string =
  *  be both at once. A Runout area has no degrees to show, so its icon is all
  *  it has. */
 export const dangerIcons = (area: DangerArea): SvgIconComponent[] => {
+  if (area.snow_check) return [PROBLEM_ICONS.snow_check];
   if (area.class === "runout_area") return [PROBLEM_ICONS.runout_area];
   if (area.class !== "steep_slope") return [];
   const icons: SvgIconComponent[] = [];

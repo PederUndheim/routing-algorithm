@@ -120,8 +120,9 @@ export type RouteList = {
   addRouted: (response: RouteResponse) => Route;
   /** Append a Route drawn on the map and make it the Selected route. */
   addDrawn: (coordinates: Position[]) => Route;
-  /** Replace a Route's line, as when a drawn one is edited. Its crux
-   *  result described the old line, so it goes; the Route is shown. */
+  /** Replace a Route's line, as when it is edited. Its crux result and the
+   *  router's corridor and numbers described the old line, so they go; the
+   *  Route is shown. */
   updateLine: (id: string, coordinates: Position[]) => void;
   /** Read GPX/GeoJSON files into uploaded Routes, one per track or line.
    *  A bad file is reported and skipped; the rest still load, and the last
@@ -276,6 +277,7 @@ export const createRouteList = (): RouteList => {
                 line: { type: "LineString", coordinates },
                 lengthM: geodesicLength(coordinates),
                 visible: true,
+                routed: null,
                 crux: null,
                 // Placed on the old line, so they no longer sit on this one.
                 cruxes: [],
@@ -446,6 +448,7 @@ export const createRouteList = (): RouteList => {
           color: _color,
           probable_release_area: _release,
           fall_hazard: _fall,
+          snow_check: _snow,
           ...rest
         } = crux;
         // Unchanged, the symbol keeps the marks it had - an area that is
@@ -456,6 +459,7 @@ export const createRouteList = (): RouteList => {
                 class: crux.class,
                 ...(crux.probable_release_area ? { probable_release_area: true } : {}),
                 ...(crux.fall_hazard ? { fall_hazard: true } : {}),
+                ...(crux.snow_check ? { snow_check: true } : {}),
               }
             : problemHazards(problem);
         const name = description.trim();

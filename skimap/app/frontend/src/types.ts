@@ -49,6 +49,9 @@ export type Hazards = {
   max_slope_deg?: number;
   /** Highest release probability in the area, when it is a release area. */
   max_pra_percent?: number;
+  /** A place the user has marked to check the snow conditions - dig, test,
+   *  look. Never from the backend: only a Crux the user gives this symbol. */
+  snow_check?: boolean;
 };
 
 /** A run of samples of one class, drawn between the midpoints on either
@@ -117,7 +120,12 @@ export type Extent = { start_m: number; end_m: number };
 
 /** What a hand-placed Crux is: the same problems the identifier names, so it
  *  is drawn with the same symbol. */
-export type CruxProblem = "steep_slope" | "release_area" | "fall_hazard" | "runout_area";
+export type CruxProblem =
+  | "steep_slope"
+  | "release_area"
+  | "fall_hazard"
+  | "runout_area"
+  | "snow_check";
 
 /** A Crux in a Route's list: one the identifier found, or one placed by
  *  hand, with what the user has made of it. `number` is its place along the
