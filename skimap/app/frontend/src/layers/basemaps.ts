@@ -9,6 +9,9 @@ export type BasemapDef = {
   id: BasemapId;
   label: string;
   url: string;
+  /** The deepest zoom Kartverket has tiles for; past it they come back 400
+   *  and Leaflet scales these up instead. */
+  maxNativeZoom: number;
   attribution: string;
   thumbUrl: string;
 };
@@ -20,6 +23,7 @@ export const BASEMAPS: BasemapDef[] = [
     id: "topo",
     label: "Fargekart",
     url: `${KARTVERKET}/topo/default/webmercator/{z}/{y}/{x}.png`,
+    maxNativeZoom: 18,
     attribution: "© Kartverket",
     thumbUrl: topoThumb,
   },
@@ -27,6 +31,7 @@ export const BASEMAPS: BasemapDef[] = [
     id: "topograatone",
     label: "Gråtonekart",
     url: `${KARTVERKET}/topograatone/default/webmercator/{z}/{y}/{x}.png`,
+    maxNativeZoom: 18,
     attribution: "© Kartverket",
     thumbUrl: graatoneThumb,
   },
@@ -34,6 +39,7 @@ export const BASEMAPS: BasemapDef[] = [
     id: "toporaster",
     label: "Turkart",
     url: `${KARTVERKET}/toporaster/default/webmercator/{z}/{y}/{x}.png`,
+    maxNativeZoom: 18,
     attribution: "© Kartverket",
     thumbUrl: turkartThumb,
   },
@@ -41,6 +47,7 @@ export const BASEMAPS: BasemapDef[] = [
     id: "sjokartraster",
     label: "Sjøkart",
     url: `${KARTVERKET}/sjokartraster/default/webmercator/{z}/{y}/{x}.png`,
+    maxNativeZoom: 18,
     attribution: "© Kartverket",
     thumbUrl: sjokartThumb,
   },

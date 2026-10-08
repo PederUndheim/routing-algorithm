@@ -47,6 +47,18 @@ export const dangerColor = (area: DangerArea): string => {
   }
 };
 
+/** A colour mixed towards white by `amount` (0-1), for text in a danger
+ *  colour on the dark drawer, where the full shade reads too dim. Anything
+ *  but a #rrggbb colour comes back as it is. */
+export const lighten = (hex: string, amount: number): string => {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * amount);
+  const [r, g, b] = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map(mix);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+};
+
 /** The drawer's width wherever it is not a phone - where it can be dragged
  *  wider, so this is only the starting point. The map needs the live width
  *  too, to keep what it zooms to out from under the drawer.

@@ -10,7 +10,7 @@ import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
 import type { Route } from "../routes/routeList";
-import type { AddMode, CruxEntry, Factor, LatLng, PickMode } from "../types";
+import type { AddMode, CruxEntry, Factor, LatLng, PickMode, Rating } from "../types";
 import { COLORS, PANEL_WIDTH } from "../theme";
 
 import { DrawPane, GeneratePane, ModePicker, UploadPane } from "./AddRoute";
@@ -55,12 +55,24 @@ type RoutePanelProps = {
   isIdentifying: boolean;
   onIdentify: () => void;
   activeCruxId: string | null;
+  /** The Crux being edited, moved or having its extent edited, if any. */
+  highlightedCruxId: string | null;
   onActivateCrux: (routeId: string, crux: CruxEntry) => void;
-  onAnswer: (routeId: string, cruxId: string, factor: Factor, value: boolean | undefined) => void;
+  onAnswer: (routeId: string, cruxId: string, factor: Factor, value: Rating | undefined) => void;
+  onOverall: (routeId: string, cruxId: string, value: Rating | undefined) => void;
+  onKeep: (routeId: string, cruxId: string, keep: boolean | undefined) => void;
   onRestoreCrux: (routeId: string, cruxId: string) => void;
-  onRemoveCrux: (routeId: string, cruxId: string) => void;
+  onDeleteCrux: (routeId: string, cruxId: string) => void;
+  onUndeleteCrux: (routeId: string, cruxId: string) => void;
+  onEditCrux: (routeId: string, crux: CruxEntry) => void;
+  onMoveCrux: (routeId: string, crux: CruxEntry) => void;
+  onEditExtent: (routeId: string, crux: CruxEntry) => void;
   placingCrux: boolean;
+  placingText: string;
   onPlaceCrux: () => void;
+  editingExtent: boolean;
+  onFinishExtent: () => void;
+  onResetExtent: () => void;
   showCorridor: boolean;
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
@@ -102,12 +114,23 @@ const RoutePanel = ({
   isIdentifying,
   onIdentify,
   activeCruxId,
+  highlightedCruxId,
   onActivateCrux,
   onAnswer,
+  onOverall,
+  onKeep,
   onRestoreCrux,
-  onRemoveCrux,
+  onDeleteCrux,
+  onUndeleteCrux,
+  onEditCrux,
+  onMoveCrux,
+  onEditExtent,
   placingCrux,
+  placingText,
   onPlaceCrux,
+  editingExtent,
+  onFinishExtent,
+  onResetExtent,
   showCorridor,
   onShowCorridorChange,
   corridorOpacity,
@@ -257,12 +280,23 @@ const RoutePanel = ({
           <SelectedRoute
             route={selected}
             activeCruxId={activeCruxId}
+            highlightedCruxId={highlightedCruxId}
             onActivateCrux={(crux) => onActivateCrux(selected.id, crux)}
             onAnswer={(cruxId, factor, value) => onAnswer(selected.id, cruxId, factor, value)}
+            onOverall={(cruxId, value) => onOverall(selected.id, cruxId, value)}
+            onKeep={(cruxId, keep) => onKeep(selected.id, cruxId, keep)}
             onRestoreCrux={(cruxId) => onRestoreCrux(selected.id, cruxId)}
-            onRemoveCrux={(cruxId) => onRemoveCrux(selected.id, cruxId)}
+            onDeleteCrux={(cruxId) => onDeleteCrux(selected.id, cruxId)}
+            onUndeleteCrux={(cruxId) => onUndeleteCrux(selected.id, cruxId)}
+            onEditCrux={(crux) => onEditCrux(selected.id, crux)}
+            onMoveCrux={(crux) => onMoveCrux(selected.id, crux)}
+            onEditExtent={(crux) => onEditExtent(selected.id, crux)}
             placingCrux={placingCrux}
+            placingText={placingText}
             onPlaceCrux={onPlaceCrux}
+            editingExtent={editingExtent}
+            onFinishExtent={onFinishExtent}
+            onResetExtent={onResetExtent}
           />
         )}
       </Box>

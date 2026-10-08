@@ -1,12 +1,18 @@
 import type { LineString, Position } from "geojson";
 
-import { categoryOfCrux, problemHazards } from "../crux/assessment";
+import { problemHazards, problemOf } from "../crux/assessment";
+import { dangerName } from "../dangerClasses";
+import { dangerColor } from "../theme";
 import type {
   Answers,
   CruxEntry,
+  CruxProblem,
   CruxResult,
+  Extent,
   Factor,
+  LatLng,
   ManualCruxInput,
+  Rating,
   RouteResponse,
 } from "../types";
 import { RouteFileError, parseRouteFile } from "./parseRouteFile";
@@ -69,6 +75,24 @@ export type Route = {
   cruxes: readonly CruxEntry[];
 };
 
+/** What the Edit crux form gives back. */
+export type CruxDetailsInput = { description: string; problem: CruxProblem; color: string };
+
+/** Where a Crux's marker is, all of it: enough to put it back. */
+export type CruxMarker = Pick<CruxEntry, "position" | "distance_m" | "moved">;
+
+/** Whether the user has made anything of an identified Crux - rated it,
+ *  decided about it, moved, edited or deleted it - which identifying the
+ *  Route again would throw away. */
+export const isEdited = (crux: CruxEntry): boolean =>
+  crux.source === "identified" &&
+  (Object.keys(crux.answers).length > 0 ||
+    crux.overall !== undefined ||
+    crux.keep !== undefined ||
+    crux.deleted === true ||
+    crux.moved === true ||
+    crux.extent !== undefined);
+
 /** In route order, numbered 1, 2, 3 along it. */
 const ordered = (cruxes: readonly CruxEntry[]): CruxEntry[] =>
   [...cruxes]
@@ -115,11 +139,41 @@ export type RouteList = {
   attachCrux: (id: string, result: CruxResult) => void;
   /** Place a Crux by hand on a Route, in its place along it. */
   addManualCrux: (routeId: string, input: ManualCruxInput) => CruxEntry | null;
-  /** Take a hand-placed Crux off its Route. */
-  removeCrux: (routeId: string, cruxId: string) => void;
-  /** Record one yes/no about a Crux; undefined takes the answer back. */
-  setAnswer: (routeId: string, cruxId: string, factor: Factor, value: boolean | undefined) => void;
-  /** Bring back a dismissed Crux by forgetting what was answered. */
+  /** Delete a Crux: it leaves the map and waits on the list's deleted shelf,
+   *  where it can be brought back. */
+  deleteCrux: (routeId: string, cruxId: string) => void;
+  /** Bring a deleted Crux back as it was. */
+  undeleteCrux: (routeId: string, cruxId: string) => void;
+  /** Move a Crux's marker to another spot on the Route, keeping everything
+   *  the user has made of it. Its place among the others, and so its number,
+   *  follows, and its marker now stands exactly on the spot. What it colours
+   *  stays where it was: that is its extent, edited on its own. */
+  moveCrux: (
+    routeId: string,
+    cruxId: string,
+    spot: { position: LatLng; distance_m: number }
+  ) => void;
+  /** Put a Crux's marker back exactly as it was - moved or not - as when
+   *  an edit that moved it along is given up. */
+  setMarker: (routeId: string, cruxId: string, marker: CruxMarker) => void;
+  /** Change what a Crux is called, its symbol and its colour. A name or
+   *  colour that is only what its symbol gives it anyway is not stored, so
+   *  it keeps following the symbol. Changing the symbol keeps what the
+   *  analysis measured - steepness, release probability - and drops only
+   *  the marks the old symbol carried. */
+  editCrux: (routeId: string, cruxId: string, details: CruxDetailsInput) => void;
+  /** Set the stretch a Crux colours. Undefined goes back to what it had -
+   *  an identified Crux's area as the analysis found it, or nothing for one
+   *  placed by hand. */
+  setExtent: (routeId: string, cruxId: string, extent: Extent | undefined) => void;
+  /** Rate one aspect of a Crux; undefined takes the rating back. */
+  setAnswer: (routeId: string, cruxId: string, factor: Factor, value: Rating | undefined) => void;
+  /** The user's overall rating of a Crux; undefined takes it back. */
+  setOverall: (routeId: string, cruxId: string, value: Rating | undefined) => void;
+  /** Whether the user wants a Crux in the list; undefined is undecided. */
+  setKeep: (routeId: string, cruxId: string, keep: boolean | undefined) => void;
+  /** Put a Crux the user chose not to keep back in the list, as undecided,
+   *  keeping its ratings. */
   restoreCrux: (routeId: string, cruxId: string) => void;
 };
 
@@ -298,19 +352,25 @@ export const createRouteList = (): RouteList => {
 
     attachCrux: (id, result) => {
       if (!state.routes.some((r) => r.id === id)) return;
-      // The new result replaces the identified Cruxes and what was answered
-      // about them - they may not be the same ones. Hand-placed ones stay.
+      // The new result replaces the identified Cruxes and everything the user
+      // made of them - they may not be the same ones. Hand-placed ones stay.
+      // Their areas are rescaled from the backend's measure of the line to
+      // this one, so a handle dragged along it lands where the colour does.
       set({
         ...state,
         routes: state.routes.map((r) => {
           if (r.id !== id) return r;
+          const scale = result.length_m > 0 ? geodesicLength(r.line.coordinates) / result.length_m : 1;
           const identified = result.cruxes.map(
             (crux): CruxEntry => ({
               ...crux,
               id: `crux-${nextCruxId++}`,
               source: "identified",
-              category: categoryOfCrux(crux),
               answers: {},
+              area: {
+                start_m: crux.distance_m * scale,
+                end_m: (crux.distance_m + crux.length_m) * scale,
+              },
             })
           );
           const manual = r.cruxes.filter((c) => c.source === "manual");
@@ -333,8 +393,10 @@ export const createRouteList = (): RouteList => {
           length_m: 0,
           id,
           source: "manual",
-          category: input.category,
           answers: {},
+          ...(input.length_m > 0
+            ? { extent: { start_m: input.distance_m, end_m: input.distance_m + input.length_m } }
+            : {}),
           color: input.color,
           ...(description ? { description } : {}),
         },
@@ -347,8 +409,25 @@ export const createRouteList = (): RouteList => {
       return route.cruxes.find((c) => c.id === id) ?? null;
     },
 
-    removeCrux: (routeId, cruxId) => {
-      updateCruxes(routeId, (cruxes) => cruxes.filter((c) => c.id !== cruxId));
+    deleteCrux: (routeId, cruxId) => {
+      updateCrux(routeId, cruxId, (crux) => ({ ...crux, deleted: true }));
+    },
+
+    undeleteCrux: (routeId, cruxId) => {
+      updateCrux(routeId, cruxId, ({ deleted: _deleted, ...crux }) => crux);
+    },
+
+    moveCrux: (routeId, cruxId, { position, distance_m }) => {
+      updateCrux(routeId, cruxId, (crux) => ({ ...crux, position, distance_m, moved: true }));
+    },
+
+    setMarker: (routeId, cruxId, { position, distance_m, moved }) => {
+      updateCrux(routeId, cruxId, ({ moved: _old, ...crux }) => ({
+        ...crux,
+        position,
+        distance_m,
+        ...(moved ? { moved } : {}),
+      }));
     },
 
     setAnswer: (routeId, cruxId, factor, value) => {
@@ -360,8 +439,53 @@ export const createRouteList = (): RouteList => {
       });
     },
 
+    editCrux: (routeId, cruxId, { description, problem, color }) => {
+      updateCrux(routeId, cruxId, (crux) => {
+        const {
+          description: _description,
+          color: _color,
+          probable_release_area: _release,
+          fall_hazard: _fall,
+          ...rest
+        } = crux;
+        // Unchanged, the symbol keeps the marks it had - an area that is
+        // both a release area and a fall hazard stays both.
+        const hazards =
+          problem === problemOf(crux)
+            ? {
+                class: crux.class,
+                ...(crux.probable_release_area ? { probable_release_area: true } : {}),
+                ...(crux.fall_hazard ? { fall_hazard: true } : {}),
+              }
+            : problemHazards(problem);
+        const name = description.trim();
+        const next: CruxEntry = { ...rest, ...hazards };
+        if (name && name !== dangerName(next)) next.description = name;
+        if (color !== dangerColor(next)) next.color = color;
+        return next;
+      });
+    },
+
+    setExtent: (routeId, cruxId, extent) => {
+      updateCrux(routeId, cruxId, ({ extent: _old, ...crux }) =>
+        extent ? { ...crux, extent } : crux
+      );
+    },
+
+    setOverall: (routeId, cruxId, value) => {
+      updateCrux(routeId, cruxId, ({ overall: _old, ...crux }) =>
+        value ? { ...crux, overall: value } : crux
+      );
+    },
+
+    setKeep: (routeId, cruxId, keep) => {
+      updateCrux(routeId, cruxId, ({ keep: _old, ...crux }) =>
+        keep === undefined ? crux : { ...crux, keep }
+      );
+    },
+
     restoreCrux: (routeId, cruxId) => {
-      updateCrux(routeId, cruxId, (crux) => ({ ...crux, answers: {} }));
+      updateCrux(routeId, cruxId, ({ keep: _old, ...crux }) => crux);
     },
   };
 };

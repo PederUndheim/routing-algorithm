@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CruxResult, RouteResponse } from "../types";
-import { createRouteList } from "./routeList";
+import { createRouteList, geodesicLength, isEdited } from "./routeList";
 import type { RouteList } from "./routeList";
 
 const routed = (): RouteResponse => ({
@@ -425,6 +425,7 @@ describe("cruxes on a Route", () => {
     problem: "release_area" as const,
     color: "#D32F2F",
     description: "  Wind-loaded lip  ",
+    length_m: 150,
   });
 
   const cruxesOf = (list: RouteList) => list.getState().routes[0].cruxes;
@@ -448,12 +449,17 @@ describe("cruxes on a Route", () => {
     expect(first.description).toBe("Wind-loaded lip");
   });
 
-  it("identified get their category from the steepest ground, and re-identifying keeps the hand-placed ones", () => {
+  it("identified get their area on this line's measure, and re-identifying keeps the hand-placed ones", () => {
     const list = createRouteList();
     const route = list.addRouted(routed());
     list.attachCrux(route.id, cruxResult(400));
     list.addManualCrux(route.id, manual(100));
-    expect(cruxesOf(list)[1].category).toBe("gt39");
+
+    // The backend called the line 6200 m; here it is measured great circle.
+    const scale = geodesicLength(route.line.coordinates) / 6200;
+    const { area } = cruxesOf(list)[1];
+    expect(area!.start_m).toBeCloseTo(400 * scale, 6);
+    expect(area!.end_m).toBeCloseTo(6600 * scale, 6);
 
     list.attachCrux(route.id, cruxResult(50));
 
@@ -463,21 +469,125 @@ describe("cruxes on a Route", () => {
     ]);
   });
 
-  it("keep their answers, can take one back, and are restored by forgetting them all", () => {
+  it("keep their ratings, overall and keep choice, each of which can be taken back", () => {
     const list = createRouteList();
     const route = list.addRouted(routed());
     const crux = list.addManualCrux(route.id, manual(100))!;
 
-    list.setAnswer(route.id, crux.id, "slope_size", true);
-    list.setAnswer(route.id, crux.id, "safe_spots", false);
+    list.setAnswer(route.id, crux.id, "slope_size", "bad");
+    list.setAnswer(route.id, crux.id, "safe_spots", "good");
     list.setAnswer(route.id, crux.id, "safe_spots", undefined);
-    expect(cruxesOf(list)[0].answers).toEqual({ slope_size: true });
+    list.setOverall(route.id, crux.id, "neutral");
+    list.setKeep(route.id, crux.id, false);
+    expect(cruxesOf(list)[0]).toMatchObject({
+      answers: { slope_size: "bad" },
+      overall: "neutral",
+      keep: false,
+    });
 
+    // Restored from the not-kept shelf: undecided again, ratings kept.
     list.restoreCrux(route.id, crux.id);
-    expect(cruxesOf(list)[0].answers).toEqual({});
+    list.setOverall(route.id, crux.id, undefined);
+    expect(cruxesOf(list)[0].keep).toBeUndefined();
+    expect(cruxesOf(list)[0].overall).toBeUndefined();
+    expect(cruxesOf(list)[0].answers).toEqual({ slope_size: "bad" });
   });
 
-  it("placed by hand can be removed, and all go when the line is edited", () => {
+  it("colour a stretch that is edited apart from the marker, and reset back", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    const mine = list.addManualCrux(route.id, manual(100))!;
+    expect(cruxesOf(list)[0].extent).toEqual({ start_m: 100, end_m: 250 });
+
+    const identified = cruxesOf(list)[1];
+    list.setExtent(route.id, identified.id, { start_m: 500, end_m: 700 });
+    list.moveCrux(route.id, mine.id, { position: { lat: 62.61, lng: 7.81 }, distance_m: 900 });
+    expect(cruxesOf(list).find((c) => c.id === identified.id)!.extent).toEqual({
+      start_m: 500,
+      end_m: 700,
+    });
+    // Moving the marker leaves the stretch where it was.
+    expect(cruxesOf(list).find((c) => c.id === mine.id)!.extent).toEqual({
+      start_m: 100,
+      end_m: 250,
+    });
+
+    list.setExtent(route.id, identified.id, undefined);
+    expect(cruxesOf(list).find((c) => c.id === identified.id)!.extent).toBeUndefined();
+
+    // A marker taken along by an extent edit can be put back exactly,
+    // unmoved again.
+    const { position, distance_m } = identified;
+    list.moveCrux(route.id, identified.id, { position: { lat: 62.62, lng: 7.84 }, distance_m: 2000 });
+    list.setMarker(route.id, identified.id, { position, distance_m, moved: undefined });
+    expect(cruxesOf(list).find((c) => c.id === identified.id)).toMatchObject({ position, distance_m });
+    expect(cruxesOf(list).find((c) => c.id === identified.id)!.moved).toBeUndefined();
+  });
+
+  it("can be renamed, given another symbol and colour, and fall back to their symbol's", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    const identified = cruxesOf(list)[0];
+    expect(identified.fall_hazard).toBe(true);
+
+    list.editCrux(route.id, identified.id, {
+      description: "  Corniced ridge  ",
+      problem: "runout_area",
+      color: "#E65100",
+    });
+    const edited = cruxesOf(list)[0];
+    expect(edited).toMatchObject({ class: "runout_area", description: "Corniced ridge", color: "#E65100" });
+    expect(edited.fall_hazard).toBeUndefined();
+    // What the analysis measured stays.
+    expect(edited.max_slope_deg).toBe(52);
+
+    // Its own symbol's name and colour are not stored, so they follow it.
+    list.editCrux(route.id, identified.id, {
+      description: "Runout area",
+      problem: "runout_area",
+      color: "#FFA726",
+    });
+    expect(cruxesOf(list)[0].description).toBeUndefined();
+    expect(cruxesOf(list)[0].color).toBeUndefined();
+  });
+
+  it("count as worked on once the user has done anything to an identified one", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    list.addManualCrux(route.id, manual(100));
+    expect(cruxesOf(list).some(isEdited)).toBe(false);
+
+    const identified = cruxesOf(list).find((c) => c.source === "identified")!;
+    list.setOverall(route.id, identified.id, "good");
+    expect(cruxesOf(list).some(isEdited)).toBe(true);
+  });
+
+  it("can be moved along the Route, keeping their answers and renumbering to the new order", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    const mine = list.addManualCrux(route.id, manual(100))!;
+    list.setAnswer(route.id, mine.id, "slope_size", "bad");
+    const spot = { position: { lat: 62.61, lng: 7.81 }, distance_m: 900 };
+
+    list.moveCrux(route.id, mine.id, spot);
+
+    expect(cruxesOf(list).map((c) => [c.number, c.source, c.distance_m])).toEqual([
+      [1, "identified", 400],
+      [2, "manual", 900],
+    ]);
+    expect(cruxesOf(list)[1].position).toEqual(spot.position);
+    expect(cruxesOf(list)[1].answers).toEqual({ slope_size: "bad" });
+    // Moved by hand, so its marker stands on the spot; the one it was
+    // placed beside is untouched.
+    expect(cruxesOf(list)[1].moved).toBe(true);
+    expect(cruxesOf(list)[0].moved).toBeUndefined();
+  });
+
+  it("can be deleted and brought back, and all go when the line is edited", () => {
     const list = createRouteList();
     const route = list.addDrawn([
       [7.8, 62.6],
@@ -485,9 +595,17 @@ describe("cruxes on a Route", () => {
     ]);
     const a = list.addManualCrux(route.id, manual(100))!;
     list.addManualCrux(route.id, manual(200));
+    list.setAnswer(route.id, a.id, "slope_size", "bad");
 
-    list.removeCrux(route.id, a.id);
-    expect(cruxesOf(list).map((c) => c.distance_m)).toEqual([200]);
+    list.deleteCrux(route.id, a.id);
+    expect(cruxesOf(list).map((c) => [c.distance_m, c.deleted])).toEqual([
+      [100, true],
+      [200, undefined],
+    ]);
+
+    list.undeleteCrux(route.id, a.id);
+    expect(cruxesOf(list)[0].deleted).toBeUndefined();
+    expect(cruxesOf(list)[0].answers).toEqual({ slope_size: "bad" });
 
     list.updateLine(route.id, [
       [7.8, 62.6],

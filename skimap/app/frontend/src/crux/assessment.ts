@@ -5,107 +5,141 @@ import type {
   CruxSegment,
   Factor,
   Hazards,
-  SlopeCategory,
+  Rating,
 } from "../types";
 
-export const SLOPE_CATEGORIES: { id: SlopeCategory; label: string }[] = [
-  { id: "lt30", label: "<30°" },
-  { id: "30_34", label: "30-34°" },
-  { id: "35_39", label: "35-39°" },
-  { id: "gt39", label: ">39°" },
-];
+/** What an info icon explains: the question, then what pushes the rating
+ *  towards a thumb up and towards a thumb down. */
+export type RatingInfo = { question: string; up: string; down: string };
 
-export const categoryLabel = (category: SlopeCategory): string =>
-  SLOPE_CATEGORIES.find((c) => c.id === category)!.label;
-
-/** The category of a slope in degrees. */
-export const categoryOfSlope = (degrees: number): SlopeCategory => {
-  if (degrees < 30) return "lt30";
-  if (degrees < 35) return "30_34";
-  if (degrees < 40) return "35_39";
-  return "gt39";
-};
-
-/** An identified Crux's category, from the steepest ground in its area. A
- *  Runout area is the flatter ground below a slope, so it is under 30. */
-export const categoryOfCrux = (crux: Pick<Crux, "class" | "max_slope_deg">): SlopeCategory => {
-  if (crux.class !== "steep_slope") return "lt30";
-  // Steep slope starts at 30, so one with no reading is at least that.
-  return categoryOfSlope(crux.max_slope_deg ?? 30);
-};
-
-/** The questions, in the order they are asked. A yes is always the more
- *  serious answer, so counting them is all the rules below need. */
-export const QUESTIONS: { factor: Factor; title: string; text: string }[] = [
+/** The aspects of a Crux the user weighs up, in the order they are asked.
+ *  Each is an open question rather than a yes/no, rated from clearly in the
+ *  user's favour to clearly against them. They are kept apart on purpose:
+ *  slope size is the terrain, release volume is today's snow, terrain traps
+ *  are what happens if caught, safe spots are how exposed you are, and
+ *  remote triggering is whether you can set it off without being on it. */
+export const QUESTIONS: ({ factor: Factor; title: string } & RatingInfo)[] = [
   {
     factor: "slope_size",
     title: "Slope size",
-    text: "Is the slope big enough to matter - could a slide here bury or injure you?",
+    question:
+      "How big is the steep slope you are exposed to - its height, width, and how far a slide could carry you?",
+    up: "A short, small slope. A slide would be small and stop quickly.",
+    down: "A long or wide slope with a long run below. A slide could carry you far and bury you.",
   },
   {
     factor: "release_volume",
     title: "Release volume",
-    text: "Could a slide here release a large volume of snow?",
+    question:
+      "How much snow could come loose here today - consider new snow, wind-loaded snow, and how deep a weak layer lies?",
+    up: "Little loose snow, thin layers, nothing wind-loaded. At most a small sluff.",
+    down: "Deep or wind-loaded snow over a weak layer. A thick slab that could break wide.",
   },
   {
     factor: "terrain_traps",
     title: "Terrain traps",
-    text: "Are there terrain traps below - a gully, cliff, trees or a lake that make being caught worse?",
+    question:
+      "What lies below and around - would being caught be made worse by the terrain?",
+    up: "Smooth, open runout where a slide spreads out and stops.",
+    down: "A gully or hollow where snow piles deep, cliffs or rocks, trees, or open water.",
   },
   {
     factor: "safe_spots",
     title: "Safe spots",
-    text: "Is it hard to find a safe spot - nowhere to stop or regroup out of reach of the slope?",
+    question:
+      "Can you limit your exposure - stop, regroup and cross one at a time out of reach of the slope?",
+    up: "Short exposure, with safe spots before and after to cross one at a time and watch.",
+    down: "Long exposure with nowhere safe to stop, or no way to space the group out.",
   },
   {
     factor: "remote_triggering",
     title: "Remote triggering",
-    text: "Could the slope be triggered from a distance - from below, beside or above it?",
+    question:
+      "How likely is it, in today's snowpack and conditions, that the slope above or beside you is set off from a distance - from where you travel, not on the slope itself?",
+    up: "A well-bonded snowpack with no persistent weak layer, no persistent slab problem in the forecast, and no signs of instability.",
+    down: "A known persistent weak layer or persistent slab problem in the forecast, or whumpfs, shooting cracks or recent avalanches nearby.",
   },
 ];
 
-/** Under 30 only remote triggering matters: gentle ground slides only when
- *  set off from steeper ground nearby. */
-export const questionsFor = (category: SlopeCategory) =>
-  category === "lt30" ? QUESTIONS.filter((q) => q.factor === "remote_triggering") : QUESTIONS;
-
-/** Where a Crux stands once the user has answered about it:
- *  - unassessed: not enough answered to say anything yet
- *  - kept: still a Crux, not critical
- *  - critical: kept, and highlighted
- *  - dismissed: answered as not relevant, so off the map */
-export type CruxStatus = "unassessed" | "kept" | "critical" | "dismissed";
-
-/** How many yes answers make a Crux critical where the answers decide it. */
-const CRITICAL_AT: Partial<Record<SlopeCategory, number>> = { "30_34": 2, "35_39": 1 };
-
-export const assess = (category: SlopeCategory, answers: Answers): CruxStatus => {
-  if (category === "gt39") return "critical";
-
-  if (category === "lt30") {
-    const remote = answers.remote_triggering;
-    if (remote === undefined) return "unassessed";
-    return remote ? "kept" : "dismissed";
-  }
-
-  const yes = QUESTIONS.filter((q) => answers[q.factor] === true).length;
-  if (yes >= CRITICAL_AT[category]!) return "critical";
-  const answered = QUESTIONS.every((q) => answers[q.factor] !== undefined);
-  return answered ? "kept" : "unassessed";
+/** What the overall verdict asks for: the user's own weighing, not a count. */
+export const OVERALL_INFO: RatingInfo = {
+  question:
+    "Weighing it all up with today's avalanche forecast and what you see - how does this crux look? One aspect clearly against you can outweigh several in your favour.",
+  up: "Acceptable as planned.",
+  down: "Critical - choose another line, another time, or turn back.",
 };
 
-/** The rule for a category, in words, for under the questions. */
-export const ruleText = (category: SlopeCategory): string => {
-  switch (category) {
-    case "lt30":
-      return "Yes keeps the crux; no dismisses it.";
-    case "30_34":
-      return "Two or more yes makes it critical.";
-    case "35_39":
-      return "One or more yes makes it critical.";
-    case "gt39":
-      return "Steeper than 39° - always critical.";
-  }
+/** A Runout area is the flatter ground below a slope: it only slides when set
+ *  off from the steeper ground above, so remote triggering is all there is to
+ *  weigh. Everything else - 30° and steeper - gets all five. */
+export const questionsFor = (crux: Pick<Crux, "class">) =>
+  crux.class === "runout_area"
+    ? QUESTIONS.filter((q) => q.factor === "remote_triggering")
+    : QUESTIONS;
+
+/** The five ratings, in the order they are offered: what each says about
+ *  an aspect, what it says as the overall verdict, and its colour. The
+ *  colour carries the step - dark and light at each end - since thumbs of
+ *  two sizes are hard to tell apart at button size. */
+export const RATINGS: {
+  id: Rating;
+  label: string;
+  overall: string;
+  color: string;
+  /** Which way the thumb points, if any, and whether it is the big one. */
+  thumb: "up" | "down" | null;
+  strong: boolean;
+}[] = [
+  { id: "very_good", label: "Clearly in your favour", overall: "Good", color: "#1B7F3B", thumb: "up", strong: true },
+  { id: "good", label: "Somewhat in your favour", overall: "Fairly good", color: "#66BB6A", thumb: "up", strong: false },
+  { id: "neutral", label: "No clear effect", overall: "Uncertain", color: "#8C8C8C", thumb: null, strong: false },
+  { id: "bad", label: "Somewhat against you", overall: "Fairly critical", color: "#E57373", thumb: "down", strong: false },
+  { id: "very_bad", label: "Clearly against you", overall: "Critical", color: "#C62828", thumb: "down", strong: true },
+];
+
+export const ratingOf = (id: Rating) => RATINGS.find((r) => r.id === id)!;
+
+/** A Runout area is asked only one thing, so its one rating is its overall
+ *  rating too - asking for the same judgement twice would only be noise.
+ *  Everything else has the overall the user gave it. */
+export const hasOwnOverall = (crux: Pick<Crux, "class">): boolean =>
+  questionsFor(crux).length > 1;
+
+export const overallOf = (
+  crux: Pick<Crux, "class"> & { answers: Answers; overall?: Rating }
+): Rating | undefined => (hasOwnOverall(crux) ? crux.overall : crux.answers.remote_triggering);
+
+/** The user has evaluated the Crux and chosen to keep it. Until then it is
+ *  drawn with a dashed border, as still to be done; one not kept is off the
+ *  list and the map altogether. */
+export const isDecided = (crux: { keep?: boolean }): boolean => crux.keep === true;
+
+/** What a marker and a list row say about the user's evaluation: the
+ *  overall rating of a Crux they have kept, "kept" for one kept without a
+ *  rating, or null while it is still to be evaluated. */
+export type Verdict = Rating | "kept" | null;
+
+export const verdictOf = (
+  crux: Pick<Crux, "class"> & { answers: Answers; overall?: Rating; keep?: boolean }
+): Verdict => (isDecided(crux) ? (overallOf(crux) ?? "kept") : null);
+
+/** Rated against the user overall - either step - which is what the map
+ *  and its clusters call critical. */
+export const isCritical = (overall: Rating | undefined): boolean =>
+  overall === "bad" || overall === "very_bad";
+
+/** Where a Crux lives in the list, and whether it is on the map:
+ *  - active: kept, or not decided yet - listed and drawn
+ *  - not_kept: the user chose to take it out of the list - greyed out, not drawn
+ *  - deleted: deleted by the user - greyed out below those, not drawn
+ *
+ *  The overall rating is the user's own reading, shown with the Crux; it is
+ *  the keep choice that decides where it goes. */
+export type CruxShelf = "active" | "not_kept" | "deleted";
+
+export const shelfOf = (crux: { keep?: boolean; deleted?: boolean }): CruxShelf => {
+  if (crux.deleted) return "deleted";
+  return crux.keep === false ? "not_kept" : "active";
 };
 
 /** A hand-placed Crux's problem as the class and marks the identifier would
@@ -123,19 +157,27 @@ export const problemHazards = (problem: CruxProblem): Hazards & { class: Crux["c
   }
 };
 
+/** The symbol a Crux is drawn with, as one of the problems a user can pick.
+ *  An identified area can be a release area and a fall hazard at once; it
+ *  reads as a release area here, which is what it is named first. */
+export const problemOf = (crux: Hazards & { class: Crux["class"] }): CruxProblem => {
+  if (crux.class === "runout_area") return "runout_area";
+  if (crux.probable_release_area) return "release_area";
+  if (crux.fall_hazard) return "fall_hazard";
+  return "steep_slope";
+};
+
 /** What the analysed line says at a point along it, as a starting point for
- *  a Crux placed there by hand. Null category where nothing is known - no
- *  analysis, or no terrain data - so the user has to choose one. */
+ *  a Crux placed there by hand: the problem it is drawn with. Steep slope
+ *  where nothing is known, so it gets all the questions. */
 export const defaultsAt = (
   segments: readonly CruxSegment[] | undefined,
   distance_m: number
-): { category: SlopeCategory | null; problem: CruxProblem } => {
+): { problem: CruxProblem } => {
   const segment = segments?.find((s) => s.start_m <= distance_m && distance_m <= s.end_m);
-  if (!segment || segment.class === "no_data") return { category: null, problem: "steep_slope" };
-  if (segment.class === "runout_area") return { category: "lt30", problem: "runout_area" };
-  if (segment.class === "none") return { category: "lt30", problem: "steep_slope" };
+  if (segment?.class === "runout_area") return { problem: "runout_area" };
+  if (segment?.class !== "steep_slope") return { problem: "steep_slope" };
   return {
-    category: categoryOfSlope(segment.max_slope_deg ?? 30),
     problem: segment.probable_release_area
       ? "release_area"
       : segment.fall_hazard

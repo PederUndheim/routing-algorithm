@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Pane, TileLayer } from "react-leaflet";
-import type { DivIcon, Marker as LeafletMarker } from "leaflet";
+import type { DivIcon, LatLngTuple, Marker as LeafletMarker } from "leaflet";
 
 import Box from "@mui/material/Box";
 import Typography from "@mui/material/Typography";
@@ -14,7 +14,7 @@ import type { OverlayId } from "../layers/overlays";
 import type { Route } from "../routes/routeList";
 import type { LineString } from "geojson";
 
-import type { AddMode, Corridor, LatLng, MapFocus, PickMode } from "../types";
+import type { AddMode, Corridor, Extent, LatLng, MapFocus, PickMode } from "../types";
 import { COLORS } from "../theme";
 
 import { endIcon, startIcon } from "../ui/MarkerIcons";
@@ -26,6 +26,7 @@ import ScaleBar from "../ui/ScaleBar";
 import CorridorOverlay from "./CorridorOverlay";
 import CruxMarkers from "./CruxMarkers";
 import CruxPlacer from "./CruxPlacer";
+import ExtentEditor from "./ExtentEditor";
 import DrawLayer from "./DrawLayer";
 import FocusController from "./FocusController";
 import LayerControl from "./LayerControl";
@@ -35,6 +36,11 @@ import RouteLines from "./RouteLines";
 
 /** Romsdalen. Somewhere with mountains, so an empty map is not an empty map. */
 const CENTER: [number, number] = [62.63, 7.896];
+
+/** Deeper than any layer has tiles for: past its maxNativeZoom each one is
+ *  scaled up rather than fetched. Every TileLayer needs it too, or Leaflet
+ *  hides the layer beyond its own default maxZoom of 18. */
+const MAX_ZOOM = 20;
 
 export type MapApi = {
   zoomIn: () => void;
@@ -98,8 +104,15 @@ type MapViewProps = {
   /** The line a Crux is being placed on, while Add crux is pressed. */
   placeCruxOn: LineString | null;
   pendingCrux: LatLng | null;
+  /** The line the pending Crux would colour, previewed while its form is open. */
+  pendingStretch: { positions: LatLngTuple[]; color: string } | null;
   onPlaceCrux: (spot: { position: LatLng; distance_m: number }) => void;
   onCancelPlaceCrux: () => void;
+  /** A Crux's extent being edited: the line, where its ends are now, and
+   *  the colour of the handles. */
+  extentEdit: { line: LineString; extent: Extent; color: string } | null;
+  onExtentChange: (extent: Extent) => void;
+  onCancelExtent: () => void;
 };
 
 /** Covers the map while files are dragged over it, and takes the drop.
@@ -178,8 +191,12 @@ const MapView = ({
   onCruxClick,
   placeCruxOn,
   pendingCrux,
+  pendingStretch,
   onPlaceCrux,
   onCancelPlaceCrux,
+  extentEdit,
+  onExtentChange,
+  onCancelExtent,
 }: MapViewProps) => {
   const bm = useMemo(() => getBasemap(basemap), [basemap]);
   const mapApiRef = useRef<MapApi | null>(null);
@@ -211,7 +228,7 @@ const MapView = ({
         center={CENTER}
         zoom={11}
         minZoom={5}
-        maxZoom={18}
+        maxZoom={MAX_ZOOM}
         zoomControl={false}
         zoomAnimation={false}
         fadeAnimation={false}
@@ -221,7 +238,12 @@ const MapView = ({
         {/* Explicit panes so the stack is fixed: basemap, overlays, the
             routes, then the markers you drag on top of all of it. */}
         <Pane name="basemap" style={{ zIndex: 200 }}>
-          <TileLayer url={bm.url} attribution={bm.attribution} />
+          <TileLayer
+            url={bm.url}
+            attribution={bm.attribution}
+            maxZoom={MAX_ZOOM}
+            maxNativeZoom={bm.maxNativeZoom}
+          />
         </Pane>
 
         <Pane name="overlays" style={{ zIndex: 300 }}>
@@ -229,6 +251,8 @@ const MapView = ({
             <TileLayer
               key={o.id}
               url={o.tileUrl}
+              maxZoom={MAX_ZOOM}
+              maxNativeZoom={o.maxNativeZoom}
               opacity={overlayOpacity[o.id] ?? o.opacityDefault}
               pane="overlays"
             />
@@ -294,8 +318,17 @@ const MapView = ({
         <CruxPlacer
           line={placeCruxOn}
           pending={pendingCrux}
+          stretch={pendingStretch}
           onPlace={onPlaceCrux}
           onCancel={onCancelPlaceCrux}
+        />
+
+        <ExtentEditor
+          line={extentEdit?.line ?? null}
+          extent={extentEdit?.extent ?? null}
+          color={extentEdit?.color ?? "white"}
+          onChange={onExtentChange}
+          onCancel={onCancelExtent}
         />
 
         <MapController

@@ -1,9 +1,21 @@
 import type { SvgIconComponent } from "@mui/icons-material";
 import AirIcon from "@mui/icons-material/Air";
-import PriorityHighIcon from "@mui/icons-material/PriorityHigh";
-import TrendingDownIcon from "@mui/icons-material/TrendingDown";
+import SignalCellular4BarIcon from "@mui/icons-material/SignalCellular4Bar";
+import SignalCellularConnectedNoInternet4BarIcon from "@mui/icons-material/SignalCellularConnectedNoInternet4Bar";
+import SouthIcon from "@mui/icons-material/South";
 
-import type { DangerClass, Hazards, SegmentClass } from "./types";
+import type { CruxProblem, DangerClass, Hazards, SegmentClass } from "./types";
+
+/** The symbol for each problem, wherever it is drawn - marker, list, and
+ *  the symbol picker. A slope is a filled triangle; a release area is that
+ *  slope with an exclamation mark; a fall hazard is a straight drop; a
+ *  runout is the air blast below a slide. */
+export const PROBLEM_ICONS: Record<CruxProblem, SvgIconComponent> = {
+  steep_slope: SignalCellular4BarIcon,
+  release_area: SignalCellularConnectedNoInternet4BarIcon,
+  fall_hazard: SouthIcon,
+  runout_area: AirIcon,
+};
 
 /** A Crux or a segment: both carry a class and the same hazard marks, and
  *  everything here reads either. */
@@ -11,8 +23,6 @@ export type DangerArea = Hazards & {
   class: SegmentClass;
   /** A hand-placed Crux's own colour, in place of its class's. */
   color?: string;
-  /** Judged critical from the user's answers: drawn with a warning. */
-  critical?: boolean;
 };
 
 /** What each Danger class is called on screen - the names CONTEXT.md gives. */
@@ -40,23 +50,20 @@ export const dangerName = (area: DangerArea): string => {
 export const cruxTitle = (crux: DangerArea & { description?: string }): string =>
   crux.description || dangerName(crux);
 
-/** The icons a marker carries between its number and its degrees.
+/** The icons a marker and a list row carry between the number and the
+ *  degrees.
  *
- *  Plain steep ground gets none - the slope map underneath already shades
- *  it, and the degrees say the rest. What the area turns out to be is what
- *  is worth an icon, and it can be both at once. A Runout area has no
- *  degrees to show, so its icon is all it has.
- *
- *  A release area is an exclamation mark rather than a picture of a slide:
- *  at marker size a glyph reads where an illustration does not, and the
- *  degrees beside it already say what kind of ground it is. */
+ *  Plain steep ground gets the slope. A release area or a fall hazard gets
+ *  its own instead - both already say the ground is steep - and an area can
+ *  be both at once. A Runout area has no degrees to show, so its icon is all
+ *  it has. */
 export const dangerIcons = (area: DangerArea): SvgIconComponent[] => {
-  if (area.class === "runout_area") return [AirIcon];
+  if (area.class === "runout_area") return [PROBLEM_ICONS.runout_area];
   if (area.class !== "steep_slope") return [];
   const icons: SvgIconComponent[] = [];
-  if (area.probable_release_area) icons.push(PriorityHighIcon);
-  if (area.fall_hazard) icons.push(TrendingDownIcon);
-  return icons;
+  if (area.probable_release_area) icons.push(PROBLEM_ICONS.release_area);
+  if (area.fall_hazard) icons.push(PROBLEM_ICONS.fall_hazard);
+  return icons.length > 0 ? icons : [PROBLEM_ICONS.steep_slope];
 };
 
 /** How steep it gets, for a Steep slope area. The number is the point of

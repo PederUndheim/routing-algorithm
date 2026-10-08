@@ -9,6 +9,9 @@ export type OverlayDef = {
   id: OverlayId;
   label: string;
   tileUrl: string;
+  /** The deepest zoom the service has tiles for. NVE's capabilities list
+   *  levels to 19, but past this it answers 400; Leaflet scales these up. */
+  maxNativeZoom: number;
   opacityDefault: number;
   onByDefault: boolean;
   thumbUrl: string;
@@ -21,6 +24,7 @@ export const OVERLAYS: OverlayDef[] = [
     id: "slope",
     label: "Slope",
     tileUrl: `${NVE}/Bratthet_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
+    maxNativeZoom: 16,
     opacityDefault: 0.35,
     onByDefault: true,
     thumbUrl: slopeThumb,
@@ -29,6 +33,7 @@ export const OVERLAYS: OverlayDef[] = [
     id: "slope_runout",
     label: "Slope and runout",
     tileUrl: `${NVE}/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
+    maxNativeZoom: 16,
     opacityDefault: 0.38,
     onByDefault: false,
     thumbUrl: runoutThumb,

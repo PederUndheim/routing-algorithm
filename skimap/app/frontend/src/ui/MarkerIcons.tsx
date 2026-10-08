@@ -3,10 +3,11 @@ import type { DivIcon } from "leaflet";
 import { renderToStaticMarkup } from "react-dom/server";
 import PlaceIcon from "@mui/icons-material/Place";
 import FlagIcon from "@mui/icons-material/Flag";
-import WarningIcon from "@mui/icons-material/Warning";
 
 import { cruxBadge, dangerIcons } from "../dangerClasses";
 import type { DangerArea } from "../dangerClasses";
+import type { Verdict } from "../crux/assessment";
+import { VerdictDisc } from "./RatingMark";
 import { COLORS, dangerColor } from "../theme";
 
 const labelStyle = {
@@ -62,10 +63,11 @@ const cruxIcons = new Map<string, DivIcon>();
 export const cruxIconSize = (
   area: DangerArea,
   selected: boolean,
-  label = "0"
+  label = "0",
+  verdict: Verdict = null
 ): [number, number] => {
   const height = selected ? 26 : 20;
-  const marks = dangerIcons(area).length + (area.critical ? 1 : 0);
+  const marks = dangerIcons(area).length + (verdict ? 1 : 0);
   const digits = Math.max(label.length - 1, 0) * 0.45;
   return [Math.round(height * (1 + digits + marks + (cruxBadge(area) ? 1.5 : 0))), height];
 };
@@ -79,62 +81,77 @@ export const cruxIconSize = (
  *  hazard puts its icon before them, both put both, and the pill turns red
  *  - so the icons say what kind of trouble and the number says how much. A
  *  Crux on a Route that is not selected is smaller and faded, so the
- *  Selected route's stand out. A Crux the user has judged critical leads
- *  with a warning sign and wears a red halo, whatever its own colour. */
+ *  Selected route's stand out. Once the user has evaluated and kept it, its
+ *  verdict sits just outside the pill, to its right. A stack has none. */
 export const cruxIcon = (
   label: string,
   area: DangerArea,
   selected: boolean,
-  grouped = false
+  grouped = false,
+  verdict: Verdict = null
 ): DivIcon => {
   const badge = cruxBadge(area);
   const icons = dangerIcons(area);
   const key = `${label}:${area.class}:${selected}:${badge ?? ""}:${
     area.probable_release_area ? "R" : ""
-  }${area.fall_hazard ? "F" : ""}:${grouped}:${area.color ?? ""}:${area.critical ? "C" : ""}`;
+  }${area.fall_hazard ? "F" : ""}:${grouped}:${area.color ?? ""}:${verdict ?? ""}`;
   let icon = cruxIcons.get(key);
   if (!icon) {
-    const [width, height] = cruxIconSize(area, selected, label);
+    const [width, height] = cruxIconSize(area, selected, label, verdict);
     icon = divIcon({
       html: renderToStaticMarkup(
         <div
           style={{
             ...rowStyle,
             width: "max-content",
-            gap: 1,
-            height,
-            boxSizing: "border-box",
-            paddingRight: selected ? 6 : 4,
-            borderRadius: height / 2,
-            border: "2px solid white",
-            background: dangerColor(area),
-            color: "white",
-            fontSize: selected ? 13 : 11,
-            fontWeight: 700,
-            // A grouped marker is backed by a second and third outline,
-            // so it reads as a stack of pills before the label is read.
-            boxShadow: grouped
-              ? `2px 2px 0 -1px ${dangerColor(area)}, 2px 2px 0 1px white,
-                 4px 4px 0 -1px ${dangerColor(area)}, 4px 4px 0 1px white,
-                 0 1px 4px rgba(0,0,0,0.45)`
-              : area.critical
-                ? "0 0 0 3px rgba(211,47,47,0.85), 0 1px 6px rgba(0,0,0,0.55)"
-                : "0 1px 4px rgba(0,0,0,0.45)",
+            gap: 3,
             opacity: selected ? 1 : 0.6,
           }}
         >
-          {/* Lighter than the rest: the number only tells you which Crux
-              this is, while the degrees are the reading you came for. */}
-          <span style={{ minWidth: height - 4, textAlign: "center", fontWeight: 500 }}>
-            {label}
-          </span>
-          {area.critical && <WarningIcon style={{ fontSize: selected ? 16 : 12 }} />}
-          {icons.map((AreaIcon, i) => (
-            <AreaIcon key={i} style={{ fontSize: selected ? 16 : 12 }} />
-          ))}
-          {badge && (
-            <span style={{ paddingLeft: 1, fontVariantNumeric: "tabular-nums" }}>{badge}</span>
-          )}
+          <div
+            style={{
+              ...rowStyle,
+              gap: 1,
+              height,
+              boxSizing: "border-box",
+              paddingRight: selected ? 6 : 4,
+              borderRadius: height / 2,
+              background: dangerColor(area),
+              color: "white",
+              fontSize: selected ? 13 : 11,
+              fontWeight: 700,
+              // A grouped marker is backed by a second and third pill, each
+              // edged in a thin dark line, so it reads as a stack before the
+              // label is read.
+              boxShadow: grouped
+                ? `3px 3px 0 -1px ${dangerColor(area)}, 3px 3px 0 0 rgba(0,0,0,0.35),
+                   6px 6px 0 -1px ${dangerColor(area)}, 6px 6px 0 0 rgba(0,0,0,0.35),
+                   0 1px 4px rgba(0,0,0,0.45)`
+                : "0 1px 4px rgba(0,0,0,0.45)",
+            }}
+          >
+            {/* Smaller and lighter than the rest: the number only tells you
+                which Crux this is, while the degrees are the reading you came
+                for. The label is a disc as wide as the pill is high, so the
+                anchor below sits on its middle. */}
+            <span
+              style={{
+                minWidth: height,
+                textAlign: "center",
+                fontSize: selected ? 11 : 9,
+                fontWeight: 400,
+              }}
+            >
+              {label}
+            </span>
+            {icons.map((AreaIcon, i) => (
+              <AreaIcon key={i} style={{ fontSize: selected ? 16 : 12 }} />
+            ))}
+            {badge && (
+              <span style={{ paddingLeft: 1, fontVariantNumeric: "tabular-nums" }}>{badge}</span>
+            )}
+          </div>
+          {verdict && <VerdictDisc verdict={verdict} size={selected ? 18 : 14} shadow />}
         </div>
       ),
       className: "",

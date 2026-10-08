@@ -8,7 +8,7 @@ import Typography from "@mui/material/Typography";
 
 import { km } from "../format";
 import type { Route } from "../routes/routeList";
-import type { CruxEntry, Factor } from "../types";
+import type { CruxEntry, Factor, Rating } from "../types";
 import { COLORS } from "../theme";
 import CruxList from "./CruxList";
 
@@ -97,12 +97,23 @@ export const CorridorControls = ({
 type SelectedRouteProps = {
   route: Route;
   activeCruxId: string | null;
+  highlightedCruxId: string | null;
   onActivateCrux: (crux: CruxEntry) => void;
-  onAnswer: (cruxId: string, factor: Factor, value: boolean | undefined) => void;
+  onAnswer: (cruxId: string, factor: Factor, value: Rating | undefined) => void;
+  onOverall: (cruxId: string, value: Rating | undefined) => void;
+  onKeep: (cruxId: string, keep: boolean | undefined) => void;
   onRestoreCrux: (cruxId: string) => void;
-  onRemoveCrux: (cruxId: string) => void;
+  onDeleteCrux: (cruxId: string) => void;
+  onUndeleteCrux: (cruxId: string) => void;
+  onEditCrux: (crux: CruxEntry) => void;
+  onMoveCrux: (crux: CruxEntry) => void;
+  onEditExtent: (crux: CruxEntry) => void;
   placingCrux: boolean;
+  placingText: string;
   onPlaceCrux: () => void;
+  editingExtent: boolean;
+  onFinishExtent: () => void;
+  onResetExtent: () => void;
 };
 
 /** What the drawer shows for the Selected route below Identify cruxes: the
@@ -111,12 +122,23 @@ type SelectedRouteProps = {
 const SelectedRoute = ({
   route,
   activeCruxId,
+  highlightedCruxId,
   onActivateCrux,
   onAnswer,
+  onOverall,
+  onKeep,
   onRestoreCrux,
-  onRemoveCrux,
+  onDeleteCrux,
+  onUndeleteCrux,
+  onEditCrux,
+  onMoveCrux,
+  onEditExtent,
   placingCrux,
+  placingText,
   onPlaceCrux,
+  editingExtent,
+  onFinishExtent,
+  onResetExtent,
 }: SelectedRouteProps) => {
   // Here rather than in the list, so it holds across switching routes and
   // a folded list gives its height back to the drawer.
@@ -158,14 +180,25 @@ const SelectedRoute = ({
         cruxes={route.cruxes}
         analysed={route.crux !== null}
         activeId={activeCruxId}
+        highlightedId={highlightedCruxId}
         onActivate={onActivateCrux}
         onAnswer={onAnswer}
+        onOverall={onOverall}
+        onKeep={onKeep}
         onRestore={onRestoreCrux}
-        onRemove={onRemoveCrux}
+        onDelete={onDeleteCrux}
+        onUndelete={onUndeleteCrux}
+        onEdit={onEditCrux}
+        onMove={onMoveCrux}
+        onEditExtent={onEditExtent}
         open={listOpen}
         onToggle={() => setListOpen((prev) => !prev)}
         placing={placingCrux}
+        placingText={placingText}
         onPlace={onPlaceCrux}
+        editingExtent={editingExtent}
+        onFinishExtent={onFinishExtent}
+        onResetExtent={onResetExtent}
       />
     </Box>
   );

@@ -2,8 +2,10 @@ import { Polyline } from "react-leaflet";
 import type { LatLngTuple, PathOptions } from "leaflet";
 import type { LineString } from "geojson";
 
+import { shelfOf } from "../crux/assessment";
 import type { Route } from "../routes/routeList";
-import type { CruxSegment } from "../types";
+import { sliceLine } from "../routes/snap";
+import type { CruxSegment, Extent } from "../types";
 import { COLORS, CRUX_COLORS, dangerColor } from "../theme";
 
 // Lines are immutable once in the list, so each is converted once. A Route
@@ -30,6 +32,27 @@ const segmentStyle = (segment: CruxSegment): PathOptions =>
     // Dashed as well as grey, so it cannot be read as a paler green.
     ? { color: CRUX_COLORS.noData, dashArray: "8 10" }
     : { color: dangerColor(segment) };
+
+const latLngsAlong = (route: Route, extent: Extent): LatLngTuple[] =>
+  sliceLine(route.line, extent.start_m, extent.end_m).map(
+    ([lng, lat]) => [lat, lng] as LatLngTuple
+  );
+
+/** What the user has done to a Route's colouring, as lines to draw over
+ *  the analysis: an identified Crux whose extent was edited has its old area
+ *  cleared to green and its new extent coloured in its own colour; one placed
+ *  by hand colours the stretch it was given. None of it while the Crux is
+ *  deleted or not kept, as with its marker - the analysis shows through. */
+const overridesOf = (route: Route) => {
+  const cleared: LatLngTuple[][] = [];
+  const coloured: { id: string; color: string; positions: LatLngTuple[] }[] = [];
+  for (const crux of route.cruxes) {
+    if (!crux.extent || shelfOf(crux) !== "active") continue;
+    if (crux.source === "identified" && crux.area) cleared.push(latLngsAlong(route, crux.area));
+    coloured.push({ id: crux.id, color: dangerColor(crux), positions: latLngsAlong(route, crux.extent) });
+  }
+  return { cleared: cleared.filter((p) => p.length >= 2), coloured: coloured.filter((c) => c.positions.length >= 2) };
+};
 
 type RouteLinesProps = {
   routes: readonly Route[];
@@ -68,25 +91,48 @@ const RouteLines = ({ routes, selectedId, clickTaken, onSelect }: RouteLinesProp
           },
         };
 
-        if (!route.crux) {
-          return (
+        const base = route.crux ? (
+          route.crux.segments.map((segment, i) => (
             <Polyline
-              key={key}
-              positions={latLngsOf(route.line)}
-              pathOptions={{ color: COLORS.teal, ...stroke }}
+              key={`${key}:${i}`}
+              positions={latLngsOf(segment.line)}
+              pathOptions={{ ...segmentStyle(segment), ...stroke }}
               eventHandlers={eventHandlers}
             />
-          );
-        }
-
-        return route.crux.segments.map((segment, i) => (
+          ))
+        ) : (
           <Polyline
-            key={`${key}:${i}`}
-            positions={latLngsOf(segment.line)}
-            pathOptions={{ ...segmentStyle(segment), ...stroke }}
+            key={key}
+            positions={latLngsOf(route.line)}
+            pathOptions={{ color: COLORS.teal, ...stroke }}
             eventHandlers={eventHandlers}
           />
-        ));
+        );
+
+        // Added after the analysis, so what the user set lies over whatever
+        // the terrain made of that ground - every clearing before any colour,
+        // so one Crux's new extent is never wiped by another's old area.
+        const { cleared, coloured } = overridesOf(route);
+        const overrides = [
+          ...cleared.map((positions, i) => (
+            <Polyline
+              key={`${key}:cleared:${i}`}
+              positions={positions}
+              pathOptions={{ color: CRUX_COLORS.none, ...stroke }}
+              eventHandlers={eventHandlers}
+            />
+          )),
+          ...coloured.map(({ id, color, positions }) => (
+            <Polyline
+              key={`${key}:crux:${id}`}
+              positions={positions}
+              pathOptions={{ color, ...stroke }}
+              eventHandlers={eventHandlers}
+            />
+          )),
+        ];
+
+        return [base, ...overrides];
       })}
     </>
   );

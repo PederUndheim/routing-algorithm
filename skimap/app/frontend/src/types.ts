@@ -97,12 +97,7 @@ export type RouteResponse = {
   seconds: number;
 };
 
-/** The slope categories a Crux is assessed in. The questions asked, and how
- *  many yes answers make it critical, depend on which one it is in. */
-export type SlopeCategory = "lt30" | "30_34" | "35_39" | "gt39";
-
-/** What the user is asked about a Crux, one yes/no each. A yes always
- *  means the Crux is more serious. */
+/** The aspects of a Crux the user weighs up. */
 export type Factor =
   | "slope_size"
   | "release_volume"
@@ -110,20 +105,45 @@ export type Factor =
   | "safe_spots"
   | "remote_triggering";
 
-export type Answers = Partial<Record<Factor, boolean>>;
+/** The user's judgement of one aspect, or of the Crux overall, on a
+ *  five-step scale from clearly in their favour to clearly against them. */
+export type Rating = "very_good" | "good" | "neutral" | "bad" | "very_bad";
+
+export type Answers = Partial<Record<Factor, Rating>>;
+
+/** A stretch of a Route, in metres along its line as the frontend measures
+ *  it - the same measure `sliceLine` and `nearestOnLine` use. */
+export type Extent = { start_m: number; end_m: number };
 
 /** What a hand-placed Crux is: the same problems the identifier names, so it
  *  is drawn with the same symbol. */
 export type CruxProblem = "steep_slope" | "release_area" | "fall_hazard" | "runout_area";
 
 /** A Crux in a Route's list: one the identifier found, or one placed by
- *  hand, with what the user has answered about it. `number` is its place
- *  along the Route among all of them, renumbered whenever one is added. */
+ *  hand, with what the user has made of it. `number` is its place along the
+ *  Route among all of them, renumbered whenever one is added or moved. */
 export type CruxEntry = Crux & {
   id: string;
   source: "identified" | "manual";
-  category: SlopeCategory;
   answers: Answers;
+  /** The user's own overall rating, read off their answers. Shown with the
+   *  Crux; it decides nothing by itself. */
+  overall?: Rating;
+  /** Whether the user wants it in the list: false puts it on the not-kept
+   *  shelf and off the map. Undecided counts as kept. */
+  keep?: boolean;
+  /** Deleted by the user: kept out of sight, on the list's deleted shelf,
+   *  until it is brought back. */
+  deleted?: boolean;
+  /** Moved by the user, so its marker stands exactly on its spot instead of
+   *  ahead of it like an identified Crux's. */
+  moved?: boolean;
+  /** An identified Crux's area as the analysis found it - what its segments
+   *  colour. */
+  area?: Extent;
+  /** The stretch the user has given it to colour: a hand-placed Crux's
+   *  stretch, or an identified one's area as the user has edited it. */
+  extent?: Extent;
   /** A hand-placed Crux's own colour and words; the identifier's have none. */
   color?: string;
   description?: string;
@@ -133,8 +153,10 @@ export type CruxEntry = Crux & {
 export type ManualCruxInput = {
   position: LatLng;
   distance_m: number;
-  category: SlopeCategory;
   problem: CruxProblem;
   color: string;
   description: string;
+  /** How much of the line ahead of the spot is coloured, in metres. 0 is a
+   *  marker alone. */
+  length_m: number;
 };
