@@ -72,6 +72,10 @@ def main() -> None:
     p = sub.add_parser("mosaic", help="merge tiles into the national surface")
     p.add_argument("--cog", action="store_true", help="also write a COG")
 
+    p = sub.add_parser("roads", help="build the road graph that road routing drives on")
+    p.add_argument("--source", type=Path, help="roads GeoPackage (default the national one)")
+    p.add_argument("--out", type=Path, help="output folder (default data/input/derived/road_network)")
+
     p = sub.add_parser("crux", help="how many Cruxes each grouping setting leaves, "
                                     "over a folder of example routes")
     p.add_argument("--routes", type=Path,
@@ -85,6 +89,12 @@ def main() -> None:
         from skimap import crux_sweep
 
         crux_sweep.sweep(args.routes, detail=args.detail)
+        return
+
+    if args.stage == "roads":
+        from skimap import road_network
+
+        road_network.build(args.source, args.out)
         return
 
     if args.stage == "grid":

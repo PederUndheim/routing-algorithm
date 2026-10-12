@@ -112,10 +112,19 @@ _TO_GRID = _transform(WGS84_EPSG, config.CRS_EPSG)
 _FROM_GRID = _transform(config.CRS_EPSG, WGS84_EPSG)
 
 
-def identify(route: dict, sources: Optional[Sources] = None) -> dict:
+def identify(route: dict, sources: Optional[Sources] = None,
+             exclude: Optional[list] = None) -> dict:
     """The Danger zones and Cruxes along one Route.
 
     `route` is a GeoJSON LineString in WGS84, followed in its point order.
+
+    `exclude` is stretches of it, [start_m, end_m] along the line on the
+    metric grid, where the line is not on the ground the rasters describe:
+    a road Route's tunnels and ferry crossings. Their samples read as none
+    whatever lies over or under them - the steep valley side above a tunnel
+    is not something the car inside it meets, and the sea under a ferry is
+    not missing data.
+
     Returns:
 
         segments    the areas, in order: class, start_m, end_m, a WGS84
@@ -144,6 +153,8 @@ def identify(route: dict, sources: Optional[Sources] = None) -> dict:
     slope = _read(sources.slope, xy, nodata_as=np.nan)     # unknown
     runout = _read(sources.runout, xy, nodata_as=np.inf)   # beyond reach
     codes = _classify(pra, slope, runout)
+    for start_m, end_m in _stretches(exclude):
+        codes[(along >= start_m) & (along <= end_m)] = _NONE
 
     # Each sample stands for the ground halfway to its neighbours, so a run
     # is drawn from midpoint to midpoint and adjacent segments meet.
@@ -214,6 +225,24 @@ def grid_vertices(route: dict) -> np.ndarray:
     if len(xy) < 2:
         raise ValueError("The route needs at least two distinct points.")
     return xy
+
+
+def _stretches(exclude: Optional[list]) -> list[tuple[float, float]]:
+    """`exclude` checked: pairs of distances, each in order."""
+    if exclude is None:
+        return []
+    if not isinstance(exclude, list):
+        raise ValueError("'exclude' must be a list of [start_m, end_m] pairs.")
+    out = []
+    for pair in exclude:
+        try:
+            start_m, end_m = (float(v) for v in pair)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("'exclude' must be a list of [start_m, end_m] pairs.") from exc
+        if not (np.isfinite(start_m) and np.isfinite(end_m)) or end_m < start_m:
+            raise ValueError(f"Not a stretch of the route: {start_m}, {end_m}")
+        out.append((start_m, end_m))
+    return out
 
 
 def _cut(vertices: np.ndarray, along: np.ndarray, start: float, end: float) -> np.ndarray:

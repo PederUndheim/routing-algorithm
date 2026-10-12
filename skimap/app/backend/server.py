@@ -10,16 +10,23 @@ Run it from the project directory - `skimap/`, the one holding `skimap/`,
     & "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m app.backend.server
 
     GET  /health              {"status": "ok"}, once GRASS is up
-    POST /route               {"start": {"lat": .., "lng": ..}, "end": {...}}
+    POST /route               {"start": {"lat": .., "lng": ..}, "end": {...},
+                               "network": "terrain" | "road"}
                               -> the line as WGS84 GeoJSON, its length and
-                                 cost, and where to fetch its corridor
+                                 cost, and where to fetch its corridor.
+                                 "road" drives along the road network
+                                 instead, with no corridor; "terrain" is
+                                 the default
     GET  /corridor/<id>.png   that corridor, as an overlay for the map
     POST /corridor            {"line": <GeoJSON LineString, WGS84>}
                               -> the corridor around a drawn, uploaded or
                                  edited line, and the line's cost
-    POST /crux                {"route": <GeoJSON LineString, WGS84>}
+    POST /crux                {"route": <GeoJSON LineString, WGS84>,
+                               "exclude": [[start_m, end_m], ...]}
                               -> its Danger zones and Cruxes - see
-                                 skimap.crux for the shape
+                                 skimap.crux for the shape. `exclude` is
+                                 optional: a road route's tunnels and
+                                 ferries, read as safe ground
 
 Errors come back as {"message": ...} with a 4xx, which is what the front end
 puts in its error toast.
@@ -116,12 +123,22 @@ class Handler(BaseHTTPRequestHandler):
             payload = self._read_json(MAX_ROUTE_BODY_BYTES, "a start and an end")
             start = _point(payload, "start")
             end = _point(payload, "end")
+            network = payload.get("network", "terrain")
+            if network not in ("terrain", "road"):
+                raise ValueError(f"'network' must be \"terrain\" or \"road\", not {network!r}.")
         except ValueError as exc:
             self._send(400, {"message": str(exc)})
             return
 
         try:
-            self._send(200, service.route(start, end))
+            if network == "road":
+                self._send(200, service.route_road(start, end))
+            else:
+                self._send(200, service.route(start, end))
+        except ValueError as exc:
+            # Raised on purpose and worded for the user - an end too far
+            # from any road, two ends with no road between them.
+            self._send(400, {"message": str(exc)})
         except Exception as exc:  # noqa: BLE001 - reported, the server stays up
             # The traceback goes to the console, the message to the browser:
             # GRASS's own errors ("NULL at end_0_app", and so on) already say
@@ -137,7 +154,7 @@ class Handler(BaseHTTPRequestHandler):
         """
         try:
             payload = self._read_json(MAX_CRUX_BODY_BYTES, "a route")
-            result = crux.identify(payload.get("route"))
+            result = crux.identify(payload.get("route"), exclude=payload.get("exclude"))
         except ValueError as exc:
             self._send(400, {"message": str(exc)})
             return
@@ -248,9 +265,10 @@ def main() -> None:
     # Nothing is answered until serve_forever, so a request that arrives in
     # the meantime waits in the backlog rather than being told "ok" early:
     # the port is open from here, but /health still means genuinely ready.
-    print("Starting GRASS and linking the cost surface...", flush=True)
+    print("Starting GRASS, linking the cost surface and loading the road network...", flush=True)
     service.start()
     print(f"  surface: {service.surface_name()}", flush=True)
+    print(f"  roads:   {service.roads_status()}", flush=True)
 
     print(f"Ready on http://{args.host}:{args.port} - ctrl-c to stop", flush=True)
     try:

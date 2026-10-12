@@ -1,8 +1,11 @@
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import Switch from "@mui/material/Switch";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
+import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import DrawIcon from "@mui/icons-material/Draw";
 import RouteIcon from "@mui/icons-material/Route";
 import UndoIcon from "@mui/icons-material/Undo";
@@ -121,6 +124,49 @@ const PointRow = ({ what, point, picking, onPick, onClear }: PointRowProps) => (
   </Box>
 );
 
+/** Roads only: whether Generate drives along the roads or crosses the
+ *  terrain. A switch rather than a fourth way to add a Route, because it is
+ *  still Generate - same points, same button - only on a different network. */
+const RoadsOnlySwitch = ({
+  checked,
+  onChange,
+  disabled,
+}: {
+  checked: boolean;
+  onChange: (on: boolean) => void;
+  disabled: boolean;
+}) => (
+  <FormControlLabel
+    control={
+      <Switch
+        size="small"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        sx={{
+          "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
+          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+            backgroundColor: COLORS.teal,
+          },
+        }}
+      />
+    }
+    label={
+      <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.75 }}>
+        <DirectionsCarIcon sx={{ fontSize: 18 }} />
+        Roads only (driving)
+      </Box>
+    }
+    sx={{
+      color: "white",
+      ml: 0,
+      mb: 0.5,
+      "& .MuiFormControlLabel-label": { fontSize: 13 },
+      "& .MuiFormControlLabel-label.Mui-disabled": { color: "rgba(255,255,255,0.5)" },
+    }}
+  />
+);
+
 type GeneratePaneProps = {
   startPoint: LatLng | null;
   endPoint: LatLng | null;
@@ -129,6 +175,8 @@ type GeneratePaneProps = {
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: () => void;
+  roadsOnly: boolean;
+  onRoadsOnlyChange: (on: boolean) => void;
   isRouting: boolean;
   backendReady: boolean | null;
 };
@@ -141,6 +189,8 @@ export const GeneratePane = ({
   onClearStart,
   onClearEnd,
   onGenerate,
+  roadsOnly,
+  onRoadsOnlyChange,
   isRouting,
   backendReady,
 }: GeneratePaneProps) => {
@@ -148,8 +198,16 @@ export const GeneratePane = ({
 
   return (
     <>
+      <RoadsOnlySwitch checked={roadsOnly} onChange={onRoadsOnlyChange} disabled={isRouting} />
+
       <Typography sx={{ ...hintSx, mb: 1.5 }}>
-        Pick start and end points on the map. Adjust the markers afterwards if needed. Click "Generate route" to retrieve least-cost route. The corridor is shown with the "show corridor".
+        {roadsOnly
+          ? 'Pick start and end points on or near a road. Click "Generate drive" to get the ' +
+            "quickest drive along the road network, ferries included and one-way roads " +
+            "respected. A drive stays on the road, so it has no corridor."
+          : 'Pick start and end points on the map. Adjust the markers afterwards if needed. ' +
+            'Click "Generate route" to retrieve least-cost route. The corridor is shown with ' +
+            'the "show corridor".'}
       </Typography>
 
       <PointRow
@@ -183,7 +241,7 @@ export const GeneratePane = ({
         onClick={onGenerate}
         sx={accentOutlinedSx}
       >
-        {isRouting ? "Routing..." : "Generate route"}
+        {isRouting ? "Routing..." : roadsOnly ? "Generate drive" : "Generate route"}
       </Button>
     </>
   );

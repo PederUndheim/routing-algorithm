@@ -78,6 +78,9 @@ python -m skimap.cli tours init         # or: tours import-json --json <file>
 python -m skimap.cli tours check
 python -m skimap.cli route
 python -m skimap.cli exposure       # score the routes, split corridors by class
+
+# The road graph behind the app's Roads only mode. 15 seconds, ~310 MB.
+python -m skimap.cli roads
 ```
 
 `cost` and `route` are both resumable - work that already has an output is
@@ -464,6 +467,30 @@ clear it. `routing.corridor_touches_edge` is the test, and it is worth
 sweeping a model's corridors with it after any bulk route, per model: each
 cost surface produces its own corridors, so the tours that press against a
 window differ between them.
+
+### Road routing
+
+The app's **Roads only (driving)** switch is for road-department users: it
+drives along NVDB instead of crossing terrain. It is a graph, not a cost
+surface (`skimap.road_network`), built once with `skimap.cli roads` into
+`data/input/derived/road_network/` - on the share the deployed backend
+already mounts, so deploying it is an upload there and a restart.
+
+- **Network.** `VegSenterlinje` and `Kj.rebane` in use, plus car ferries
+  (`config.ROAD_NETWORK["filter"]`). Without the ferries the largest
+  connected network is 56% of the junctions; with them 99.1%.
+- **Price.** Seconds, from rough speeds per road category plus a wait at
+  each ferry. Read at server start, so tuning them needs no rebuild.
+- **One-way roads** (`VKJORFLT`) are respected. Checked on the 4,111
+  roundabouts it finds: all but one run counter-clockwise, as they should.
+- **No corridor.** The car stays on the road.
+- **Tunnels and ferries** come back with the route, and the app passes them
+  to `/crux` as `exclude`: the steep valley side over a tunnel and the sea
+  under a ferry are not ground the car meets.
+
+The Crux Identifier is otherwise unchanged on a drive. Runout areas are what
+matter on a road; steep slope also fires on road cuttings and embankments in
+the 10 m slope, and has not been tuned for roads.
 
 
 ## Exposure

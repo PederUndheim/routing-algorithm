@@ -2,7 +2,13 @@
 import { describe, expect, it } from "vitest";
 
 import type { CruxResult, RouteResponse } from "../types";
-import { createRouteList, geodesicLength, isEdited } from "./routeList";
+import {
+  createRouteList,
+  excludedStretches,
+  geodesicLength,
+  isEdited,
+  isRoadRoute,
+} from "./routeList";
 import type { RouteList } from "./routeList";
 
 const routed = (): RouteResponse => ({
@@ -49,6 +55,54 @@ describe("routed Routes", () => {
 
     expect(names(list)).toEqual(["Route 1", "Route 2"]);
     expect(selectedName(list)).toBe("Route 2");
+  });
+});
+
+const driven = (): RouteResponse => ({
+  ...routed(),
+  corridor: null,
+  network: "road",
+  tunnels: [[100, 400]],
+  ferries: [[900, 1500]],
+});
+
+describe("road routes", () => {
+  it("are numbered apart from terrain routes", () => {
+    const list = createRouteList();
+
+    list.addRouted(routed());
+    list.addRouted(driven());
+    list.addRouted(driven());
+
+    expect(names(list)).toEqual(["Route 1", "Road route 1", "Road route 2"]);
+  });
+
+  it("leave their tunnels and ferries out of the Crux Identifier", () => {
+    const list = createRouteList();
+    const terrain = list.addRouted(routed());
+    const road = list.addRouted(driven());
+
+    expect(isRoadRoute(road)).toBe(true);
+    expect(excludedStretches(road)).toEqual([
+      [100, 400],
+      [900, 1500],
+    ]);
+    expect(isRoadRoute(terrain)).toBe(false);
+    expect(excludedStretches(terrain)).toEqual([]);
+  });
+
+  it("become an ordinary line once edited - the stretches described the old one", () => {
+    const list = createRouteList();
+    const road = list.addRouted(driven());
+
+    list.updateLine(road.id, [
+      [7.8, 62.6],
+      [7.85, 62.62],
+    ]);
+    const edited = list.getState().routes[0];
+
+    expect(isRoadRoute(edited)).toBe(false);
+    expect(excludedStretches(edited)).toEqual([]);
   });
 });
 

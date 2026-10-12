@@ -1,12 +1,14 @@
 """One start/end pair in, one least-cost route out - or any line in, and
-the corridor around it.
+the corridor around it. Or, in road mode, one drive along the roads.
 
-A thin wrapper over skimap.routing, which is where the actual routing lives.
-This only does the three things the browser makes necessary:
+A thin wrapper over skimap.routing and skimap.road_network, which is where
+the actual routing lives. This only does the things the browser makes
+necessary:
 
     - turn WGS84 lat/lng into the EPSG:25833 grid the cost surface is on,
       and the finished line back again
-    - hold the single GRASS session the server routes through
+    - hold the single GRASS session the server routes through, and the
+      road network, loaded once
     - turn each corridor GeoTIFF into a PNG for the map, and keep only the
       last few
 
@@ -26,7 +28,7 @@ from uuid import uuid4
 from osgeo import ogr, osr
 
 from app.backend import corridor as corridor_png
-from skimap import config, crux, paths, routing
+from skimap import config, crux, paths, road_network, routing
 from skimap.tours import Tour
 
 WGS84_EPSG = 4326
@@ -53,6 +55,12 @@ MAPSET = "app"
 _LOCK = threading.Lock()
 _started = False
 _session = None
+
+# The road network, or why there is none. Road routes take no lock: they
+# only read these arrays, and never touch GRASS, so a drive can be routed
+# while a terrain route holds _LOCK.
+_roads: road_network.RoadNetwork | None = None
+_roads_missing = "The road network has not been loaded."
 
 
 def _transform(from_epsg: int, to_epsg: int) -> osr.CoordinateTransformation:
@@ -94,12 +102,40 @@ def start() -> None:
         _session, grassdata = routing.open_project()
         routing.link_external(routing.COST_RASTER, paths.national_surface(), grassdata)
         routing.switch_mapset(grassdata, MAPSET)
+        _load_roads()
         _started = True
+
+
+def _load_roads() -> None:
+    """Load the road network, and route once along one of its roads.
+
+    Missing is not fatal: terrain routing works without it, and a road
+    route then says how to build it. The one throwaway route is because the
+    first Dijkstra in a process takes several seconds longer than the rest,
+    and that belongs here rather than on someone's first drive.
+    """
+    global _roads, _roads_missing
+
+    try:
+        network = road_network.RoadNetwork.load()
+    except FileNotFoundError as exc:
+        _roads_missing = str(exc)
+        return
+    points = network.edge_points(0)
+    network.route(tuple(points[0]), tuple(points[-1]))
+    _roads = network
 
 
 def surface_name() -> str:
     """The cost surface being routed through, for the startup banner."""
     return paths.national_surface().name
+
+
+def roads_status() -> str:
+    """The road network, for the startup banner."""
+    if _roads is None:
+        return f"none - {_roads_missing}"
+    return f"{_roads.node_count:,} junctions"
 
 
 def route(start_latlng: tuple[float, float],
@@ -147,11 +183,57 @@ def route(start_latlng: tuple[float, float],
             ],
         },
         "corridor": {"png_path": f"/corridor/{corridor_id}.png", "bounds": bounds},
+        "network": "terrain",
         "length_m": round(length_m, 1),
         "straight_m": round(straight_m, 1),
         "detour": round(length_m / max(straight_m, 1e-6), 2),
         "cost": round(cost, 1),
         "seconds": round(seconds, 1),
+    }
+
+
+def route_road(start_latlng: tuple[float, float],
+               end_latlng: tuple[float, float]) -> dict:
+    """Drive between two (lat, lng) pairs on the roads. Returns WGS84
+    GeoJSON, shaped like route()'s answer so the app treats both alike.
+
+    No corridor: the car stays on the road, so there is no band of nearly
+    as good ground beside it. `cost` is the estimated drive in seconds, and
+    `tunnels` and `ferries` are [start_m, end_m] along the line - what the
+    app hands back to /crux to leave out.
+    """
+    if _roads is None:
+        raise RuntimeError(_roads_missing)
+
+    start_xy = _to_grid(start_latlng)
+    end_xy = _to_grid(end_latlng)
+    started = time.time()
+    drive = _roads.route(start_xy, end_xy)
+    seconds = time.time() - started
+
+    straight_m = math.dist(start_xy, end_xy)
+    lnglat = [[round(lng, 7), round(lat, 7)]
+              for lng, lat, _ in FROM_GRID.TransformPoints(drive.xy.tolist())]
+    return {
+        "route": {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "properties": {"length_m": round(drive.length_m, 1)},
+                    "geometry": {"type": "LineString", "coordinates": lnglat},
+                }
+            ],
+        },
+        "corridor": None,
+        "network": "road",
+        "length_m": round(drive.length_m, 1),
+        "straight_m": round(straight_m, 1),
+        "detour": round(drive.length_m / max(straight_m, 1e-6), 2),
+        "cost": round(drive.drive_s, 1),
+        "seconds": round(seconds, 1),
+        "tunnels": [list(s) for s in drive.tunnels],
+        "ferries": [list(s) for s in drive.ferries],
     }
 
 

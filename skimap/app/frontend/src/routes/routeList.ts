@@ -14,7 +14,9 @@ import type {
   LatLng,
   ManualCruxInput,
   Rating,
+  RouteNetwork,
   RouteResponse,
+  Stretch,
 } from "../types";
 import { RouteFileError, parseRouteFile } from "./parseRouteFile";
 
@@ -53,8 +55,22 @@ const uniqueName = (name: string, taken: ReadonlySet<string>): string => {
  *  uploaded as a file. */
 export type RouteSource = "routed" | "drawn" | "uploaded";
 
-/** What only a routed Route has: the router's own numbers. */
-export type RoutedExtras = Pick<RouteResponse, "straight_m" | "detour" | "cost" | "seconds">;
+/** What only a routed Route has: the router's own numbers, what it walked,
+ *  and on roads where the tunnels and ferries are. All of it describes this
+ *  line, so editing the line drops it with the rest. */
+export type RoutedExtras = Pick<
+  RouteResponse,
+  "straight_m" | "detour" | "cost" | "seconds" | "tunnels" | "ferries"
+> & { network: RouteNetwork };
+
+/** Whether a Route was driven along the roads by the router - and so has
+ *  no corridor to make. */
+export const isRoadRoute = (route: Route): boolean => route.routed?.network === "road";
+
+/** The stretches of a road Route the Crux Identifier should read as safe
+ *  ground: tunnels and ferries. None for any other Route. */
+export const excludedStretches = (route: Route): Stretch[] =>
+  isRoadRoute(route) ? [...(route.routed?.tunnels ?? []), ...(route.routed?.ferries ?? [])] : [];
 
 /** One entry in the route list. See CONTEXT.md: whatever its origin, a Route. */
 export type Route = {
@@ -66,9 +82,9 @@ export type Route = {
   lengthM: number;
   visible: boolean;
   routed: RoutedExtras | null;
-  /** The band of ground around the line. A routed Route comes with one;
-   *  any other is made on request, and editing the line drops it - it
-   *  described the old line. */
+  /** The band of ground around the line. A Route routed over terrain
+   *  comes with one and a road route never has one; any other is made on
+   *  request, and editing the line drops it - it described the old line. */
   corridor: Corridor | null;
   /** The Crux Identifier's answer, once it has been run on this Route. */
   crux: CruxResult | null;
@@ -196,6 +212,7 @@ export const createRouteList = (): RouteList => {
   const listeners = new Set<() => void>();
   let nextId = 1;
   let routedCount = 0;
+  let roadCount = 0;
   let drawnCount = 0;
   let nextCruxId = 1;
 
@@ -234,19 +251,25 @@ export const createRouteList = (): RouteList => {
     },
 
     addRouted: (response) => {
-      routedCount += 1;
+      const network = response.network ?? "terrain";
+      // Numbered apart, so the list says which kind each one is.
+      const name =
+        network === "road" ? `Road route ${++roadCount}` : `Route ${++routedCount}`;
       const route: Route = {
         id: `route-${nextId++}`,
-        name: uniqueName(`Route ${routedCount}`, new Set(state.routes.map((r) => r.name))),
+        name: uniqueName(name, new Set(state.routes.map((r) => r.name))),
         source: "routed",
         line: response.route.features[0].geometry as LineString,
         lengthM: response.length_m,
         visible: true,
         routed: {
+          network,
           straight_m: response.straight_m,
           detour: response.detour,
           cost: response.cost,
           seconds: response.seconds,
+          ...(response.tunnels ? { tunnels: response.tunnels } : {}),
+          ...(response.ferries ? { ferries: response.ferries } : {}),
         },
         corridor: response.corridor,
         crux: null,

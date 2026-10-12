@@ -9,6 +9,7 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
+import { isRoadRoute } from "../routes/routeList";
 import type { Route } from "../routes/routeList";
 import type { AddMode, CruxEntry, Factor, LatLng, PickMode, Rating } from "../types";
 import { COLORS, PANEL_WIDTH } from "../theme";
@@ -18,7 +19,7 @@ import { SectionHeading } from "./CollapseToggle";
 import ResizeHandle from "./ResizeHandle";
 import RouteListSection, { IdentifyButton } from "./RouteListSection";
 import SelectedRoute, { CorridorControls, MakeCorridorButton } from "./SelectedRoute";
-import { scrollbarSx } from "./styles";
+import { hintSx, scrollbarSx } from "./styles";
 
 type RoutePanelProps = {
   open: boolean;
@@ -35,6 +36,8 @@ type RoutePanelProps = {
   onClearStart: () => void;
   onClearEnd: () => void;
   onGenerate: () => void;
+  roadsOnly: boolean;
+  onRoadsOnlyChange: (on: boolean) => void;
   isRouting: boolean;
   backendReady: boolean | null;
   isDrawing: boolean;
@@ -96,6 +99,8 @@ const RoutePanel = ({
   onClearStart,
   onClearEnd,
   onGenerate,
+  roadsOnly,
+  onRoadsOnlyChange,
   isRouting,
   backendReady,
   isDrawing,
@@ -225,6 +230,8 @@ const RoutePanel = ({
                   onClearStart={onClearStart}
                   onClearEnd={onClearEnd}
                   onGenerate={onGenerate}
+                  roadsOnly={roadsOnly}
+                  onRoadsOnlyChange={onRoadsOnlyChange}
                   isRouting={isRouting}
                   backendReady={backendReady}
                 />
@@ -275,6 +282,12 @@ const RoutePanel = ({
                   corridorOpacity={corridorOpacity}
                   onCorridorOpacityChange={onCorridorOpacityChange}
                 />
+              ) : isRoadRoute(selected) ? (
+                // A terrain corridor around a drive would be ground the car
+                // cannot go on. Edited, it is a drawn line and may have one.
+                <Typography sx={{ ...hintSx, width: "100%", textAlign: "center" }}>
+                  A drive stays on the road, so it has no corridor.
+                </Typography>
               ) : (
                 <MakeCorridorButton isMaking={isMakingCorridor} onMake={onMakeCorridor} />
               )}

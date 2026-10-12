@@ -511,5 +511,38 @@ class LongRoutes(CruxTestCase):
         ])
 
 
+class ExcludedStretches(CruxTestCase):
+    """A road Route's tunnels and ferries: off the ground the rasters
+    describe, so whatever they say there reads as none."""
+
+    def identify_excluding(self, pattern: str, exclude) -> dict:
+        sources = paint(pattern, self.tmp)
+        return crux.identify(line_along(len(pattern)), sources, exclude=exclude)
+
+    def test_steep_ground_over_a_tunnel_is_not_a_crux(self):
+        # Steep from 30 to 80 m, with a tunnel from 20 to 90 m.
+        result = self.identify_excluding("...SSSSSS...", [[20.0, 90.0]])
+
+        self.assertEqual(cruxes(result), [])
+        self.assertEqual(segments(result), [("none", 0.0, 110.0)])
+
+    def test_missing_data_under_a_ferry_is_not_a_hole(self):
+        result = self.identify_excluding("..XXXXX..", [[15.0, 75.0]])
+
+        self.assertEqual(result["no_data_m"], 0.0)
+
+    def test_only_the_stretch_is_excluded(self):
+        # The tunnel covers the first steep area only.
+        result = self.identify_excluding("..SSS......SSS..", [[15.0, 50.0]])
+
+        self.assertEqual(cruxes(result), [(1, "steep_slope", 110.0, 30.0)])
+
+    def test_a_stretch_that_is_not_one_is_refused(self):
+        with self.assertRaises(ValueError):
+            self.identify_excluding("....", [[50.0, 10.0]])
+        with self.assertRaises(ValueError):
+            self.identify_excluding("....", "tunnels")
+
+
 if __name__ == "__main__":
     unittest.main()

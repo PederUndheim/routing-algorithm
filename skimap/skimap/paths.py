@@ -92,6 +92,13 @@ def segments(area: str) -> Path:
     return SEGMENTS / area
 
 
+# The road graph that road routing walks, built from the roads vector by
+# `skimap.cli roads`. Under derived/ because it is a national layer computed
+# from a source like the rest, and because that puts it on the share the
+# deployed backend already mounts.
+ROAD_NETWORK = DERIVED / "road_network"
+
+
 def derived(layer: str) -> Path:
     return DERIVED / f"{layer}.tif"
 

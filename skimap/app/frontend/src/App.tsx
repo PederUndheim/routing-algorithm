@@ -15,7 +15,7 @@ import type { BasemapId } from "./layers/basemaps";
 import { DEFAULT_OPACITY, DEFAULT_OVERLAYS } from "./layers/overlays";
 import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
-import { createRouteList, geodesicLength, isEdited } from "./routes/routeList";
+import { createRouteList, excludedStretches, geodesicLength, isEdited } from "./routes/routeList";
 import type { CruxMarker } from "./routes/routeList";
 import { simplifyForEditing } from "./routes/simplify";
 import { MARKER_LEAD_M, pointAtDistance, sliceLine } from "./routes/snap";
@@ -26,6 +26,18 @@ import RoutePanel from "./routing/RoutePanel";
 import { usePanelWidth } from "./routing/usePanelWidth";
 import { dangerColor } from "./theme";
 import type { AddMode, CruxEntry, Extent, LatLng, MapFocus, PickMode } from "./types";
+
+const ROADS_ONLY_KEY = "skimap.roadsOnly";
+
+/** Whether Roads only was left on in this browser. Off if storage is
+ *  unavailable, as in a private window. */
+const readRoadsOnly = (): boolean => {
+  try {
+    return localStorage.getItem(ROADS_ONLY_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP);
@@ -41,6 +53,18 @@ const App = () => {
   const [endPoint, setEndPoint] = useState<LatLng | null>(null);
   const [pickMode, setPickMode] = useState<PickMode>(null);
   const [addMode, setAddMode] = useState<AddMode>("generate");
+  // Roads only: Generate drives along the road network instead of crossing
+  // terrain. Remembered in this browser - whoever uses it for driving will
+  // want it on every time.
+  const [roadsOnly, setRoadsOnly] = useState(readRoadsOnly);
+  const changeRoadsOnly = (on: boolean) => {
+    setRoadsOnly(on);
+    try {
+      localStorage.setItem(ROADS_ONLY_KEY, on ? "1" : "0");
+    } catch {
+      // Storage off or full: it still holds for this visit.
+    }
+  };
   // The line being drawn. Kept when you switch to another way of adding a
   // Route and back, so a half-drawn line is not lost to a stray click.
   const [draft, setDraft] = useState<LatLng[]>([]);
@@ -122,7 +146,9 @@ const App = () => {
     setIsRouting(true);
     setErrorMsg(null);
     try {
-      const route = routeList.addRouted(await requestRoute(startPoint, endPoint));
+      const route = routeList.addRouted(
+        await requestRoute(startPoint, endPoint, roadsOnly ? "road" : "terrain")
+      );
       setFocus({ kind: "route", line: route.line });
       setBackendReady(true);
     } catch (err) {
@@ -146,7 +172,7 @@ const App = () => {
     setIsIdentifying(true);
     setErrorMsg(null);
     try {
-      routeList.attachCrux(id, await requestCrux(line));
+      routeList.attachCrux(id, await requestCrux(line, excludedStretches(selected)));
       setBackendReady(true);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Identifying cruxes failed.");
@@ -460,6 +486,8 @@ const App = () => {
         onClearStart={() => setStartPoint(null)}
         onClearEnd={() => setEndPoint(null)}
         onGenerate={generate}
+        roadsOnly={roadsOnly}
+        onRoadsOnlyChange={changeRoadsOnly}
         isRouting={isRouting}
         backendReady={backendReady}
         isDrawing={isDrawing}
@@ -579,7 +607,7 @@ const App = () => {
       <Backdrop open={isRouting} sx={{ zIndex: 2000, color: "#fff" }}>
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
           <CircularProgress color="inherit" />
-          <Typography>Routing in progress...</Typography>
+          <Typography>{roadsOnly ? "Finding the drive..." : "Routing in progress..."}</Typography>
         </Box>
       </Backdrop>
     </div>

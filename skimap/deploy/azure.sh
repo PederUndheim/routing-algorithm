@@ -8,6 +8,11 @@
 #                           the identity GitHub Actions deploys with; prints
 #                           the API address and the GitHub settings to add
 #
+# And afterwards, to replace a layer on the share:
+#
+#   bash azure.sh upload-url   a fresh upload URL, for deploy/upload.sh
+#   bash azure.sh restart      restart the app so it reads the new layer
+#
 # The order matters: the server reads the cost surface on startup, so the app
 # would only crash-loop if it came up before the rasters are on the share.
 # Both steps are safe to re-run.
@@ -47,8 +52,13 @@ storage() {
     --sku Standard_LRS --kind StorageV2 --min-tls-version TLS1_2 -o none
   az storage share-rm create --storage-account "$STORAGE" -g "$RG" \
     -n "$SHARE" --quota 100 -o none
+  upload_url
+}
 
-  # Write access for two days: long enough to upload, short enough to forget.
+# Write access to the share for two days: long enough to upload, short
+# enough to forget. Its own step too, for uploading a rebuilt layer to a
+# share that already exists - see deploy/upload.sh.
+upload_url() {
   local sas
   sas=$(az storage share generate-sas -n "$SHARE" --account-name "$STORAGE" \
     --account-key "$(storage_key)" --permissions rcwdl --https-only \
@@ -57,6 +67,18 @@ storage() {
   echo
   echo "Upload URL (valid two days):"
   echo "https://$STORAGE.file.core.windows.net/$SHARE?$sas"
+}
+
+# The share is read when the server starts, so a layer uploaded to a
+# running app is not seen until it restarts. Restarting the active revision
+# is enough - the image has not changed. An app scaled to zero has nothing
+# running to restart, and reads the new layer on its next cold start anyway.
+restart() {
+  local revision
+  revision=$(az containerapp show -n "$APP" -g "$RG" --query properties.latestRevisionName -o tsv)
+  echo "Restarting $revision..."
+  az containerapp revision restart -n "$APP" -g "$RG" --revision "$revision" -o none
+  echo "Done. Check it with: curl https://$(az containerapp show -n "$APP" -g "$RG" --query properties.configuration.ingress.fqdn -o tsv)/health"
 }
 
 app() {
@@ -194,5 +216,7 @@ EOF
 case "${1:-}" in
   storage) storage ;;
   app) app ;;
-  *) echo "usage: bash azure.sh storage|app" >&2; exit 2 ;;
+  upload-url) upload_url ;;
+  restart) restart ;;
+  *) echo "usage: bash azure.sh storage|app|upload-url|restart" >&2; exit 2 ;;
 esac

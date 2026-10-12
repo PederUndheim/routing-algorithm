@@ -6,6 +6,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import IconButton from "@mui/material/IconButton";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
+import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import DownloadIcon from "@mui/icons-material/Download";
 import DrawIcon from "@mui/icons-material/Draw";
 import EditIcon from "@mui/icons-material/Edit";
@@ -15,6 +16,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import VisibilityOffIcon from "@mui/icons-material/VisibilityOff";
 
 import { downloadRoute } from "../routes/exportRoute";
+import { isRoadRoute } from "../routes/routeList";
 import type { Route } from "../routes/routeList";
 import { COLORS } from "../theme";
 import { SectionHeading } from "./CollapseToggle";
@@ -25,6 +27,9 @@ const SOURCE = {
   drawn: { Icon: DrawIcon, title: "Drawn" },
   uploaded: { Icon: UploadFileIcon, title: "Uploaded" },
 } as const;
+
+// A routed Route driven along the roads rather than across terrain.
+const ROAD = { Icon: DirectionsCarIcon, title: "Generated on roads" } as const;
 
 type RouteRowProps = {
   route: Route;
@@ -38,7 +43,7 @@ type RouteRowProps = {
 /** One Route: eye, where it came from, its name, download, edit, delete.
  *  Clicking anywhere else on the row selects it. */
 const RouteRow = ({ route, selected, onSelect, onToggleVisible, onDelete, onEdit }: RouteRowProps) => {
-  const { Icon: SourceIcon, title: sourceTitle } = SOURCE[route.source];
+  const { Icon: SourceIcon, title: sourceTitle } = isRoadRoute(route) ? ROAD : SOURCE[route.source];
 
   return (
     <Box

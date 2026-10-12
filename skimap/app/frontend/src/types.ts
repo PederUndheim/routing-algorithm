@@ -88,16 +88,33 @@ export type CruxResult = {
   no_data_m: number;
 };
 
-/** What POST /route answers with. Lengths are metres, cost is unitless -
- *  the cumulative cost surface value, comparable only against itself. */
+/** What the router walks: over the terrain on the cost surface, the ski
+ *  touring default, or along the road network by car. */
+export type RouteNetwork = "terrain" | "road";
+
+/** A stretch of a line as [start_m, end_m] from its start, measured on the
+ *  backend's metric grid. */
+export type Stretch = [number, number];
+
+/** What POST /route answers with. Lengths are metres. Cost is unitless over
+ *  terrain - the cumulative cost surface value, comparable only against
+ *  itself - and the estimated drive in seconds on roads. */
 export type RouteResponse = {
   route: FeatureCollection;
-  corridor: Corridor;
+  /** None on roads: the car stays on the road, so there is no band of
+   *  nearly-as-good ground beside it. */
+  corridor: Corridor | null;
+  /** Absent from an older backend, which only routes over terrain. */
+  network?: RouteNetwork;
   length_m: number;
   straight_m: number;
   detour: number;
   cost: number;
   seconds: number;
+  /** A road route's tunnels and ferry crossings: off the terrain the Crux
+   *  Identifier reads, so they are handed back to it to leave out. */
+  tunnels?: Stretch[];
+  ferries?: Stretch[];
 };
 
 /** What POST /corridor answers with: the corridor around a line the router

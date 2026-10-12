@@ -214,6 +214,39 @@ CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0}
 # a short tour turns it into a disc instead of a wider band.
 LINE_CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0, "min_length_m": 2000.0}
 
+# --- Road routing ---
+# Driving routes along NVDB, for road-department users: a graph, not a cost
+# surface - see skimap.road_network for why. Speeds are read when the graph
+# is loaded, not when it is built, so changing them needs a server restart
+# and no rebuild. They are rough per-category guesses, not speed limits: the
+# NVDB export carries none, and all they have to do is keep a route on the
+# main roads rather than threading forest roads because they are shorter.
+ROAD_NETWORK = {
+    # What counts as road. Kj.rebane is each carriageway of a divided road,
+    # which has no VegSenterlinje of its own, and the ferries are what joins
+    # the country up: without them the largest connected network is 56% of
+    # it (E6 itself crosses Bognes-Skarberget by ferry), with them 99%.
+    "filter": "(OBJTYPE IN ('VegSenterlinje', 'Kj.rebane') AND VEGSTATUS = 'V') "
+              "OR OBJTYPE = 'Bilferjestrekning'",
+    # Line ends this close are one junction. NVDB's ends meet exactly - 0.01 m
+    # and 2 m give the same network - so this only absorbs float noise.
+    "node_tolerance_m": 0.5,
+    # km/h by VEGKATEGOR: Europa-, Riks-, Fylkes-, Kommunal-, Privat-,
+    # Skogsbilveg. Anything else gets `default_speed_kmh`.
+    "speed_kmh": {"E": 80.0, "R": 70.0, "F": 60.0, "K": 40.0, "P": 30.0, "S": 20.0},
+    "default_speed_kmh": 30.0,
+    # A ferry is slow and has a wait, so it is only taken where the road
+    # round is genuinely longer.
+    "ferry_speed_kmh": 20.0,
+    "ferry_wait_s": 900.0,
+    # Respect one-way roads (VKJORFLT). A maintenance crew driving against
+    # the flow is still driving against the flow.
+    "oneway": True,
+    # A start or end further than this from any road is an error, not a
+    # walk to the nearest one.
+    "max_snap_m": 2000.0,
+}
+
 # --- Exposure ---
 # Avalanche exposure of a finished route, summed along the line. Separate
 # from PRA_RUNOUT: that shapes the surface the router walks, this scores
