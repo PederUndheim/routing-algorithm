@@ -14,13 +14,32 @@ terrain asks for attention.
   backend, has cost/detour and comes with a Corridor), *drawn* or *uploaded*
   (GPX/GeoJSON, has only a length until a Corridor is made for it). Editing
   any Route's line makes it like a drawn one: its router numbers and
-  Corridor go. Routes are compared against each other, not tied to the
-  start/end markers currently on the map.
+  Corridor go. Its analysis and Cruxes stay where the line was not
+  changed; an identified Crux on changed ground goes, a hand-placed one is
+  snapped onto the new line. *Update cruxes* keeps every Crux found again
+  with what the user made of it; *Start over* does not. Routes are compared
+  against each other, not tied to the points currently on the map.
+- **Waypoints** - the points Generate routes through: start, any number
+  between, end. Each **leg** between two neighbours goes over the terrain
+  (the default) or along the roads; the legs come back joined as one
+  routed Route.
+- **Road route** - a routed Route whose every leg is driven along the road
+  network instead of across terrain, for road-department users. It has no
+  Corridor. Any Route with road legs carries their tunnels and ferry
+  crossings, which the Crux Identifier reads as safe ground. Edited, it is
+  a drawn line like any other.
 - **Corridor** - the band of ground around a Route that costs little extra
   to cross instead. Two kinds, each with its own settings: a routed Route's
   is the near-optimal ground between its ends (`config.CORRIDOR`); any other
   Route's is the ground within reach of its own line, since such a line has
   no optimum to be near (`routing.line_corridor`, `config.LINE_CORRIDOR`).
+  The second has one fixed budget of cost, so it is wide over easy ground
+  and tight on steep ground, whatever the line's length.
+- **Suggestion** - a stretch of a drawn, uploaded or edited Route where
+  Optimise route finds a clearly cheaper way close beside it, inside its
+  Corridor. Leaves the line and rejoins it; never cuts off a summit or an
+  out-and-back. Taken, it is an edit of that stretch alone. Judged by the
+  ground it crosses against the stretch's, not by cost.
 - **Danger class** - what one stretch of ground is. Two of them, ranked;
   see Stable constraints.
 - **Area** - consecutive runs merged into one piece of ground to decide
@@ -74,7 +93,8 @@ terrain asks for attention.
 ## Architecture map
 
 - `skimap/skimap/` - the library. `crux.py` (Crux Identifier), `config.py`
-  (all thresholds), `exposure.py` (raster sampling), `paths.py`.
+  (all thresholds), `exposure.py` (raster sampling), `paths.py`,
+  `road_network.py` (Road routes: a graph over NVDB, not GRASS).
 - `skimap/app/backend/` - FastAPI over the library: `server.py` routes,
   `service.py`, `corridor.py`.
 - `skimap/app/frontend/src/` - React + MUI + react-leaflet.

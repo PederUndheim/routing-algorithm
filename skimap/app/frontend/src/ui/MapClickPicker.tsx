@@ -1,40 +1,42 @@
 import { useEffect } from "react";
 import { useMap, useMapEvents } from "react-leaflet";
 
-import type { LatLng, PickMode } from "../types";
+import type { LatLng } from "../types";
 
 type MapClickPickerProps = {
-  pickMode: PickMode;
-  onPickModeChange: (mode: PickMode) => void;
-  onStartPointChange: (point: LatLng) => void;
-  onEndPointChange: (point: LatLng) => void;
+  /** Whether map clicks pick a point now. */
+  active: boolean;
+  onPick: (point: LatLng) => void;
+  /** Escape: stop picking, keeping whatever has been picked so far. */
+  onCancel: () => void;
 };
 
-/** Turns the next map click into whichever point `pickMode` names, then
- *  hands the map back. Renders nothing; it is only here for the events. */
-const MapClickPicker = ({
-  pickMode,
-  onPickModeChange,
-  onStartPointChange,
-  onEndPointChange,
-}: MapClickPickerProps) => {
+/** Hands map clicks to `onPick` while picking. What a click does - the
+ *  start, the end, one point moved - is the caller's to say. Renders
+ *  nothing; it is only here for the events. */
+const MapClickPicker = ({ active, onPick, onCancel }: MapClickPickerProps) => {
   const map = useMap();
 
   useEffect(() => {
     const el = map.getContainer();
-    el.style.cursor = pickMode ? "crosshair" : "";
+    el.style.cursor = active ? "crosshair" : "";
     return () => {
       el.style.cursor = "";
     };
-  }, [map, pickMode]);
+  }, [map, active]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, onCancel]);
 
   useMapEvents({
     click: (e) => {
-      if (!pickMode) return;
-      const point: LatLng = { lat: e.latlng.lat, lng: e.latlng.lng };
-      if (pickMode === "start") onStartPointChange(point);
-      else onEndPointChange(point);
-      onPickModeChange(null);
+      if (active) onPick({ lat: e.latlng.lat, lng: e.latlng.lng });
     },
   });
 

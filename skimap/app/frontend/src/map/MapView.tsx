@@ -12,12 +12,13 @@ import type { BasemapId } from "../layers/basemaps";
 import { OVERLAYS } from "../layers/overlays";
 import type { OverlayId } from "../layers/overlays";
 import type { Route } from "../routes/routeList";
+import type { RouteSuggestion } from "../routes/suggestions";
 import type { LineString } from "geojson";
 
-import type { AddMode, Corridor, Extent, LatLng, MapFocus, PickMode } from "../types";
+import type { AddMode, Corridor, Extent, LatLng, MapFocus } from "../types";
 import { COLORS } from "../theme";
 
-import { endIcon, startIcon } from "../ui/MarkerIcons";
+import { endIcon, startIcon, waypointIcon } from "../ui/MarkerIcons";
 import CursorCoords from "../ui/CursorCoords";
 import MapClickPicker from "../ui/MapClickPicker";
 import RoutingButton from "../ui/RoutingButton";
@@ -33,6 +34,7 @@ import LayerControl from "./LayerControl";
 import MapActions from "./MapActions";
 import MapController from "./MapController";
 import RouteLines from "./RouteLines";
+import SuggestionLines from "./SuggestionLines";
 
 /** Romsdalen. Somewhere with mountains, so an empty map is not an empty map. */
 const CENTER: [number, number] = [62.63, 7.896];
@@ -83,15 +85,20 @@ type MapViewProps = {
   addMode: AddMode;
   /** Start drawing has been pressed, so map clicks add points. */
   isDrawing: boolean;
+  /** A Route's line open for editing, or null when none is. It takes the
+   *  map over a line being drawn, which waits underneath meanwhile. */
+  editDraft: readonly LatLng[] | null;
+  onEditDraftChange: (points: LatLng[]) => void;
   /** The line being drawn, in drawing order. */
   draft: readonly LatLng[];
   onDraftChange: (points: LatLng[]) => void;
-  pickMode: PickMode;
-  onPickModeChange: (mode: PickMode) => void;
-  startPoint: LatLng | null;
-  endPoint: LatLng | null;
-  onStartPointChange: (point: LatLng) => void;
-  onEndPointChange: (point: LatLng) => void;
+  /** The points Generate routes through, start first and end last. */
+  waypoints: readonly LatLng[];
+  /** Whether the next map click picks one of them. */
+  picking: boolean;
+  onPickPoint: (point: LatLng) => void;
+  onCancelPick: () => void;
+  onMovePoint: (index: number, point: LatLng) => void;
   routes: readonly Route[];
   selectedId: string | null;
   onSelectRoute: (id: string) => void;
@@ -113,6 +120,14 @@ type MapViewProps = {
   extentEdit: { line: LineString; extent: Extent; color: string } | null;
   onExtentChange: (extent: Extent) => void;
   onCancelExtent: () => void;
+  /** The Selected route's suggestions on show, and the line they are for. */
+  suggestions: { line: LineString; items: readonly RouteSuggestion[] } | null;
+  activeSuggestionId: string | null;
+  onSuggestionClick: (id: string) => void;
+  onAcceptSuggestion: (id: string) => void;
+  onRejectSuggestion: (id: string) => void;
+  /** The open suggestion's popup was closed on the map. */
+  onCloseSuggestion: (id: string) => void;
 };
 
 /** Covers the map while files are dragged over it, and takes the drop.
@@ -172,14 +187,15 @@ const MapView = ({
   onOpenPanel,
   addMode,
   isDrawing,
+  editDraft,
+  onEditDraftChange,
   draft,
   onDraftChange,
-  pickMode,
-  onPickModeChange,
-  startPoint,
-  endPoint,
-  onStartPointChange,
-  onEndPointChange,
+  waypoints,
+  picking,
+  onPickPoint,
+  onCancelPick,
+  onMovePoint,
   routes,
   selectedId,
   onSelectRoute,
@@ -197,6 +213,12 @@ const MapView = ({
   extentEdit,
   onExtentChange,
   onCancelExtent,
+  suggestions,
+  activeSuggestionId,
+  onSuggestionClick,
+  onAcceptSuggestion,
+  onRejectSuggestion,
+  onCloseSuggestion,
 }: MapViewProps) => {
   const bm = useMemo(() => getBasemap(basemap), [basemap]);
   const mapApiRef = useRef<MapApi | null>(null);
@@ -212,8 +234,11 @@ const MapView = ({
   // drawer covers the map and has to be closed to draw at all.
   // Placing a Crux takes the clicks for itself while it is on.
   const placing = placeCruxOn !== null;
-  const drawing = addMode === "draw" && isDrawing && (panelOpen || isMobile) && !placing;
-  // The start and end only mean something to the router.
+  // Paused while a point is picked or a Crux placed: the click is theirs.
+  const editingLine = editDraft !== null && !placing && !picking;
+  const drawing =
+    !editingLine && addMode === "draw" && isDrawing && (panelOpen || isMobile) && !placing;
+  // The points only mean something to the router.
   const showPoints = addMode === "generate";
 
   return (
@@ -274,9 +299,24 @@ const MapView = ({
           <RouteLines
             routes={routes}
             selectedId={selectedId}
-            clickTaken={Boolean(pickMode) || drawing || placing}
+            clickTaken={picking || drawing || editingLine || placing}
             onSelect={onSelectRoute}
           />
+        </Pane>
+
+        {/* Over the line they would change, under its Crux markers. */}
+        <Pane name="suggestions" style={{ zIndex: 470 }}>
+          {suggestions && (
+            <SuggestionLines
+              line={suggestions.line}
+              suggestions={suggestions.items}
+              activeId={activeSuggestionId}
+              onSelect={onSuggestionClick}
+              onAccept={onAcceptSuggestion}
+              onReject={onRejectSuggestion}
+              onClose={onCloseSuggestion}
+            />
+          )}
         </Pane>
 
         {/* Above the routes, so a Crux is never under its own red line, and
@@ -291,29 +331,27 @@ const MapView = ({
 
         <Pane name="markers" style={{ zIndex: 600, pointerEvents: "auto" }} />
 
-        {showPoints && startPoint && (
-          <DraggableMarker
-            position={startPoint}
-            icon={startIcon}
-            onPositionChange={onStartPointChange}
-          />
-        )}
-        {showPoints && endPoint && (
-          <DraggableMarker
-            position={endPoint}
-            icon={endIcon}
-            onPositionChange={onEndPointChange}
-          />
-        )}
+        {showPoints &&
+          waypoints.map((point, i) => (
+            <DraggableMarker
+              // By place: a point keeps its marker while it is dragged, and
+              // one added in between renumbers the rest anyway.
+              key={i}
+              position={point}
+              icon={
+                i === 0 ? startIcon : i === waypoints.length - 1 ? endIcon : waypointIcon(i)
+              }
+              onPositionChange={(moved) => onMovePoint(i, moved)}
+            />
+          ))}
 
-        <MapClickPicker
-          pickMode={pickMode}
-          onPickModeChange={onPickModeChange}
-          onStartPointChange={onStartPointChange}
-          onEndPointChange={onEndPointChange}
+        <MapClickPicker active={picking} onPick={onPickPoint} onCancel={onCancelPick} />
+
+        <DrawLayer
+          active={drawing || editingLine}
+          points={editingLine ? editDraft : draft}
+          onChange={editingLine ? onEditDraftChange : onDraftChange}
         />
-
-        <DrawLayer active={drawing} points={draft} onChange={onDraftChange} />
 
         <CruxPlacer
           line={placeCruxOn}

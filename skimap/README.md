@@ -79,7 +79,7 @@ python -m skimap.cli tours check
 python -m skimap.cli route
 python -m skimap.cli exposure       # score the routes, split corridors by class
 
-# The road graph behind the app's Roads only mode. 15 seconds, ~310 MB.
+# The road graph behind the app's road legs. 15 seconds, ~310 MB.
 python -m skimap.cli roads
 ```
 
@@ -470,8 +470,9 @@ window differ between them.
 
 ### Road routing
 
-The app's **Roads only (driving)** switch is for road-department users: it
-drives along NVDB instead of crossing terrain. It is a graph, not a cost
+A leg of a generated route can be set to **Road** in the app, for
+road-department users and for the drive to a trailhead: that leg drives
+along NVDB instead of crossing terrain. It is a graph, not a cost
 surface (`skimap.road_network`), built once with `skimap.cli roads` into
 `data/input/derived/road_network/` - on the share the deployed backend
 already mounts, so deploying it is an upload there and a restart.
@@ -483,7 +484,12 @@ already mounts, so deploying it is an upload there and a restart.
   each ferry. Read at server start, so tuning them needs no rebuild.
 - **One-way roads** (`VKJORFLT`) are respected. Checked on the 4,111
   roundabouts it finds: all but one run counter-clockwise, as they should.
-- **No corridor.** The car stays on the road.
+- **No corridor.** The car stays on the road. A route mixing road and
+  terrain legs gets one picture of its terrain legs' corridors, merged
+  (`app/backend/corridor.py`).
+- **Where legs meet.** A point next to a road leg is snapped onto the road
+  before anything is routed, so the terrain leg on the other side walks to
+  the spot the drive starts from, and the joined line has no gap.
 - **Tunnels and ferries** come back with the route, and the app passes them
   to `/crux` as `exclude`: the steep valley side over a tunnel and the sea
   under a ferry are not ground the car meets.

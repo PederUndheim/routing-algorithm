@@ -10,6 +10,7 @@ import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
 import DownloadIcon from "@mui/icons-material/Download";
 import DrawIcon from "@mui/icons-material/Draw";
 import EditIcon from "@mui/icons-material/Edit";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
 import RouteIcon from "@mui/icons-material/Route";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -147,6 +148,9 @@ type RouteListSectionProps = {
   onEdit: (id: string) => void;
   open: boolean;
   onToggle: () => void;
+  /** Over the list - a Route being edited - and shown even while the list
+   *  is folded, since its Save is the way out of editing. */
+  banner?: ReactNode;
   /** Under the list and folded with it - the Selected route's corridor -
    *  but outside its scroll, so it stays put however long the list is. */
   children?: ReactNode;
@@ -161,10 +165,13 @@ const RouteListSection = ({
   onEdit,
   open,
   onToggle,
+  banner,
   children,
 }: RouteListSectionProps) => (
   <Box>
     <SectionHeading title="Routes" open={open} onToggle={onToggle} what="the routes" />
+
+    {banner}
 
     {open && (
       <Box
@@ -206,24 +213,59 @@ const RouteListSection = ({
  *  Selected route, so it is off while nothing is selected. */
 export const IdentifyButton = ({
   disabled,
+  identified,
   isIdentifying,
   onIdentify,
+  onStartOver,
 }: {
   disabled: boolean;
+  /** The Selected route has been through the identifier before: pressing
+   *  again updates, keeping what has been done with its Cruxes. */
+  identified: boolean;
   isIdentifying: boolean;
   onIdentify: () => void;
+  onStartOver: () => void;
 }) => (
-  <Button
-    variant="contained"
-    fullWidth
-    size="small"
-    disabled={disabled || isIdentifying}
-    onClick={onIdentify}
-    startIcon={isIdentifying ? <CircularProgress size={14} color="inherit" /> : undefined}
-    sx={primarySx}
-  >
-    {isIdentifying ? "Identifying cruxes..." : "Identify cruxes"}
-  </Button>
+  <>
+    <Button
+      variant="contained"
+      fullWidth
+      size="small"
+      disabled={disabled || isIdentifying}
+      onClick={onIdentify}
+      startIcon={isIdentifying ? <CircularProgress size={14} color="inherit" /> : undefined}
+      sx={primarySx}
+    >
+      {isIdentifying
+        ? "Identifying cruxes..."
+        : identified
+          ? "Update cruxes"
+          : "Identify cruxes"}
+    </Button>
+    {/* Quiet: the way to throw the work away should not sit level with
+        the way to keep it. */}
+    {identified && (
+      <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button
+          variant="text"
+          size="small"
+          startIcon={<RestartAltIcon sx={{ fontSize: "16px !important" }} />}
+          disabled={disabled || isIdentifying}
+          onClick={onStartOver}
+          sx={{
+            mt: 0.25,
+            px: 0.75,
+            fontSize: 12,
+            textTransform: "none",
+            color: "rgba(255,255,255,0.6)",
+            "&:hover": { color: "white", backgroundColor: "rgba(54,126,152,0.15)" },
+          }}
+        >
+          Start over
+        </Button>
+      </Box>
+    )}
+  </>
 );
 
 export default RouteListSection;

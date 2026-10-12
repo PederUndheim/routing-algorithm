@@ -7,18 +7,23 @@ import type {
   Answers,
   Corridor,
   CruxEntry,
+  CruxNote,
   CruxProblem,
   CruxResult,
   Extent,
   Factor,
+  ImproveResponse,
   LatLng,
   ManualCruxInput,
   Rating,
-  RouteNetwork,
+  RoutedNetwork,
   RouteResponse,
   Stretch,
 } from "../types";
+import { carryOverEdit, mergeIdentified } from "./carryOver";
 import { RouteFileError, parseRouteFile } from "./parseRouteFile";
+import { placeSuggestions, relocate, spliceSuggestion } from "./suggestions";
+import type { RouteSuggestion } from "./suggestions";
 
 const EARTH_RADIUS_M = 6_371_008.8;
 
@@ -55,22 +60,25 @@ const uniqueName = (name: string, taken: ReadonlySet<string>): string => {
  *  uploaded as a file. */
 export type RouteSource = "routed" | "drawn" | "uploaded";
 
-/** What only a routed Route has: the router's own numbers, what it walked,
- *  and on roads where the tunnels and ferries are. All of it describes this
- *  line, so editing the line drops it with the rest. */
+/** What only a routed Route has: the router's own numbers, what it walked
+ *  leg by leg, and on its road legs where the tunnels and ferries are. All
+ *  of it describes this line, so editing the line drops it with the rest. */
 export type RoutedExtras = Pick<
   RouteResponse,
-  "straight_m" | "detour" | "cost" | "seconds" | "tunnels" | "ferries"
-> & { network: RouteNetwork };
+  "straight_m" | "detour" | "cost" | "seconds" | "legs" | "tunnels" | "ferries"
+> & { network: RoutedNetwork };
 
-/** Whether a Route was driven along the roads by the router - and so has
- *  no corridor to make. */
+/** Whether a Route was driven along the roads by the router, every leg of
+ *  it - and so has no corridor to make. */
 export const isRoadRoute = (route: Route): boolean => route.routed?.network === "road";
 
-/** The stretches of a road Route the Crux Identifier should read as safe
- *  ground: tunnels and ferries. None for any other Route. */
-export const excludedStretches = (route: Route): Stretch[] =>
-  isRoadRoute(route) ? [...(route.routed?.tunnels ?? []), ...(route.routed?.ferries ?? [])] : [];
+/** The stretches of a Route the Crux Identifier should read as safe ground:
+ *  the tunnels and ferries on its road legs. None for a Route that has no
+ *  road leg, or was not routed at all. */
+export const excludedStretches = (route: Route): Stretch[] => [
+  ...(route.routed?.tunnels ?? []),
+  ...(route.routed?.ferries ?? []),
+];
 
 /** One entry in the route list. See CONTEXT.md: whatever its origin, a Route. */
 export type Route = {
@@ -86,11 +94,20 @@ export type Route = {
    *  comes with one and a road route never has one; any other is made on
    *  request, and editing the line drops it - it described the old line. */
   corridor: Corridor | null;
-  /** The Crux Identifier's answer, once it has been run on this Route. */
+  /** The Crux Identifier's answer, once it has been run on this Route -
+   *  since an edit, only for the ground the edit left alone. */
   crux: CruxResult | null;
+  /** How much of the line an edit has left unanalysed since the Crux
+   *  Identifier last ran: the changed ground. Absent when none is. */
+  unanalysedM?: number;
   /** Every Crux on the Route - identified and placed by hand - in route
    *  order, with what has been answered about each. */
   cruxes: readonly CruxEntry[];
+  /** Ways close beside the line that the cost surface finds clearly
+   *  cheaper, each waiting to be accepted or rejected. Absent until they
+   *  are looked for; empty once looked for and none are left. They describe
+   *  this line, so an edit drops them. */
+  suggestions?: readonly RouteSuggestion[];
 };
 
 /** What the Edit crux form gives back. */
@@ -100,12 +117,14 @@ export type CruxDetailsInput = { description: string; problem: CruxProblem; colo
 export type CruxMarker = Pick<CruxEntry, "position" | "distance_m" | "moved">;
 
 /** Whether the user has made anything of an identified Crux - rated it,
- *  decided about it, moved, edited or deleted it - which identifying the
- *  Route again would throw away. */
+ *  written about it, decided about it, moved, edited or deleted it - which
+ *  Update cruxes keeps and Start over would throw away. */
 export const isEdited = (crux: CruxEntry): boolean =>
   crux.source === "identified" &&
   (Object.keys(crux.answers).length > 0 ||
     crux.overall !== undefined ||
+    crux.comment !== undefined ||
+    crux.group_measures !== undefined ||
     crux.keep !== undefined ||
     crux.deleted === true ||
     crux.moved === true ||
@@ -138,9 +157,10 @@ export type RouteList = {
   addRouted: (response: RouteResponse) => Route;
   /** Append a Route drawn on the map and make it the Selected route. */
   addDrawn: (coordinates: Position[]) => Route;
-  /** Replace a Route's line, as when it is edited. Its crux result, its
-   *  corridor and the router's numbers described the old line, so they go;
-   *  the Route is shown. */
+  /** Replace a Route's line, as when it is edited. Its corridor and the
+   *  router's numbers described the old line, so they go. Its analysis and
+   *  Cruxes stay wherever the edit left the line alone - see carryOverEdit.
+   *  The Route is shown. */
   updateLine: (id: string, coordinates: Position[]) => void;
   /** Read GPX/GeoJSON files into uploaded Routes, one per track or line.
    *  A bad file is reported and skipped; the rest still load, and the last
@@ -156,10 +176,25 @@ export type RouteList = {
    *  Route has since been deleted or its line edited: it was made for a line
    *  the Route no longer has. */
   attachCorridor: (id: string, line: LineString, corridor: Corridor) => void;
+  /** Give a Route the suggestions found for `line`. Dropped, as a corridor
+   *  is, if the Route has since been deleted or its line edited. */
+  attachSuggestions: (id: string, line: LineString, response: ImproveResponse) => void;
+  /** Take a suggestion: its way goes into the line in place of the stretch
+   *  it replaces, as an edit would put it there - the corridor and router
+   *  numbers go, the analysis and Cruxes stay on the ground either side.
+   *  The other suggestions stay, found again on the new line. */
+  acceptSuggestion: (routeId: string, suggestionId: string) => void;
+  /** Leave the line as it is there, and drop the suggestion. */
+  rejectSuggestion: (routeId: string, suggestionId: string) => void;
+  /** Drop every suggestion, back to not having looked. */
+  dismissSuggestions: (routeId: string) => void;
   /** Give a Route its crux result, replacing any earlier one, and show it
-   *  if it was hidden - the result was asked for. A Route deleted while it
-   *  was being analysed is simply not there to receive it. */
-  attachCrux: (id: string, result: CruxResult) => void;
+   *  if it was hidden - the result was asked for. "update" keeps the
+   *  identified Cruxes found again and what the user made of them (see
+   *  mergeIdentified); "restart" throws them all away for the new ones.
+   *  Hand-placed ones stay either way. A Route deleted while it was being
+   *  analysed is simply not there to receive it. */
+  attachCrux: (id: string, result: CruxResult, mode?: "update" | "restart") => void;
   /** Place a Crux by hand on a Route, in its place along it. */
   addManualCrux: (routeId: string, input: ManualCruxInput) => CruxEntry | null;
   /** Delete a Crux: it leaves the map and waits on the list's deleted shelf,
@@ -193,6 +228,9 @@ export type RouteList = {
   setAnswer: (routeId: string, cruxId: string, factor: Factor, value: Rating | undefined) => void;
   /** The user's overall rating of a Crux; undefined takes it back. */
   setOverall: (routeId: string, cruxId: string, value: Rating | undefined) => void;
+  /** Write one of a Crux's notes. Kept as typed, so the space after a word
+   *  being written stays; blank takes the note away. */
+  setNote: (routeId: string, cruxId: string, note: CruxNote, text: string) => void;
   /** Whether the user wants a Crux in the list; undefined is undecided. */
   setKeep: (routeId: string, cruxId: string, keep: boolean | undefined) => void;
   /** Put a Crux the user chose not to keep back in the list, as undecided,
@@ -215,6 +253,7 @@ export const createRouteList = (): RouteList => {
   let roadCount = 0;
   let drawnCount = 0;
   let nextCruxId = 1;
+  let nextSuggestionId = 1;
 
   const set = (next: RouteListState) => {
     state = next;
@@ -232,6 +271,25 @@ export const createRouteList = (): RouteList => {
         r.id === routeId ? { ...r, cruxes: ordered(change(r.cruxes)) } : r
       ),
     });
+  };
+
+  /** A Route with its line replaced, as by an edit. See updateLine. */
+  const withLine = (r: Route, coordinates: Position[]): Route => {
+    const line: LineString = { type: "LineString", coordinates };
+    const { crux, cruxes, unanalysed_m } = carryOverEdit(r.line, line, r.crux, r.cruxes);
+    const { unanalysedM: _old, suggestions: _suggestions, ...rest } = r;
+    return {
+      ...rest,
+      line,
+      lengthM: geodesicLength(coordinates),
+      visible: true,
+      routed: null,
+      corridor: null,
+      crux,
+      cruxes: ordered(cruxes),
+      // Under a metre is the measuring, not the edit.
+      ...(unanalysed_m >= 1 ? { unanalysedM: unanalysed_m } : {}),
+    };
   };
 
   const updateCrux = (
@@ -252,7 +310,9 @@ export const createRouteList = (): RouteList => {
 
     addRouted: (response) => {
       const network = response.network ?? "terrain";
-      // Numbered apart, so the list says which kind each one is.
+      // Numbered apart, so the list says which kind each one is. One with
+      // any leg over the terrain is a Route: it has a corridor, and cruxes
+      // off the road.
       const name =
         network === "road" ? `Road route ${++roadCount}` : `Route ${++routedCount}`;
       const route: Route = {
@@ -268,6 +328,7 @@ export const createRouteList = (): RouteList => {
           detour: response.detour,
           cost: response.cost,
           seconds: response.seconds,
+          ...(response.legs ? { legs: response.legs } : {}),
           ...(response.tunnels ? { tunnels: response.tunnels } : {}),
           ...(response.ferries ? { ferries: response.ferries } : {}),
         },
@@ -300,21 +361,7 @@ export const createRouteList = (): RouteList => {
     updateLine: (id, coordinates) => {
       set({
         ...state,
-        routes: state.routes.map((r) =>
-          r.id === id
-            ? {
-                ...r,
-                line: { type: "LineString", coordinates },
-                lengthM: geodesicLength(coordinates),
-                visible: true,
-                routed: null,
-                corridor: null,
-                crux: null,
-                // Placed on the old line, so they no longer sit on this one.
-                cruxes: [],
-              }
-            : r
-        ),
+        routes: state.routes.map((r) => (r.id === id ? withLine(r, coordinates) : r)),
       });
     },
 
@@ -394,10 +441,56 @@ export const createRouteList = (): RouteList => {
       });
     },
 
-    attachCrux: (id, result) => {
+    attachSuggestions: (id, line, response) => {
+      // By identity, as attachCorridor: a new line means an edit since.
+      if (!state.routes.some((r) => r.id === id && r.line === line)) return;
+      const suggestions = placeSuggestions(line, response, () => `suggestion-${nextSuggestionId++}`);
+      set({
+        ...state,
+        routes: state.routes.map((r) => (r.id === id ? { ...r, suggestions } : r)),
+      });
+    },
+
+    acceptSuggestion: (routeId, suggestionId) => {
+      const route = state.routes.find((r) => r.id === routeId);
+      const taken = route?.suggestions?.find((s) => s.id === suggestionId);
+      if (!route || !taken) return;
+      const next = withLine(route, spliceSuggestion(route.line, taken));
+      const others = route.suggestions!.filter((s) => s.id !== suggestionId);
+      set({
+        ...state,
+        routes: state.routes.map((r) =>
+          r.id === routeId
+            ? { ...next, suggestions: relocate(others, taken, route.line, next.line) }
+            : r
+        ),
+      });
+    },
+
+    rejectSuggestion: (routeId, suggestionId) => {
+      set({
+        ...state,
+        routes: state.routes.map((r) =>
+          r.id === routeId && r.suggestions
+            ? { ...r, suggestions: r.suggestions.filter((s) => s.id !== suggestionId) }
+            : r
+        ),
+      });
+    },
+
+    dismissSuggestions: (routeId) => {
+      set({
+        ...state,
+        routes: state.routes.map((r) => {
+          if (r.id !== routeId) return r;
+          const { suggestions: _suggestions, ...rest } = r;
+          return rest;
+        }),
+      });
+    },
+
+    attachCrux: (id, result, mode = "update") => {
       if (!state.routes.some((r) => r.id === id)) return;
-      // The new result replaces the identified Cruxes and everything the user
-      // made of them - they may not be the same ones. Hand-placed ones stay.
       // Their areas are rescaled from the backend's measure of the line to
       // this one, so a handle dragged along it lands where the colour does.
       set({
@@ -418,7 +511,10 @@ export const createRouteList = (): RouteList => {
             })
           );
           const manual = r.cruxes.filter((c) => c.source === "manual");
-          return { ...r, crux: result, cruxes: ordered([...identified, ...manual]), visible: true };
+          const kept =
+            mode === "update" ? mergeIdentified(r.cruxes, identified, isEdited) : identified;
+          const { unanalysedM: _old, ...rest } = r;
+          return { ...rest, crux: result, cruxes: ordered([...kept, ...manual]), visible: true };
         }),
       });
     },
@@ -522,6 +618,15 @@ export const createRouteList = (): RouteList => {
       updateCrux(routeId, cruxId, ({ overall: _old, ...crux }) =>
         value ? { ...crux, overall: value } : crux
       );
+    },
+
+    setNote: (routeId, cruxId, note, text) => {
+      updateCrux(routeId, cruxId, (crux) => {
+        const next = { ...crux };
+        if (text.trim()) next[note] = text;
+        else delete next[note];
+        return next;
+      });
     },
 
     setKeep: (routeId, cruxId, keep) => {

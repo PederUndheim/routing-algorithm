@@ -1,3 +1,4 @@
+import type { Position } from "geojson";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import Alert from "@mui/material/Alert";
@@ -7,7 +8,7 @@ import CircularProgress from "@mui/material/CircularProgress";
 import Snackbar from "@mui/material/Snackbar";
 import Typography from "@mui/material/Typography";
 
-import { checkHealth, requestCorridor, requestCrux, requestRoute } from "./api";
+import { checkHealth, requestCorridor, requestCrux, requestImprove, requestRoute } from "./api";
 import { defaultsAt, problemOf } from "./crux/assessment";
 import { cruxTitle } from "./dangerClasses";
 import { DEFAULT_BASEMAP } from "./layers/basemaps";
@@ -17,27 +18,33 @@ import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
 import { createRouteList, excludedStretches, geodesicLength, isEdited } from "./routes/routeList";
 import type { CruxMarker } from "./routes/routeList";
-import { simplifyForEditing } from "./routes/simplify";
+import { restoreUnedited, simplifyForEditing } from "./routes/simplify";
+import type { RouteSuggestion } from "./routes/suggestions";
+import {
+  NO_WAYPOINTS,
+  allRoad,
+  movePoint,
+  pick,
+  removePoint,
+  setNetwork,
+} from "./routes/waypoints";
 import { MARKER_LEAD_M, pointAtDistance, sliceLine } from "./routes/snap";
-import AddCruxDialog, { EditCruxDialog, problemColor } from "./routing/AddCruxDialog";
+import { AddCruxForm, EditCruxDialog, problemColor } from "./routing/AddCruxDialog";
 import type { StretchPreview } from "./routing/AddCruxDialog";
 import ConfirmDialog from "./routing/ConfirmDialog";
 import RoutePanel from "./routing/RoutePanel";
+import { shownSuggestions } from "./routing/Suggestions";
 import { usePanelWidth } from "./routing/usePanelWidth";
 import { dangerColor } from "./theme";
-import type { AddMode, CruxEntry, Extent, LatLng, MapFocus, PickMode } from "./types";
-
-const ROADS_ONLY_KEY = "skimap.roadsOnly";
-
-/** Whether Roads only was left on in this browser. Off if storage is
- *  unavailable, as in a private window. */
-const readRoadsOnly = (): boolean => {
-  try {
-    return localStorage.getItem(ROADS_ONLY_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
+import type {
+  AddMode,
+  CruxEntry,
+  Extent,
+  LatLng,
+  MapFocus,
+  PickMode,
+  Waypoints,
+} from "./types";
 
 const App = () => {
   const [basemap, setBasemap] = useState<BasemapId>(DEFAULT_BASEMAP);
@@ -49,31 +56,26 @@ const App = () => {
   // Here rather than in the drawer, because the map insets what it zooms to
   // by the drawer's width and has to follow it as it is dragged.
   const { width: panelWidth, setWidth: setPanelWidth, resetWidth } = usePanelWidth();
-  const [startPoint, setStartPoint] = useState<LatLng | null>(null);
-  const [endPoint, setEndPoint] = useState<LatLng | null>(null);
+  // The points Generate routes through, and how each leg between them goes.
+  // Every leg starts out over the terrain: driving is chosen leg by leg.
+  const [waypoints, setWaypoints] = useState<Waypoints>(NO_WAYPOINTS);
   const [pickMode, setPickMode] = useState<PickMode>(null);
   const [addMode, setAddMode] = useState<AddMode>("generate");
-  // Roads only: Generate drives along the road network instead of crossing
-  // terrain. Remembered in this browser - whoever uses it for driving will
-  // want it on every time.
-  const [roadsOnly, setRoadsOnly] = useState(readRoadsOnly);
-  const changeRoadsOnly = (on: boolean) => {
-    setRoadsOnly(on);
-    try {
-      localStorage.setItem(ROADS_ONLY_KEY, on ? "1" : "0");
-    } catch {
-      // Storage off or full: it still holds for this visit.
-    }
-  };
   // The line being drawn. Kept when you switch to another way of adding a
   // Route and back, so a half-drawn line is not lost to a stray click.
   const [draft, setDraft] = useState<LatLng[]>([]);
   // Start drawing pressed: until then a click on the map is just a click.
   const [isDrawing, setIsDrawing] = useState(false);
-  // The drawn Route the draft was opened from, or null for a new one.
-  const [editingId, setEditingId] = useState<string | null>(null);
+  // A Route's line open for editing: the points being dragged about, and
+  // the ones it was opened with, so what was not touched can be put back
+  // exactly. Apart from the draft: editing is not a way to add a Route.
+  const [lineEdit, setLineEdit] = useState<{
+    routeId: string;
+    opened: Position[];
+    points: LatLng[];
+  } | null>(null);
 
-  // Moving either point leaves every Route alone. They are in the list to be
+  // Moving a point leaves every Route alone. They are in the list to be
   // compared, not tied to the markers that happen to be on the map now.
   const [routeList] = useState(createRouteList);
   const { routes, selectedId } = useSyncExternalStore(
@@ -81,8 +83,8 @@ const App = () => {
     routeList.getState
   );
   const selected = routes.find((r) => r.id === selectedId) ?? null;
-  // Gone if it was deleted mid-edit; the draft then saves as a new Route.
-  const editing = routes.find((r) => r.id === editingId) ?? null;
+  // Gone if it was deleted mid-edit, and the edit with it.
+  const editing = routes.find((r) => r.id === lineEdit?.routeId) ?? null;
   const [focus, setFocus] = useState<MapFocus | null>(null);
 
   // The Crux whose questions are open in the drawer. Ids are unique across
@@ -124,6 +126,13 @@ const App = () => {
   // The Route a corridor is being made for, so the button spins on that one
   // only - another Route selected meanwhile can still ask for its own.
   const [makingCorridorId, setMakingCorridorId] = useState<string | null>(null);
+  // The Route Optimise route is looking at, so only its button spins.
+  const [optimisingId, setOptimisingId] = useState<string | null>(null);
+  // The suggestion open in the drawer and drawn strongest on the map.
+  const [activeSuggestionId, setActiveSuggestionId] = useState<string | null>(null);
+  // On by default: a crux tool's first business is danger, and the ways
+  // that only make the going easier by the cost surface are the noisier half.
+  const [onlySafer, setOnlySafer] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // null until the first ping answers, so the panel does not flash a
@@ -140,15 +149,43 @@ const App = () => {
     };
   }, []);
 
+  /** A map click while picking: the start, the end, or the one point being
+   *  moved or added. */
+  const pickPoint = (point: LatLng) => {
+    if (!pickMode) return;
+    const next = pick(waypoints, pickMode, point);
+    setWaypoints(next.waypoints);
+    setPickMode(next.mode);
+  };
+
+  // Stable, since the map listens for Escape with it.
+  const cancelPick = useCallback(() => setPickMode(null), []);
+
+  /** Pick points: start over, the start and then the end. */
+  const pickPoints = () => {
+    setWaypoints(NO_WAYPOINTS);
+    setPickMode({ kind: "sequence" });
+  };
+
+  // A point picked by its place in the list: removing one or clearing them
+  // all moves the places, so a pick waiting on one is given up.
+  const removeWaypoint = (index: number) => {
+    setWaypoints((prev) => removePoint(prev, index));
+    setPickMode(null);
+  };
+
+  const clearWaypoints = () => {
+    setWaypoints(NO_WAYPOINTS);
+    setPickMode(null);
+  };
+
   const generate = async () => {
-    if (!startPoint || !endPoint) return;
+    if (waypoints.points.length < 2) return;
 
     setIsRouting(true);
     setErrorMsg(null);
     try {
-      const route = routeList.addRouted(
-        await requestRoute(startPoint, endPoint, roadsOnly ? "road" : "terrain")
-      );
+      const route = routeList.addRouted(await requestRoute(waypoints));
       setFocus({ kind: "route", line: route.line });
       setBackendReady(true);
     } catch (err) {
@@ -163,7 +200,7 @@ const App = () => {
 
   // The result goes to the Route it was asked for, by id, even if another
   // one has been selected by the time it comes back.
-  const runIdentify = async () => {
+  const runIdentify = async (mode: "update" | "restart") => {
     setConfirmIdentify(false);
     if (!selected) return;
     const { id, line } = selected;
@@ -172,7 +209,7 @@ const App = () => {
     setIsIdentifying(true);
     setErrorMsg(null);
     try {
-      routeList.attachCrux(id, await requestCrux(line, excludedStretches(selected)));
+      routeList.attachCrux(id, await requestCrux(line, excludedStretches(selected)), mode);
       setBackendReady(true);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Identifying cruxes failed.");
@@ -205,11 +242,78 @@ const App = () => {
     }
   };
 
-  /** Identifying again replaces the identified Cruxes, and with them all the
-   *  user has made of them - so where there is any, ask first. */
-  const identify = () => {
+  /** Look for ways close beside the Selected route's line that the cost
+   *  surface finds clearly better. They go to the Route and line they were
+   *  asked for, as a corridor does. */
+  const optimise = async () => {
+    if (!selected) return;
+    const { id, line } = selected;
+
+    setOptimisingId(id);
+    setActiveSuggestionId(null);
+    setErrorMsg(null);
+    try {
+      routeList.attachSuggestions(id, line, await requestImprove(line));
+      setBackendReady(true);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Looking for improvements failed.");
+      if (err instanceof TypeError) setBackendReady(false);
+    } finally {
+      setOptimisingId((current) => (current === id ? null : current));
+    }
+  };
+
+  /** A Route picked in the list: selected, and the map taken to it - unless
+   *  it already was the Selected route, where a click on its row is only a
+   *  click and the map stays where the user has put it. Hidden, it stays
+   *  hidden; the map still goes to where it is. */
+  const selectFromList = (id: string) => {
+    const route = routes.find((r) => r.id === id);
+    if (!route || id === selectedId) return;
+    routeList.select(id);
+    setActiveSuggestionId(null);
+    setFocus({ kind: "route", line: route.line });
+  };
+
+  /** Open a suggestion in the drawer and take the map to it - the stretch
+   *  it replaces and its new way both in view. */
+  const activateSuggestion = (s: RouteSuggestion) => {
+    if (s.id === activeSuggestionId) {
+      setActiveSuggestionId(null);
+      return;
+    }
+    setActiveSuggestionId(s.id);
+    if (!selected) return;
+    const replaced = sliceLine(selected.line, s.startM, s.endM);
+    setFocus({
+      kind: "route",
+      line: { type: "LineString", coordinates: [...replaced, ...s.line.coordinates] },
+    });
+  };
+
+  /** Take suggestions one at a time, in the order given: each is found
+   *  again on the line the one before it left. */
+  const acceptSuggestions = (ids: string[]) => {
+    if (!selected) return;
+    for (const id of ids) routeList.acceptSuggestion(selected.id, id);
+    if (activeSuggestionId && ids.includes(activeSuggestionId)) setActiveSuggestionId(null);
+  };
+
+  /** Keep the line as drawn where a suggestion would have changed it. */
+  const rejectSuggestion = (id: string) => {
+    if (selected) routeList.rejectSuggestion(selected.id, id);
+    if (id === activeSuggestionId) setActiveSuggestionId(null);
+  };
+
+  /** Identify, or update: what has been done with a Crux found again is
+   *  kept, so there is nothing to ask. */
+  const identify = () => void runIdentify("update");
+
+  /** Start over replaces the identified Cruxes, and with them all the user
+   *  has made of them - so where there is any, ask first. */
+  const startOver = () => {
     if (selected?.cruxes.some(isEdited)) setConfirmIdentify(true);
-    else void runIdentify();
+    else void runIdentify("restart");
   };
 
   const changeAddMode = (mode: AddMode) => {
@@ -218,36 +322,45 @@ const App = () => {
   };
 
   const finishDraft = () => {
-    const coordinates = draft.map((p) => [p.lng, p.lat]);
-    if (editing) {
-      routeList.updateLine(editing.id, coordinates);
-      routeList.select(editing.id);
-    } else {
-      routeList.addDrawn(coordinates);
-    }
+    routeList.addDrawn(draft.map((p) => [p.lng, p.lat]));
     stopDrawing();
   };
 
-  /** Back to the normal map: the draft dropped, no Route being edited. */
+  /** Back to the normal map: the draft dropped. */
   const stopDrawing = () => {
     setDraft([]);
-    setEditingId(null);
     setIsDrawing(false);
   };
 
-  /** Open a Route's points for dragging about, in the Draw mode. A routed or
-   *  uploaded line is opened simplified - its shape kept, but few enough
-   *  points to be handles - and is only changed if the edit is finished. */
+  /** Open a Route's points for dragging about, where the map is - it does
+   *  not move. A routed or uploaded line is opened simplified - its shape
+   *  kept, but few enough points to be handles - and is only changed if the
+   *  edit is saved. */
   const editRoute = (id: string) => {
     const route = routes.find((r) => r.id === id);
     if (!route) return;
-    setDraft(simplifyForEditing(route.line.coordinates).map(([lng, lat]) => ({ lat, lng })));
-    setEditingId(id);
-    setIsDrawing(true);
-    changeAddMode("draw");
+    stopPlacingCrux();
+    if (extentEdit) cancelExtentEdit();
+    setPickMode(null);
+    const opened = simplifyForEditing(route.line.coordinates);
+    setLineEdit({ routeId: id, opened, points: opened.map(([lng, lat]) => ({ lat, lng })) });
     setPanelOpen(true);
     routeList.select(id);
-    setFocus({ kind: "route", line: route.line });
+  };
+
+  /** Save the edited line. Where it was not touched it keeps every point
+   *  it had, so the analysis and Cruxes there carry over (see
+   *  carryOverEdit). */
+  const saveLineEdit = () => {
+    if (lineEdit && editing) {
+      const edited = lineEdit.points.map((p) => [p.lng, p.lat]);
+      routeList.updateLine(
+        editing.id,
+        restoreUnedited(editing.line.coordinates, lineEdit.opened, edited)
+      );
+      routeList.select(editing.id);
+    }
+    setLineEdit(null);
   };
 
   const stopPlacingCrux = useCallback(() => {
@@ -362,6 +475,8 @@ const App = () => {
       setMovingCruxId(null);
     } else {
       setPendingCrux(spot);
+      // The form waits in the drawer; on a phone it was closed to reach the map.
+      setPanelOpen(true);
     }
   };
 
@@ -414,6 +529,13 @@ const App = () => {
     }
   };
 
+  // The Selected route's suggestions, as the drawer lists them - none while
+  // its line is open for editing, which they no longer describe.
+  const suggestionsShown =
+    selected?.suggestions && selected.visible && editing?.id !== selected.id
+      ? shownSuggestions(selected.suggestions, onlySafer)
+      : null;
+
   // Only the Selected route's corridor, and only while it is on the map:
   // several overlapping bands would make the terrain under them unreadable.
   const corridor = selected?.visible ? selected.corridor : null;
@@ -436,16 +558,19 @@ const App = () => {
         isDrawing={isDrawing}
         draft={draft}
         onDraftChange={setDraft}
-        pickMode={pickMode}
-        onPickModeChange={setPickMode}
-        startPoint={startPoint}
-        endPoint={endPoint}
-        onStartPointChange={setStartPoint}
-        onEndPointChange={setEndPoint}
+        editDraft={editing && lineEdit ? lineEdit.points : null}
+        onEditDraftChange={(points) =>
+          setLineEdit((prev) => (prev ? { ...prev, points } : prev))
+        }
+        waypoints={waypoints.points}
+        picking={pickMode !== null}
+        onPickPoint={pickPoint}
+        onCancelPick={cancelPick}
+        onMovePoint={(index, point) => setWaypoints((prev) => movePoint(prev, index, point))}
         // The Route being edited is the draft for now; its old line and
         // Cruxes would only sit under it.
         routes={
-          editing && addMode === "draw" ? routes.filter((r) => r.id !== editing.id) : routes
+          editing ? routes.filter((r) => r.id !== editing.id) : routes
         }
         selectedId={selectedId}
         onSelectRoute={routeList.select}
@@ -469,6 +594,21 @@ const App = () => {
         }
         onExtentChange={applyExtent}
         onCancelExtent={cancelExtentEdit}
+        suggestions={
+          selected && suggestionsShown ? { line: selected.line, items: suggestionsShown } : null
+        }
+        activeSuggestionId={activeSuggestionId}
+        onSuggestionClick={(id) => {
+          setActiveSuggestionId(id);
+          setPanelOpen(true);
+        }}
+        onAcceptSuggestion={(id) => acceptSuggestions([id])}
+        onRejectSuggestion={rejectSuggestion}
+        // Only if it is still the open one: opening another closes this
+        // popup too, and that must not close the new one.
+        onCloseSuggestion={(id) =>
+          setActiveSuggestionId((current) => (current === id ? null : current))
+        }
       />
 
       <RoutePanel
@@ -479,34 +619,38 @@ const App = () => {
         onResetPanelWidth={resetWidth}
         addMode={addMode}
         onAddModeChange={changeAddMode}
-        startPoint={startPoint}
-        endPoint={endPoint}
+        waypoints={waypoints}
         pickMode={pickMode}
         onPickModeChange={setPickMode}
-        onClearStart={() => setStartPoint(null)}
-        onClearEnd={() => setEndPoint(null)}
+        onPickPoints={pickPoints}
+        onRemovePoint={removeWaypoint}
+        onNetworkChange={(leg, network) => setWaypoints((prev) => setNetwork(prev, leg, network))}
+        onClearPoints={clearWaypoints}
         onGenerate={generate}
-        roadsOnly={roadsOnly}
-        onRoadsOnlyChange={changeRoadsOnly}
         isRouting={isRouting}
         backendReady={backendReady}
         isDrawing={isDrawing}
         onStartDrawing={() => setIsDrawing(true)}
         draft={draft}
-        editingName={editing?.name ?? null}
+        editing={
+          editing && lineEdit ? { name: editing.name, points: lineEdit.points.length } : null
+        }
+        onSaveEdit={saveLineEdit}
+        onCancelEdit={() => setLineEdit(null)}
         onUndoDraft={() => setDraft((prev) => prev.slice(0, -1))}
         onClearDraft={() => setDraft([])}
         onFinishDraft={finishDraft}
         onCancelDraw={stopDrawing}
         routes={routes}
         selectedId={selectedId}
-        onSelectRoute={routeList.select}
+        onSelectRoute={selectFromList}
         onToggleRoute={routeList.toggleVisible}
         onDeleteRoute={routeList.remove}
         onEditRoute={editRoute}
         onUpload={upload}
         isIdentifying={isIdentifying}
         onIdentify={identify}
+        onStartOver={startOver}
         activeCruxId={activeCruxId}
         // Whatever is being done to a Crux, it is marked in the list - folded,
         // so the list stays short while the map or a form is in use.
@@ -535,6 +679,20 @@ const App = () => {
               : "Click on the map - the crux goes on the nearest point of the route."
         }
         onPlaceCrux={togglePlacingCrux}
+        addCruxForm={
+          pendingCrux && selected ? (
+            <AddCruxForm
+              // A new spot is a new form, started afresh from what is there.
+              key={`${pendingCrux.distance_m}`}
+              defaults={defaultsAt(selected.crux?.segments, pendingCrux.distance_m)}
+              maxLength={Math.max(selected.lengthM - pendingCrux.distance_m, 0)}
+              onPreview={setStretchPreview}
+              onCancel={stopPlacingCrux}
+              onAdd={(input) => addCrux({ ...input, ...pendingCrux })}
+            />
+          ) : null
+        }
+        onNote={routeList.setNote}
         editingExtent={extentEdit !== null}
         onFinishExtent={finishExtentEdit}
         onResetExtent={resetExtentEdit}
@@ -544,17 +702,33 @@ const App = () => {
         onCorridorOpacityChange={setCorridorOpacity}
         isMakingCorridor={makingCorridorId !== null && makingCorridorId === selectedId}
         onMakeCorridor={() => void makeCorridor()}
+        suggestionControls={{
+          isSearching: optimisingId !== null && optimisingId === selectedId,
+          onSearch: () => void optimise(),
+          onlySafer,
+          onOnlySaferChange: setOnlySafer,
+          activeId: activeSuggestionId,
+          onActivate: activateSuggestion,
+          onAccept: (id) => acceptSuggestions([id]),
+          onReject: rejectSuggestion,
+          onAcceptAll: acceptSuggestions,
+          onDismiss: () => {
+            if (selected) routeList.dismissSuggestions(selected.id);
+            setActiveSuggestionId(null);
+          },
+        }}
       />
 
       <ConfirmDialog
         open={confirmIdentify}
-        title="Identify cruxes again?"
-        confirmLabel="Identify again"
+        title="Start over on this route's cruxes?"
+        confirmLabel="Start over"
         onCancel={() => setConfirmIdentify(false)}
-        onConfirm={() => void runIdentify()}
+        onConfirm={() => void runIdentify("restart")}
       >
         The identified cruxes on this route will be replaced by a fresh analysis, and everything
-        you have done with them goes too: ratings, overall assessments, keep choices, moved
+        you have done with them goes too: ratings, overall assessments, comments, group
+        measures, keep choices, moved
         markers, edited extents and deletions. Cruxes you added by hand are kept as they are.
       </ConfirmDialog>
 
@@ -578,15 +752,6 @@ const App = () => {
         }}
       />
 
-      <AddCruxDialog
-        open={pendingCrux !== null}
-        defaults={defaultsAt(selected?.crux?.segments, pendingCrux?.distance_m ?? 0)}
-        maxLength={Math.max((selected?.lengthM ?? 0) - (pendingCrux?.distance_m ?? 0), 0)}
-        onPreview={setStretchPreview}
-        onCancel={stopPlacingCrux}
-        onAdd={(input) => pendingCrux && addCrux({ ...input, ...pendingCrux })}
-      />
-
       <Snackbar
         open={Boolean(errorMsg)}
         autoHideDuration={8000}
@@ -607,7 +772,9 @@ const App = () => {
       <Backdrop open={isRouting} sx={{ zIndex: 2000, color: "#fff" }}>
         <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
           <CircularProgress color="inherit" />
-          <Typography>{roadsOnly ? "Finding the drive..." : "Routing in progress..."}</Typography>
+          <Typography>
+            {allRoad(waypoints) ? "Finding the drive..." : "Routing in progress..."}
+          </Typography>
         </Box>
       </Backdrop>
     </div>

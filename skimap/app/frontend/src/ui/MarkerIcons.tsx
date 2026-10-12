@@ -50,6 +50,46 @@ export const endIcon = divIcon({
   iconAnchor: [14, 48],
 });
 
+const waypointIcons = new Map<number, DivIcon>();
+
+/** A waypoint between the start and the end: a disc with its number, the
+ *  same number the panel gives it. Smaller than the start and end pins, so
+ *  the ends still read first. */
+export const waypointIcon = (n: number): DivIcon => {
+  let icon = waypointIcons.get(n);
+  if (!icon) {
+    const size = 26;
+    icon = divIcon({
+      html: renderToStaticMarkup(
+        <div
+          style={{
+            width: size,
+            height: size,
+            boxSizing: "border-box",
+            borderRadius: "50%",
+            border: "2px solid white",
+            background: COLORS.teal,
+            color: "white",
+            fontSize: 13,
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "0 1px 4px rgba(0,0,0,0.45)",
+          }}
+        >
+          {n}
+        </div>
+      ),
+      className: "",
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+    waypointIcons.set(n, icon);
+  }
+  return icon;
+};
+
 // One icon per look rather than one per marker: re-running the identifier
 // or switching the selection re-renders every marker.
 const cruxIcons = new Map<string, DivIcon>();

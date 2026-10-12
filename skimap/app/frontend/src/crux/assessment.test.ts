@@ -6,7 +6,6 @@ import {
   problemHazards,
   problemOf,
   verdictOf,
-  hasOwnOverall,
   isCritical,
   isDecided,
   overallOf,
@@ -15,10 +14,17 @@ import {
 } from "./assessment";
 
 describe("the aspects asked about a crux", () => {
-  it("are all five for steep ground, and only remote triggering for a runout", () => {
-    expect(questionsFor({ class: "steep_slope" })).toHaveLength(5);
+  it("are five for steep ground, and remote triggering and natural release for a runout", () => {
+    expect(questionsFor({ class: "steep_slope" }).map((q) => q.factor)).toEqual([
+      "slope_size",
+      "release_volume",
+      "terrain_traps",
+      "safe_spots",
+      "remote_triggering",
+    ]);
     expect(questionsFor({ class: "runout_area" }).map((q) => q.factor)).toEqual([
       "remote_triggering",
+      "natural_release",
     ]);
   });
 
@@ -30,12 +36,9 @@ describe("the aspects asked about a crux", () => {
 });
 
 describe("a crux's overall rating", () => {
-  it("is the user's own for steep ground, and the one rating a runout has", () => {
-    const answers = { remote_triggering: "bad", slope_size: "very_good" } as const;
-    expect(hasOwnOverall({ class: "steep_slope" })).toBe(true);
-    expect(overallOf({ class: "steep_slope", answers, overall: "good" })).toBe("good");
-    expect(hasOwnOverall({ class: "runout_area" })).toBe(false);
-    expect(overallOf({ class: "runout_area", answers, overall: "good" })).toBe("bad");
+  it("is the user's own, never read off their answers", () => {
+    expect(overallOf({ overall: "good" })).toBe("good");
+    expect(overallOf({})).toBeUndefined();
   });
 
   it("counts as evaluated only once the crux is kept", () => {
@@ -54,7 +57,7 @@ describe("a crux's verdict on the map and in the list", () => {
     expect(verdictOf({ ...steep, keep: true })).toBe("kept");
     expect(
       verdictOf({ class: "runout_area", answers: { remote_triggering: "good" }, keep: true })
-    ).toBe("good");
+    ).toBe("kept");
   });
 
   it("reads a crux's symbol back from its marks", () => {
@@ -71,7 +74,6 @@ describe("a snow conditions check", () => {
   it("has no aspects to rate, only an overall rating of its own", () => {
     const check = { ...problemHazards("snow_check"), answers: {}, overall: "bad" as const };
     expect(questionsFor(check)).toEqual([]);
-    expect(hasOwnOverall(check)).toBe(true);
     expect(overallOf(check)).toBe("bad");
     expect(problemOf(check)).toBe("snow_check");
   });

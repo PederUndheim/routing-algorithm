@@ -20,6 +20,8 @@ const exportedCruxes = (route: Route): ExportedCrux[] =>
         dangerName(crux),
         crux.max_slope_deg !== undefined ? `max ${Math.round(crux.max_slope_deg)}°` : null,
         rating ? `assessed: ${ratingOf(rating).label}` : null,
+        crux.comment ? `comment: ${crux.comment.trim()}` : null,
+        crux.group_measures ? `group measures: ${crux.group_measures.trim()}` : null,
       ];
       return {
         at: markerPositionOf(route.line, crux),
@@ -80,6 +82,8 @@ export const toGeoJson = (route: Route): string => {
         symbol: problemOf(crux),
         overall: overallOf(crux) ?? null,
         kept: crux.keep === true,
+        comment: crux.comment?.trim() ?? null,
+        group_measures: crux.group_measures?.trim() ?? null,
         distance_m: Math.round(crux.distance_m),
       },
     })

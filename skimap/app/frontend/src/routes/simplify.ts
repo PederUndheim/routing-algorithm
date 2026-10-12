@@ -48,6 +48,42 @@ export const simplifyLine = (coords: readonly Position[], tolerance_m: number): 
   return coords.filter((_, i) => keep[i]);
 };
 
+/** An edited line with the detail the editor left out put back wherever it
+ *  was not touched. `simplified` is what the editor was opened with, and
+ *  `edited` what came back: between two of its points that are still there
+ *  and still neighbours, the line runs as the original did - every point of
+ *  it - rather than straight across. Anywhere else, as edited. */
+export const restoreUnedited = (
+  original: readonly Position[],
+  simplified: readonly Position[],
+  edited: readonly Position[]
+): Position[] => {
+  const key = (p: Position) => `${p[0]},${p[1]}`;
+  // Where each simplified point sits in the original, and what follows it.
+  const indexOf = new Map<string, number>();
+  let from = 0;
+  for (const p of simplified) {
+    while (from < original.length && key(original[from]) !== key(p)) from++;
+    if (from === original.length) return [...edited];
+    indexOf.set(key(p), from);
+  }
+  const nextOf = new Map<string, string>();
+  for (let i = 1; i < simplified.length; i++) nextOf.set(key(simplified[i - 1]), key(simplified[i]));
+
+  const out: Position[] = [];
+  for (let i = 0; i < edited.length; i++) {
+    out.push(edited[i]);
+    const next = edited[i + 1];
+    if (!next || nextOf.get(key(edited[i])) !== key(next)) continue;
+    const a = indexOf.get(key(edited[i]))!;
+    const b = indexOf.get(key(next))!;
+    // A line that comes back through a point it has already passed can
+    // map one key to the wrong visit; then it is simply left straight.
+    if (b > a) out.push(...original.slice(a + 1, b));
+  }
+  return out;
+};
+
 /** A routed or recorded line made few enough points to drag about: the
  *  tightest tolerance - from 2 m, doubling - that brings it down to
  *  `maxPoints`. A line already that short is left exactly as it is. */

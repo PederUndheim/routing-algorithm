@@ -317,6 +317,13 @@ class RoadNetwork:
                 return found
         raise ValueError(f"No road within {max_snap:.0f} m of the {what}.")
 
+    def snapped(self, xy: tuple[float, float], what: str = "point") -> tuple[float, float]:
+        """Where `xy` lands on the roads, as a point on the 25833 grid - the
+        spot a drive from or to `xy` actually starts or ends at."""
+        found = self.snap(xy, what)
+        x, y = self._cut(found.edge, found.along_m, found.along_m)[0]
+        return float(x), float(y)
+
     def _nearest_on(self, edges: np.ndarray, point: np.ndarray) -> Snap:
         starts = self.offsets[edges]
         segments = self.offsets[edges + 1] - starts - 1

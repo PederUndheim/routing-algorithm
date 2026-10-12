@@ -475,10 +475,20 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
 # A drawn, uploaded or edited line has no optimum to be near, so it gets a
 # different corridor from a routed one: the ground within reach of the line
 # itself. One spread from every cell the line crosses gives each cell its
-# cost to reach from the line, and a step off the line and back costs twice
-# that. The budget and the fade work as the routed corridor's do, on the
-# line's own cost, so the two read alike on the map - but from their own
-# settings, config.LINE_CORRIDOR, which also floors the budget on short lines.
+# cost to reach from the line.
+#
+# A cell is in the band while reaching it from the line costs no more than
+# one fixed budget, `max_cost`. Fixed on purpose: easy ground is cheap to
+# cross, so the band spreads wide over it and leaves room to choose, and
+# steep or exposed ground is dear, so the band stays tight there - the
+# freedom follows the terrain, not the line. It used to be a share of the
+# whole line's cost, which gave the same ground a narrower or wider band
+# depending on how much route lay elsewhere; and a budget taken from the
+# line's own cost per metre was tried and dropped, because it hands a line
+# across steep ground the most room exactly where it should have the least.
+#
+# `max_m` caps it in plain distance as well: on a flat valley floor the
+# budget alone would run for kilometres. Settings in config.LINE_CORRIDOR.
 #
 # Why not the routed corridor's own sum, seeded along the line: tried on real
 # and drawn tracks, and it fails on every line that is not already optimal -
@@ -489,8 +499,10 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
 # the routed corridor exactly; that is all it is good for.
 
 
-def _line_cells(xy: np.ndarray, west: float, north: float, res: float) -> np.ndarray:
-    """(row, col) of each cell the line crosses, in order, 8-connected.
+def _line_cells(xy: np.ndarray, west: float, north: float,
+                res: float) -> tuple[np.ndarray, np.ndarray]:
+    """(row, col) of each cell the line crosses, in order, 8-connected, and
+    how far along the line each is entered, in metres.
 
     Densified to a metre so no cell is stepped over, then thinned wherever a
     cell's neighbours are diagonal to each other: a supercover walk takes
@@ -498,42 +510,57 @@ def _line_cells(xy: np.ndarray, west: float, north: float, res: float) -> np.nda
     in, those corner cells overstate a slanted line's cost by up to a fifth.
     """
     step = np.diff(xy, axis=0)
-    counts = np.maximum(1, np.ceil(np.hypot(step[:, 0], step[:, 1]))).astype(int)
+    lengths = np.hypot(step[:, 0], step[:, 1])
+    counts = np.maximum(1, np.ceil(lengths)).astype(int)
     within = np.arange(counts.sum()) - np.repeat(np.cumsum(counts) - counts, counts)
-    fraction = (within / np.repeat(counts, counts))[:, None]
-    dense = np.vstack([np.repeat(xy[:-1], counts, axis=0) + fraction * np.repeat(step, counts, axis=0),
+    fraction = within / np.repeat(counts, counts)
+    dense = np.vstack([np.repeat(xy[:-1], counts, axis=0)
+                       + fraction[:, None] * np.repeat(step, counts, axis=0),
                        xy[-1:]])
+    dense_along = np.append(np.repeat(np.cumsum(lengths) - lengths, counts)
+                            + fraction * np.repeat(lengths, counts), lengths.sum())
 
     cells = np.column_stack([np.floor((north - dense[:, 1]) / res),
                              np.floor((dense[:, 0] - west) / res)]).astype(int)
-    cells = cells[np.concatenate([[True], (np.diff(cells, axis=0) != 0).any(axis=1)])]
+    entered = np.concatenate([[True], (np.diff(cells, axis=0) != 0).any(axis=1)])
+    cells, along = cells[entered], dense_along[entered]
+    if len(cells) == 1:
+        return cells, along
 
-    kept = [cells[0]]
+    kept = [0]
     for i in range(1, len(cells) - 1):
-        if np.abs(cells[i + 1] - kept[-1]).max() > 1:
-            kept.append(cells[i])
-    kept.append(cells[-1])
-    return np.array(kept)
+        if np.abs(cells[i + 1] - cells[kept[-1]]).max() > 1:
+            kept.append(i)
+    kept.append(len(cells) - 1)
+    return cells[kept], along[kept]
 
 
-def line_corridor(line_xy: np.ndarray, out_path: Path, *,
-                  cost_raster: str = COST_RASTER, tag: str = "line") -> float:
-    """Write the corridor around `line_xy` (EPSG:25833, in order) to
-    `out_path`, and return the line's own cost.
+@dataclass
+class _LineBand:
+    """The band around a line, left in GRASS for the caller to write out or
+    read, in the region it was made in - which is still the current one."""
 
-    The cost is what r.cost would charge to walk the cells the line crosses,
-    so it is on the same scale as a routed Route's.
+    used: str              # raster: how far through its budget each cell is; 1 is the edge
+    scratch: list[str]     # every raster made for it, for the caller to remove
+    cells: np.ndarray      # the line's cells, (row, col) in the current region
+    along: np.ndarray      # metres along the line where each is entered
+    on_line: np.ndarray    # the surface under each
+    line_cost: float
 
-    Widens its window the way route_one does when the corridor comes back
-    touching an edge; see config.ROUTING["region_buffer_retry_cap_m"].
-    """
+
+def _line_band(line_xy: np.ndarray, *, cost_raster: str, tag: str) -> _LineBand:
+    """Spread from the line through the surface, and score every cell by
+    how much of the budget reaching it takes - see the note above
+    _line_cells. Shared by the corridor and the optimiser, so a suggestion
+    never leaves the band the map shows."""
     import grass.script as gs
     from grass.script import array as garray
 
     xy = np.asarray(line_xy, dtype=np.float64)
     if xy.ndim != 2 or len(xy) < 2:
         raise ValueError("A line needs at least two points.")
-    starts, reach, scored = f"lstart_{tag}", f"lreach_{tag}", f"lscore_{tag}"
+    starts, reach, distance, used = (f"lstart_{tag}", f"lreach_{tag}",
+                                     f"ldist_{tag}", f"lused_{tag}")
     params = config.LINE_CORRIDOR
     memory = int(config.ROUTING["grass_memory_mb"])
     west, east = xy[:, 0].min(), xy[:, 0].max()
@@ -545,8 +572,9 @@ def line_corridor(line_xy: np.ndarray, out_path: Path, *,
     # cells, and outside its own window the seed raster reads as null.
     gs.run_command("g.region", raster=cost_raster, align=cost_raster,
                    w=west - 50, e=east + 50, s=south - 50, n=north + 50)
-    region = gs.region()
-    cells = _line_cells(xy, region["w"], region["n"], region["ewres"])
+    narrow = gs.region()
+    res = narrow["ewres"]
+    cells, along = _line_cells(xy, narrow["w"], narrow["n"], res)
     rows, cols = cells[:, 0], cells[:, 1]
 
     # -1 stands in for null: r.out.bin writes nulls as 0 otherwise, which
@@ -562,55 +590,524 @@ def line_corridor(line_xy: np.ndarray, out_path: Path, *,
     steps = np.hypot(*np.diff(cells, axis=0).T)
     line_cost = float(((on_line[:-1] + on_line[1:]) / 2.0 * steps).sum())
 
-    # A line shorter than min_length_m is budgeted as if it ran that far
-    # through the same ground - see config.LINE_CORRIDOR for why a length and
-    # not a cost.
-    length_m = float(np.hypot(*np.diff(xy, axis=0).T).sum())
-    stretch = max(1.0, float(params["min_length_m"]) / max(length_m, 1e-6))
-    max_gap = min(line_cost * float(params["slack"]) * stretch, float(params["max_gap"]))
-    if max_gap <= 0:
-        raise ValueError("The line is too short to have a corridor.")
-
     seeds = garray.array(dtype=np.float32)
     seeds[...] = -1
     seeds[rows, cols] = 0
     seeds.write(starts, null=-1, overwrite=True, quiet=True)
 
+    # One window, twice max_m out: the band never reaches past max_m, and the
+    # spare is room for the cheapest way to a cell near the edge of the band
+    # to swing out around something first. A routed corridor widens its
+    # window and tries again when it touches an edge; this one has no need.
+    max_m = float(params["max_m"])
+    buffer_m = 2 * max_m if max_m > 0 else float(config.ROUTING["region_buffer_floor_m"])
+    gs.run_command("g.region", raster=cost_raster, align=cost_raster,
+                   w=west - buffer_m, e=east + buffer_m,
+                   s=south - buffer_m, n=north + buffer_m)
+    wide = gs.region()
+    gs.run_command("r.cost", input=cost_raster, start_raster=starts,
+                   output=reach, memory=memory, overwrite=True, quiet=True)
+    # How far through its budget each cell is: the cost to reach it against
+    # max_cost, or its distance from the line against max_m, whichever is
+    # further on. The band fades on that, so where the cap is what stops it
+    # the edge still fades rather than cuts.
+    share = f"{reach} / {float(params['max_cost'])}"
+    scratch = [starts, reach, used]
+    if max_m > 0:
+        gs.run_command("r.grow.distance", input=starts, distance=distance,
+                       overwrite=True, quiet=True)
+        share = f"max({share}, {distance} / {max_m})"
+        scratch.append(distance)
+    gs.mapcalc(f"{used} = float({share})", overwrite=True, quiet=True)
+
+    # Into the wide window's own rows and columns, where the caller reads.
+    offset = np.array([round((wide["n"] - narrow["n"]) / res),
+                       round((narrow["w"] - wide["w"]) / res)])
+    return _LineBand(used=used, scratch=scratch, cells=cells + offset, along=along,
+                     on_line=on_line, line_cost=line_cost)
+
+
+def line_corridor(line_xy: np.ndarray, out_path: Path, *,
+                  cost_raster: str = COST_RASTER, tag: str = "line") -> float:
+    """Write the corridor around `line_xy` (EPSG:25833, in order) to
+    `out_path`, and return the line's own cost.
+
+    The cost is what r.cost would charge to walk the cells the line crosses,
+    so it is on the same scale as a routed Route's.
+    """
+    import grass.script as gs
+
+    band = _line_band(line_xy, cost_raster=cost_raster, tag=tag)
+    scored = f"lscore_{tag}"
+    gs.mapcalc(
+        f"{scored} = float(pow(if({band.used} <= 1, 1 - {band.used}, null()), "
+        f"{config.LINE_CORRIDOR['gamma']}))",
+        overwrite=True, quiet=True,
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    cap = float(config.ROUTING.get("region_buffer_retry_cap_m", 0.0))
-    ladder = [float(config.ROUTING["region_buffer_floor_m"])]
-    while cap and ladder[-1] * 2 <= cap:
-        ladder.append(ladder[-1] * 2)
-
-    for attempt, buffer_m in enumerate(ladder):
-        gs.run_command("g.region", raster=cost_raster, align=cost_raster,
-                       w=west - buffer_m, e=east + buffer_m,
-                       s=south - buffer_m, n=north + buffer_m)
-        gs.run_command("r.cost", input=cost_raster, start_raster=starts,
-                       output=reach, memory=memory, overwrite=True, quiet=True)
-        # Out to a cell and back to the line: twice the reach, which is what
-        # makes the budget an extra cost on the trip, as a routed one's is.
-        gs.mapcalc(
-            f"{scored} = float(pow(if(2 * {reach} <= {max_gap}, "
-            f"1 - (2 * {reach} / {max_gap}), null()), {params['gamma']}))",
-            overwrite=True, quiet=True,
-        )
-        gs.run_command("r.out.gdal", input=scored, output=str(out_path),
-                       format="GTiff", type="Float32", nodata=config.NODATA,
-                       createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
-                       flags="c", overwrite=True, quiet=True)
-
-        touching = corridor_touches_edge(out_path)
-        if not touching:
-            break
-        if attempt == len(ladder) - 1:
-            where = ", ".join(f"{k} {v}px" for k, v in sorted(touching.items()))
-            print(f"    WARNING line {tag}: corridor still reaches the window edge "
-                  f"({where}) at a {buffer_m:.0f} m buffer, the cap.")
-
-    gs.run_command("g.remove", type="raster", name=",".join([starts, reach, scored]),
+    gs.run_command("r.out.gdal", input=scored, output=str(out_path),
+                   format="GTiff", type="Float32", nodata=config.NODATA,
+                   createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
+                   flags="c", overwrite=True, quiet=True)
+    gs.run_command("g.remove", type="raster", name=",".join(band.scratch + [scored]),
                    flags="f", quiet=True)
-    return line_cost
+    return band.line_cost
+
+
+# --- improving a given line ----------------------------------------------
+#
+# Not routing the line again: finding the stretches of it where a clearly
+# cheaper way runs close beside it, each one to be taken or left on its own.
+#
+# The search stays inside the line's own corridor (_line_band), so a
+# suggestion is never a different valley - it is the better side of a gully,
+# or round a steep roll, within ground the map already shows as near. In it,
+# the line is cut into stations, and from each a spread finds the cheapest
+# way to every station up to max_skip_m further on. Where one beats the
+# line's own stretch between the two by enough, it is a candidate - enough
+# being a share of the stretch's cost that grows with its length, so a long
+# way has to be clearly better (_needed_saving). Candidates overlap, so the
+# set shown is the one that makes the cheapest whole line: a pass over the
+# stations choosing, at each, to keep the line or arrive by a candidate.
+# That favours long ways, which skip the small cost of turning back to the
+# line between two fixes; so a long one is then split into the shorter
+# candidates it covers unless it saves long_gain_share more than they do.
+# Every suggestion leaves the line at a station and rejoins it at a later
+# one, and no two overlap, so each can be accepted without the others.
+#
+# Two kinds of line a cost surface would "improve" wrongly are kept out:
+#   - a summit, or any out-and-back. Cutting the spur off is always cheaper
+#     and never what was meant. So no suggestion spans a loop: any piece of
+#     the line over loop_m long whose ends are closer than min_straightness
+#     of its length. Checking only a suggestion's own two ends is not
+#     enough - 1.5 km of line can hold a 600 m spur and still run straight
+#     overall. Nor does a suggestion pass a turning point - a station where
+#     the loop_m of line around it doubles back - since one that starts just
+#     below a top spans no whole loop and would still cut the top off. It
+#     may meet the line there. And it never joins two places on the line
+#     heading more than max_turn_deg apart, which is going round a turn too
+#     wide for either test to see.
+#   - the other half of a loop or out-and-back. The band is the union around
+#     the whole line, so beside the way out it also holds the way back. A
+#     search keeps to the ground beside the stretch it may replace.
+#   - a long way round. Steep ground costs so much more than flat that
+#     going far round can still come out cheaper; past max_lengthening of
+#     the stretch it is another route, not an improvement.
+#   - a switchback skin track. Uphill zigzags are dearer per metre of
+#     progress than going straight up, on a surface that does not know which
+#     way is up. Broad ones are loops by the rule above; a suggestion that
+#     never gets min_detour_m from the line is dropped as well, which is
+#     what straightening tight ones does - it stays inside them.
+
+
+# How far past its own stretch a search may reach onto ground beside the line,
+# by sharing one graph with the stations near it. See _detours.
+BLOCK_M = 250.0
+
+
+def _band_graph(cost: np.ndarray, inside: np.ndarray):
+    """The band's cells as a graph r.cost would walk: 8-connected, a step
+    charged the mean of its two cells, times sqrt(2) on a diagonal.
+
+    Returns the graph and each cell's node, -1 outside the band.
+    """
+    from scipy.sparse import csr_matrix
+
+    node = np.full(cost.shape, -1, dtype=np.int64)
+    rows, cols = np.nonzero(inside)
+    node[rows, cols] = np.arange(len(rows))
+    h, w = cost.shape
+    heads, tails, weights = [], [], []
+    for dr, dc in ((0, 1), (1, 0), (1, 1), (1, -1)):
+        a = (slice(0, h - dr), slice(max(0, -dc), w - max(0, dc)))
+        b = (slice(dr, h), slice(max(0, dc), w - max(0, -dc)))
+        both = (node[a] >= 0) & (node[b] >= 0)
+        length = np.sqrt(2.0) if dr and dc else 1.0
+        heads.append(node[a][both])
+        tails.append(node[b][both])
+        # A hair over the mean: scipy reads a stored zero as no edge at all.
+        weights.append((cost[a][both] + cost[b][both]) / 2.0 * length + 1e-9)
+    n = len(rows)
+    graph = csr_matrix((np.concatenate(weights), (np.concatenate(heads), np.concatenate(tails))),
+                       shape=(n, n))
+    return graph, node
+
+
+def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.ndarray,
+             on_line: np.ndarray, res: float, params: dict) -> list[dict]:
+    """Where to leave the line and where to rejoin it, and the way between.
+
+    `cost` and `inside` are the window the line's `cells` are in; `along`
+    and `on_line` are what _line_band gives with them. Pure, so it can be
+    tested on a made-up grid. See the note above _band_graph.
+
+    Returns, in order along the line: first and last (indices into
+    `cells`), path (the cells between, both ends included), cost (the
+    path's) and line_cost (the line's own between the two).
+    """
+    from scipy.ndimage import distance_transform_edt
+    from scipy.sparse.csgraph import dijkstra
+
+    steps = np.hypot(*np.diff(cells, axis=0).T)
+    spent = np.concatenate([[0.0], np.cumsum((on_line[:-1] + on_line[1:]) / 2.0 * steps)])
+    usable = inside & (cost >= 0)
+
+    marks = np.append(np.arange(0.0, along[-1], float(params["station_m"])), along[-1])
+    stations = np.unique(np.minimum(np.searchsorted(along, marks), len(cells) - 1))
+    stations = stations[usable[cells[stations, 0], cells[stations, 1]]]
+    if len(stations) < 2:
+        return []
+    station_along, station_spent = along[stations], spent[stations]
+
+    max_skip = float(params["max_skip_m"])
+    straightness = float(params["min_straightness"])
+    ends = np.array([int(np.searchsorted(station_along, d + max_skip, side="right"))
+                     for d in station_along])
+
+    def apart_m(a: int, b: np.ndarray) -> np.ndarray:
+        return np.hypot(*(cells[stations[b]] - cells[stations[a]]).T) * res
+
+    # Where the line first turns back on itself after each station: the
+    # nearest later station over loop_m of line away whose distance from it
+    # is under min_straightness of that line. No suggestion may span one -
+    # see the note above _band_graph.
+    turns_back = np.full(len(stations), len(stations))
+    for i in range(len(stations) - 1):
+        j = np.arange(i + 1, ends[i])
+        span = station_along[j] - station_along[i]
+        loop = (span >= float(params["loop_m"])) & (apart_m(i, j) < straightness * span)
+        if loop.any():
+            turns_back[i] = j[np.argmax(loop)]
+
+    # Where the line turns round: a summit, the far end of an out-and-back,
+    # the hairpin of a switchback. The loop_m of line centred on the station
+    # doubles back on itself. A suggestion may meet the line there, never
+    # pass it by - a stretch that starts just below a top is not a loop by
+    # the rule above, and would still cut the top off.
+    half = float(params["loop_m"]) / 2.0
+    lo = np.searchsorted(station_along, station_along - half)
+    hi = np.searchsorted(station_along, station_along + half, side="right") - 1
+    span = station_along[hi] - station_along[lo]
+    apart = np.hypot(*(cells[stations[hi]] - cells[stations[lo]]).T) * res
+    turn = (span >= half) & (apart < straightness * span)
+    # The way the line is heading at each station, over the same loop_m. A
+    # suggestion whose ends head more than max_turn_deg apart has gone round
+    # a turn, however wide - a U whose legs are further apart than loop_m
+    # never doubles back within it.
+    heading = (cells[stations[hi]] - cells[stations[lo]]).astype(np.float64)
+    heading /= np.maximum(np.hypot(*heading.T), 1e-9)[:, None]
+    min_cos = np.cos(np.radians(float(params["max_turn_deg"])))
+    # The first turn after each station, or past the end where there is none.
+    next_turn = np.full(len(stations), len(stations))
+    for i in range(len(stations) - 2, -1, -1):
+        next_turn[i] = i + 1 if turn[i + 1] else next_turn[i + 1]
+
+    # Which stretch of the line each cell of the band lies beside: how far
+    # along the line the line cell nearest to it is. The band is the union
+    # around the whole line, so near a loop tour's start it also holds the
+    # ground beside its end - and a way from one station to the next must not
+    # wander onto that. It may use only cells beside the stretch it could
+    # replace, give or take margin_m. Where the line crosses itself, a cell
+    # on both passes counts as the first.
+    off_line = np.ones(cost.shape, dtype=bool)
+    off_line[cells[:, 0], cells[:, 1]] = False
+    _, (near_row, near_col) = distance_transform_edt(off_line, return_indices=True)
+    along_grid = np.full(cost.shape, np.nan)
+    along_grid[cells[::-1, 0], cells[::-1, 1]] = along[::-1]
+    beside = along_grid[near_row, near_col]
+    margin = float(params["margin_m"])
+
+    # The stations each one may be joined to: up to max_skip_m on, and only
+    # as far as no turning point is passed and no loop that starts inside
+    # the stretch closes in it - for each b, the first place any station
+    # from a to b-1 turns back.
+    allowed: dict[int, np.ndarray] = {}
+    for a in range(len(stations) - 1):
+        b = np.arange(a + 1, min(int(ends[a]), int(next_turn[a]) + 1))
+        if len(b):
+            b = b[np.minimum.accumulate(turns_back[a:b[-1]]) > b]
+        if len(b):
+            b = b[heading[b] @ heading[a] >= min_cos]
+        if len(b):
+            allowed[a] = b
+
+    # One graph per block of stations rather than one per station. Each
+    # holds the ground beside the line from its first station to the
+    # furthest any of them may be joined to. A block ends where the next
+    # station starts, or may reach, more than BLOCK_M past the first's: so a
+    # search reaches at most that far beyond its own stretch - and a block
+    # never straddles a turn, where the stations before it may reach only
+    # the turn and the ones after it kilometres down the way back.
+    block_of = np.full(len(stations), -1)
+    block_reach: list[tuple[float, float]] = []
+    first_lo = first_hi = -np.inf
+    for a, b in allowed.items():
+        lo_m, hi_m = float(station_along[a]), float(station_along[b[-1]])
+        if not block_reach or lo_m > first_lo + BLOCK_M or abs(hi_m - first_hi) > BLOCK_M:
+            block_reach.append((lo_m, hi_m))
+            first_lo, first_hi = lo_m, hi_m
+        else:
+            block_reach[-1] = (block_reach[-1][0], max(block_reach[-1][1], hi_m))
+        block_of[a] = len(block_reach) - 1
+    graphs: dict[int, tuple] = {}
+
+    def graph_for(block: int) -> tuple:
+        if block not in graphs:
+            first_m, last_m = block_reach[block]
+            mask = usable & (beside >= first_m - margin) & (beside <= last_m + margin)
+            rows, cols = np.nonzero(mask)
+            r0, c0 = int(rows.min()), int(cols.min())
+            crop = (slice(r0, rows.max() + 1), slice(c0, cols.max() + 1))
+            graph, node = _band_graph(cost[crop], mask[crop])
+            node_rows, node_cols = np.nonzero(node >= 0)   # in node order
+            graphs[block] = (graph, node, r0, c0, node_rows + r0, node_cols + c0)
+        return graphs[block]
+
+    def node_at(block: int, k: np.ndarray) -> np.ndarray:
+        """The block graph's node for each of the line cells `k`, -1 off it."""
+        _, node, r0, c0, _, _ = graph_for(block)
+        r, c = cells[k, 0] - r0, cells[k, 1] - c0
+        ok = (r >= 0) & (r < node.shape[0]) & (c >= 0) & (c < node.shape[1])
+        out = np.full(len(k), -1)
+        out[ok] = node[r[ok], c[ok]]
+        return out
+
+    candidates: dict[tuple[int, int], float] = {}
+    for a, b in allowed.items():
+        block = int(block_of[a])
+        source = node_at(block, stations[[a]])[0]
+        if source < 0:
+            continue
+        targets = node_at(block, stations[b])
+        # Nothing dearer than the line's own way to the furthest station
+        # can beat it to any of them, so the spread stops there.
+        limit = station_spent[b[-1]] - station_spent[a]
+        reached = dijkstra(graph_for(block)[0], directed=False, indices=source, limit=limit)
+        found = np.where(targets >= 0, reached[np.maximum(targets, 0)], np.inf)
+        line = station_spent[b] - station_spent[a]
+        span = station_along[b] - station_along[a]
+        good = (np.isfinite(found) & (apart_m(a, b) >= straightness * span)
+                & (line - found >= _needed_saving(line, span, params)))
+        for j in np.flatnonzero(good):
+            candidates[(a, int(b[j]))] = float(found[j])
+
+    paths: dict[int, np.ndarray] = {}
+
+    def path_of(a: int, b: int) -> np.ndarray:
+        block = int(block_of[a])
+        graph, _, _, _, node_rows, node_cols = graph_for(block)
+        if a not in paths:
+            _, paths[a] = dijkstra(graph, directed=False,
+                                   indices=node_at(block, stations[[a]])[0],
+                                   return_predecessors=True)
+        walk, at = [], node_at(block, stations[[b]])[0]
+        while at >= 0:
+            walk.append(at)
+            at = paths[a][at]
+        walk.reverse()
+        return np.column_stack([node_rows[walk], node_cols[walk]])
+
+    def fits(path: np.ndarray, first: int, last: int) -> bool:
+        """Gets far enough from the line to be another way, and is not so
+        much longer than the stretch it replaces that it is another route."""
+        stretch = cells[first:last + 1]
+        gaps = np.hypot(*(path[:, None, :] - stretch[None, :, :]).transpose(2, 0, 1))
+        length = float(np.hypot(*np.diff(path, axis=0).T).sum()) * res
+        return bool(gaps.min(axis=1).max() * res >= float(params["min_detour_m"])
+                    and length <= float(params["max_lengthening"]) * (along[last] - along[first]))
+
+    def saving(a: int, b: int) -> float:
+        return float(station_spent[b] - station_spent[a]) - candidates[(a, b)]
+
+    def shorter(a: int, c: int) -> list[tuple[int, int]]:
+        """(a, c), or the shorter suggestions it splits into. Kept whole only
+        where it saves clearly more than the best two it could be split
+        into - one long way round two separate fixes is two suggestions,
+        each to take or leave; one long way that is much better than its
+        parts is one."""
+        whole, best, at = saving(a, c), 0.0, -1
+        for b in range(a + 1, c):
+            if (a, b) in candidates and (b, c) in candidates:
+                parts = saving(a, b) + saving(b, c)
+                if parts > best:
+                    best, at = parts, b
+        if at < 0 or whole > (1.0 + float(params["long_gain_share"])) * best:
+            return [(a, c)]
+        return shorter(a, at) + shorter(at, c)
+
+    keep = np.diff(station_spent)
+    while True:
+        chosen = [piece for a, c in _cheapest_whole(len(stations), keep, candidates)
+                  for piece in shorter(a, c)]
+        unfit = [(a, b) for a, b in chosen
+                 if not fits(path_of(a, b), int(stations[a]), int(stations[b]))]
+        if not unfit:
+            break
+        for pair in unfit:
+            del candidates[pair]
+
+    # A chosen way can come back to the line for a while between two places
+    # it leaves it - two separate fixes, which the user should be able to
+    # take one without the other. Split there, and keep the pieces that are
+    # still worth suggesting on their own.
+    detours = []
+    for a, b in chosen:
+        for first, last, path in _off_line(path_of(a, b), cells, int(stations[a]), int(stations[b]),
+                                           float(params["rejoin_m"]) / res):
+            way = float(((cost[path[:-1, 0], path[:-1, 1]] + cost[path[1:, 0], path[1:, 1]]) / 2.0
+                         * np.hypot(*np.diff(path, axis=0).T)).sum())
+            line = float(spent[last] - spent[first])
+            span = float(along[last] - along[first])
+            if line - way >= _needed_saving(line, span, params) and fits(path, first, last):
+                detours.append({"first": first, "last": last, "path": path,
+                                "cost": way, "line_cost": line})
+    return detours
+
+
+def _needed_saving(line_cost, span_m, params: dict):
+    """What a suggestion replacing `span_m` of line that costs `line_cost`
+    must save to be worth showing: min_saving_share of it on a short
+    stretch, rising by saving_share_per_km with every kilometre - a long way
+    has to be clearly better to be worth taking over the line the user drew -
+    and never under min_saving in cost. Works on arrays as well."""
+    share = (float(params["min_saving_share"])
+             + float(params["saving_share_per_km"]) * np.asarray(span_m) / 1000.0)
+    return np.maximum(share * line_cost, float(params["min_saving"]))
+
+
+def _off_line(path: np.ndarray, cells: np.ndarray, first: int, last: int,
+              min_shared: float) -> list[tuple[int, int, np.ndarray]]:
+    """The pieces of `path` that leave the line, as (first, last, path):
+    where each leaves and rejoins it, as indices into `cells`, and its own
+    cells, both ends on the line.
+
+    `path` runs from cells[first] to cells[last]. Where it follows the line
+    for at least `min_shared` steps, it is cut in two; a shorter stretch on
+    the line is part of the piece around it. Only the line itself counts: a
+    way a cell beside it is still drifting off or back, and cutting there
+    trims a suggestion down to less than it saves.
+    """
+    where: dict[tuple[int, int], list[int]] = {}
+    for k in range(first, last + 1):
+        where.setdefault((int(cells[k, 0]), int(cells[k, 1])), []).append(k)
+
+    # Each path cell that is on the line, and where along it - the first
+    # place at or after the last one found, so a line that crosses itself
+    # is read in its own order.
+    on: list[Optional[int]] = []
+    reached = first
+    for r, c in path:
+        later = [k for k in where.get((int(r), int(c)), []) if k >= reached]
+        on.append(later[0] if later else None)
+        if later:
+            reached = later[0]
+
+    touches = [i for i, k in enumerate(on) if k is not None]
+    pieces: list[list[int]] = []   # [path index leaving, path index rejoining]
+    for i, j in zip(touches[:-1], touches[1:]):
+        follows = j == i + 1 and on[j] - on[i] <= 1
+        if not follows:
+            pieces.append([i, j])
+    merged: list[list[int]] = []
+    for piece in pieces:
+        if merged and piece[0] - merged[-1][1] < min_shared:
+            merged[-1][1] = piece[1]
+        else:
+            merged.append(piece)
+
+    return [(on[i], on[j], path[i:j + 1]) for i, j in merged if on[j] > on[i]]
+
+
+def _cheapest_whole(count: int, keep: np.ndarray,
+                    candidates: dict[tuple[int, int], float]) -> list[tuple[int, int]]:
+    """The candidates that make the cheapest line from the first station to
+    the last, in order. `keep` is the line's own cost from each station to
+    the next."""
+    ending: dict[int, list[tuple[int, float]]] = {}
+    for (a, b), found in candidates.items():
+        ending.setdefault(b, []).append((a, found))
+
+    best = np.full(count, np.inf)
+    best[0] = 0.0
+    came = np.full(count, -1)
+    for b in range(1, count):
+        best[b] = best[b - 1] + keep[b - 1]
+        for a, found in ending.get(b, []):
+            if best[a] + found < best[b]:
+                best[b], came[b] = best[a] + found, a
+
+    chosen, b = [], count - 1
+    while b > 0:
+        if came[b] < 0:
+            b -= 1
+        else:
+            chosen.append((int(came[b]), b))
+            b = int(came[b])
+    return chosen[::-1]
+
+
+def improve_line(line_xy: np.ndarray, *, cost_raster: str = COST_RASTER,
+                 tag: str = "line") -> list[dict]:
+    """The stretches of `line_xy` (EPSG:25833, in order) with a clearly
+    cheaper way close beside them - see the note above _band_graph.
+
+    Returns one dict per suggestion, in order along the line: start_m and
+    end_m along it, where the suggestion leaves and rejoins it; xy, the new
+    way between those two points of the line, smoothed as a routed line is;
+    old_xy, the line's own stretch it replaces; and cost and line_cost, the
+    new way's and the old one's.
+    """
+    import grass.script as gs
+    from grass.script import array as garray
+
+    xy = np.asarray(line_xy, dtype=np.float64)
+    band = _line_band(xy, cost_raster=cost_raster, tag=tag)
+    region = gs.region()
+    res = region["ewres"]
+    used = np.array(garray.array(mapname=band.used, null=-1, dtype=np.float64))
+    cost = np.array(garray.array(mapname=cost_raster, null=-1, dtype=np.float64))
+    gs.run_command("g.remove", type="raster", name=",".join(band.scratch),
+                   flags="f", quiet=True)
+
+    inside = (used >= 0) & (used <= 1) & (cost >= 0)
+    detours = _detours(cost, inside, band.cells, band.along, band.on_line, res,
+                       config.IMPROVE)
+
+    vertex_along = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(xy, axis=0).T))])
+
+    def at(d: float) -> np.ndarray:
+        return np.array([np.interp(d, vertex_along, xy[:, 0]),
+                         np.interp(d, vertex_along, xy[:, 1])])
+
+    suggestions = []
+    for detour in detours:
+        start_m, end_m = float(band.along[detour["first"]]), float(band.along[detour["last"]])
+        path = detour["path"]
+        centres = np.column_stack([region["w"] + (path[:, 1] + 0.5) * res,
+                                   region["n"] - (path[:, 0] + 0.5) * res])
+        # From the line's own points, so it splices in exactly where it
+        # leaves and rejoins - not from the centres of those two cells.
+        way = _smoothed(np.vstack([at(start_m), centres[1:-1], at(end_m)]))
+        inside_old = (vertex_along > start_m) & (vertex_along < end_m)
+        suggestions.append({
+            "start_m": start_m,
+            "end_m": end_m,
+            "xy": way,
+            "old_xy": np.vstack([at(start_m), xy[inside_old], at(end_m)]),
+            "cost": detour["cost"],
+            "line_cost": detour["line_cost"],
+        })
+    return suggestions
+
+
+def _smoothed(xy: np.ndarray) -> np.ndarray:
+    """Douglas-Peucker at the router's own threshold, ends kept, so a
+    suggestion looks like a routed line and not a staircase of cells."""
+    line = ogr.Geometry(ogr.wkbLineString)
+    for x, y in xy:
+        line.AddPoint_2D(float(x), float(y))
+    simple = line.Simplify(float(config.ROUTING["smooth_threshold"]))
+    return np.array(simple.GetPoints(), dtype=np.float64)[:, :2]
 
 
 # --- comparing two sets of routes ---------------------------------------

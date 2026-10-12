@@ -11,6 +11,19 @@ export const outlinedSx = {
   "&.Mui-disabled": { borderColor: "rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)" },
 };
 
+/** A button sharing a row with another: it never grows past its share, and
+ *  a label that does not fit is cut short with an ellipsis instead of
+ *  spilling out. Put the label in a FittedLabel. */
+export const fittedButtonSx = {
+  minWidth: 0,
+  overflow: "hidden",
+  whiteSpace: "nowrap",
+  "& .MuiButton-startIcon": { flexShrink: 0 },
+} as const;
+
+/** The label of a fittedButtonSx button. */
+export const fittedLabelSx = { minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" } as const;
+
 /** An outlined button that finishes something: adds a Route. Orange edge,
  *  so it stands out from the teal ones around it without shouting. */
 export const accentOutlinedSx = {

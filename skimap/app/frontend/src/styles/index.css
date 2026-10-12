@@ -29,3 +29,20 @@ body {
 .leaflet-container.placing-crux {
   cursor: copy;
 }
+
+/* The take-it-or-leave-it popup on a suggestion: only its two buttons, so
+   Leaflet's roomy padding for text would be most of it. */
+.suggestion-choice .leaflet-popup-content-wrapper {
+  padding: 0;
+  border-radius: 20px;
+}
+.suggestion-choice .leaflet-popup-content {
+  margin: 0;
+  padding: 7px 6px;
+  width: auto !important;
+  /* Centred in the pill, with as much room above the buttons as below:
+     Leaflet's line-height for text would otherwise add to one side. */
+  display: flex;
+  align-items: center;
+  line-height: 0;
+}

@@ -199,20 +199,78 @@ ROUTING = {
 CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0}
 
 # Band around a line the router did not make - drawn, uploaded or edited; see
-# routing.line_corridor. Its own settings so the two kinds can be tuned apart;
-# slack, gamma and max_gap start equal to CORRIDOR's so they read alike on the
-# map.
+# routing.line_corridor. Its own settings so the two kinds can be tuned apart.
 #
-# `min_length_m` floors the budget for short lines: one shorter than this gets
-# the budget it would have at this length, through the same ground. The budget
-# scales with the line's cost and so with its length, which in even terrain
-# makes the band reach about slack/2 of the length to each side - a 1 km line
-# had ~100 m, half of it faded below what the map draws. A floor in cost units
-# instead would mean ten times the room on cheap ground as on dear ground.
+# `max_cost` is one fixed budget, in surface cost: a cell is in the band while
+# reaching it from the line costs no more than this. Not taken from the line,
+# so it is the same wherever the line runs and however long it is - and the
+# terrain decides the width: wide over easy ground, which is cheap to cross,
+# tight on steep or exposed ground, which is dear. At 75, about 7 cells of
+# the 10-per-cell ground a typical tour crosses: ~75 m to each side there,
+# ~12 m on steep ground near BASE_MAX_COST, nothing past a barrier. Width
+# scales with it: halve it and the band halves everywhere the cap does not
+# bite. 150 was tried first and read as too wide.
 #
-# Not on CORRIDOR: a routed corridor grows from both ends, and extra budget on
-# a short tour turns it into a disc instead of a wider band.
-LINE_CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0, "min_length_m": 2000.0}
+# `max_m` caps the band in plain distance from the line, because on a flat
+# valley floor the budget alone runs for kilometres. 0 turns the cap off. The
+# band fades towards whichever of the two limits a cell is nearer.
+#
+# `gamma` sharpens the edge falloff, as CORRIDOR's does: higher fades the
+# outer band out sooner, so it looks thinner without being any narrower.
+#
+# The optimiser searches inside this same band, so a thinner corridor also
+# keeps its suggestions closer to the line.
+LINE_CORRIDOR = {"max_cost": 75.0, "max_m": 300.0, "gamma": 4.0}
+
+# Improving a drawn or uploaded line: stretches of it with a clearly cheaper
+# way inside its own corridor, each for the user to accept or not - see
+# routing.improve_line. The search area is LINE_CORRIDOR's band, so a
+# suggestion never leaves the ground the map shows around the line.
+IMPROVE = {
+    # The line is left and rejoined only at stations this far apart, so this
+    # is also about the shortest stretch a suggestion can replace.
+    "station_m": 25.0,
+    # The longest stretch of line one suggestion replaces.
+    "max_skip_m": 3000.0,
+    # What a suggestion must save on the stretch it replaces: this share of
+    # its cost on a short stretch, rising by saving_share_per_km for every
+    # kilometre of it - 10% at 100 m, 20% at 1 km, 40% at 3 km - so a long
+    # way has to be clearly better to be worth it. And at least min_saving
+    # in surface cost, about 2-3 cells of typical ground, so a short one is
+    # not shown for one cell.
+    "min_saving_share": 0.10,
+    "saving_share_per_km": 0.10,
+    "min_saving": 25.0,
+    # One long suggestion that could be split into shorter ones, each still
+    # worth showing, is split - unless it saves this share more than the
+    # best two together. Two fixes are two suggestions, each to take or
+    # leave; one long way much better than its parts stays one.
+    "long_gain_share": 0.10,
+    # A suggestion that comes back onto the line for this long is cut in
+    # two there.
+    "rejoin_m": 30.0,
+    # A loop: a piece of line at least loop_m long whose ends are closer
+    # than min_straightness of its length - an out-and-back to a summit, or
+    # a switchback skin track. No suggestion spans one: the cheaper way
+    # round them is never what was meant.
+    "loop_m": 150.0,
+    # Nor does one join two places on the line heading further apart than
+    # this: it has gone round a turn - a summit or the far end of an
+    # out-and-back - however wide the turn is.
+    "max_turn_deg": 120.0,
+    "min_straightness": 0.5,
+    # A suggestion that never gets this far from the line is dropped: it is
+    # the line straightened, not another way.
+    "min_detour_m": 20.0,
+    # Nor one this many times longer than the stretch it replaces: steep
+    # ground costs so much more than flat that a long way round can still
+    # come out cheaper, and that is another route, not an improvement.
+    "max_lengthening": 1.5,
+    # A suggestion keeps to the ground beside the stretch it replaces, give
+    # or take this much line either side - never beside another part of the
+    # line, as the far side of a loop tour is.
+    "margin_m": 100.0,
+}
 
 # --- Road routing ---
 # Driving routes along NVDB, for road-department users: a graph, not a cost

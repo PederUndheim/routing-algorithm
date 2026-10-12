@@ -89,14 +89,19 @@ def _style(name: str = STYLE) -> tuple[np.ndarray, np.ndarray]:
             np.rint(np.array(colours, dtype=np.float64)).astype(np.uint8))
 
 
-def to_png(corridor_tif: Path, png_path: Path) -> dict:
-    """Write `corridor_tif` as an RGBA PNG. Returns its WGS84 bounds.
+def to_png(corridor_tifs: Path | list[Path], png_path: Path) -> dict:
+    """Write the corridor as an RGBA PNG. Returns its WGS84 bounds.
 
-    The bounds are what Leaflet needs to place the image; they are the warped
-    raster's own corners, so they describe where the picture goes, not where
-    the route is.
+    Several GeoTIFFs - one per terrain leg of a route - are drawn as one
+    picture; see `_merge`. The bounds are what Leaflet needs to place the
+    image; they are the warped raster's own corners, so they describe where
+    the picture goes, not where the route is.
     """
-    warped = gdal.Warp("", str(corridor_tif), format="MEM",
+    if isinstance(corridor_tifs, Path):
+        corridor_tifs = [corridor_tifs]
+    source = (str(corridor_tifs[0]) if len(corridor_tifs) == 1
+              else _merge(corridor_tifs))
+    warped = gdal.Warp("", source, format="MEM",
                        dstSRS=f"EPSG:{WEBMERCATOR_EPSG}", resampleAlg="bilinear")
 
     longest = max(warped.RasterXSize, warped.RasterYSize)
@@ -121,6 +126,46 @@ def to_png(corridor_tif: Path, png_path: Path) -> dict:
 
     _write_rgba(png_path, _colorize(np.clip(scores, 0.0, 1.0), inside))
     return _bounds_wgs84(warped)
+
+
+def _merge(tifs: list[Path]) -> gdal.Dataset:
+    """Several corridor GeoTIFFs as one, still on their own grid, taking the
+    higher score wherever two overlap - a leg that comes back over the
+    ground another went out on keeps the better reading of it.
+
+    The legs can lie far apart with a drive between them, so the merged grid
+    is coarsened up front to at most MAX_PIXELS a side rather than built
+    full size only for to_png to shrink it.
+    """
+    sources = [gdal.Open(str(tif)) for tif in tifs]
+    west, south, east, north = np.inf, np.inf, -np.inf, -np.inf
+    cell = np.inf
+    for source in sources:
+        x0, w, _, y0, _, h = source.GetGeoTransform()
+        west, north = min(west, x0), max(north, y0)
+        east = max(east, x0 + w * source.RasterXSize)
+        south = min(south, y0 + h * source.RasterYSize)   # h is negative
+        cell = min(cell, w)
+    cell = max(cell, max(east - west, north - south) / MAX_PIXELS)
+
+    merged = None
+    for source in sources:
+        on_grid = gdal.Warp("", source, format="MEM", outputBounds=(west, south, east, north),
+                            xRes=cell, yRes=cell, resampleAlg="bilinear",
+                            dstNodata=np.nan, outputType=gdal.GDT_Float32)
+        scores = on_grid.GetRasterBand(1).ReadAsArray()
+        # fmax keeps whichever is a number, so nodata on one never hides the
+        # other's corridor.
+        merged = scores if merged is None else np.fmax(merged, scores)
+
+    out = gdal.GetDriverByName("MEM").Create("", merged.shape[1], merged.shape[0], 1,
+                                             gdal.GDT_Float32)
+    out.SetGeoTransform((west, cell, 0.0, north, 0.0, -cell))
+    out.SetProjection(sources[0].GetProjection())
+    band = out.GetRasterBand(1)
+    band.SetNoDataValue(np.nan)
+    band.WriteArray(merged)
+    return out
 
 
 def _colorize(scores: np.ndarray, inside: np.ndarray) -> np.ndarray:

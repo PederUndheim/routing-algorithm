@@ -91,23 +91,25 @@ const RouteLines = ({ routes, selectedId, clickTaken, onSelect }: RouteLinesProp
           },
         };
 
-        const base = route.crux ? (
-          route.crux.segments.map((segment, i) => (
+        // The plain line first, then the analysis over it: an edited Route
+        // keeps its colours only where the edit left the ground alone, and
+        // the changed stretches show through as not yet analysed.
+        const base = [
+          <Polyline
+            key={key}
+            positions={latLngsOf(route.line)}
+            pathOptions={{ color: COLORS.teal, ...stroke }}
+            eventHandlers={eventHandlers}
+          />,
+          ...(route.crux?.segments ?? []).map((segment, i) => (
             <Polyline
               key={`${key}:${i}`}
               positions={latLngsOf(segment.line)}
               pathOptions={{ ...segmentStyle(segment), ...stroke }}
               eventHandlers={eventHandlers}
             />
-          ))
-        ) : (
-          <Polyline
-            key={key}
-            positions={latLngsOf(route.line)}
-            pathOptions={{ color: COLORS.teal, ...stroke }}
-            eventHandlers={eventHandlers}
-          />
-        );
+          )),
+        ];
 
         // Added after the analysis, so what the user set lies over whatever
         // the terrain made of that ground - every clearing before any colour,
@@ -132,7 +134,7 @@ const RouteLines = ({ routes, selectedId, clickTaken, onSelect }: RouteLinesProp
           )),
         ];
 
-        return [base, ...overrides];
+        return [...base, ...overrides];
       })}
     </>
   );

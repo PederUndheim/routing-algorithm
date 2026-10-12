@@ -2,8 +2,23 @@ import type { FeatureCollection, LineString } from "geojson";
 
 export type LatLng = { lat: number; lng: number };
 
-/** Which point the next map click sets, or null for an ordinary click. */
-export type PickMode = "start" | "end" | null;
+/** The points Generate routes through, start first and end last, and how
+ *  each leg between two neighbours goes - one network fewer than points,
+ *  and none until there are two. */
+export type Waypoints = {
+  points: readonly LatLng[];
+  networks: readonly RouteNetwork[];
+};
+
+/** What the next map click does to the Waypoints, or null for an ordinary
+ *  click. "sequence" is Pick points: the start, then the end, then done.
+ *  "replace" puts one point somewhere else, and "insert" adds one at
+ *  `index`, the rest moved along - at the end, it is the new end. */
+export type PickMode =
+  | { kind: "sequence" }
+  | { kind: "replace"; index: number }
+  | { kind: "insert"; index: number }
+  | null;
 
 /** The three ways to add a Route: the router between two points, a line
  *  drawn on the map, or a GPX/GeoJSON file. Exactly one is chosen. */
@@ -88,31 +103,49 @@ export type CruxResult = {
   no_data_m: number;
 };
 
-/** What the router walks: over the terrain on the cost surface, the ski
- *  touring default, or along the road network by car. */
+/** What the router walks on one leg: over the terrain on the cost surface,
+ *  the ski touring default, or along the road network by car. */
 export type RouteNetwork = "terrain" | "road";
+
+/** What a whole routed Route walked: one network on every leg, or a mix. */
+export type RoutedNetwork = RouteNetwork | "mixed";
 
 /** A stretch of a line as [start_m, end_m] from its start, measured on the
  *  backend's metric grid. */
 export type Stretch = [number, number];
 
+/** One leg of a routed Route: how it went, and where along the joined line
+ *  it starts and ends. */
+export type RouteLeg = {
+  network: RouteNetwork;
+  start_m: number;
+  end_m: number;
+  cost: number;
+};
+
 /** What POST /route answers with. Lengths are metres. Cost is unitless over
  *  terrain - the cumulative cost surface value, comparable only against
- *  itself - and the estimated drive in seconds on roads. */
+ *  itself - and the estimated drive in seconds on roads; null for a mix of
+ *  the two, which add up to nothing. */
 export type RouteResponse = {
   route: FeatureCollection;
-  /** None on roads: the car stays on the road, so there is no band of
-   *  nearly-as-good ground beside it. */
+  /** The terrain legs' corridors as one picture. None with no terrain
+   *  leg: the car stays on the road, so there is no band of nearly-as-good
+   *  ground beside it. */
   corridor: Corridor | null;
   /** Absent from an older backend, which only routes over terrain. */
-  network?: RouteNetwork;
+  network?: RoutedNetwork;
   length_m: number;
+  /** Summed over the legs: the straight lines between neighbouring points. */
   straight_m: number;
   detour: number;
-  cost: number;
+  cost: number | null;
   seconds: number;
-  /** A road route's tunnels and ferry crossings: off the terrain the Crux
-   *  Identifier reads, so they are handed back to it to leave out. */
+  /** Absent from a backend older than waypoints. */
+  legs?: RouteLeg[];
+  /** The road legs' tunnels and ferry crossings, along the whole line: off
+   *  the terrain the Crux Identifier reads, so they are handed back to it
+   *  to leave out. */
   tunnels?: Stretch[];
   ferries?: Stretch[];
 };
@@ -128,13 +161,49 @@ export type CorridorResponse = {
   seconds: number;
 };
 
+/** What ground a stretch of line crosses, in metres, read sample by sample.
+ *  `release_m` and `fall_m` are the steep ground that is also a release
+ *  area or a fall hazard - part of `steep_m`, not beside it. */
+export type GroundSummary = {
+  length_m: number;
+  steep_m: number;
+  release_m: number;
+  fall_m: number;
+  runout_m: number;
+  no_data_m: number;
+};
+
+/** A stretch of a drawn or uploaded line where a clearly cheaper way runs
+ *  close beside it, as POST /improve finds one. `start_m` and `end_m` are on
+ *  the backend's grid, where it leaves and rejoins the line; `line` runs
+ *  from the one point to the other. */
+export type Suggestion = {
+  start_m: number;
+  end_m: number;
+  line: LineString;
+  cost: number;
+  old_cost: number;
+  /** The stretch it replaces, and the new way. */
+  before: GroundSummary;
+  after: GroundSummary;
+};
+
+/** What POST /improve answers with. `length_m` is the whole line on the
+ *  backend's grid, for scaling `start_m` and `end_m` to the app's measure. */
+export type ImproveResponse = {
+  suggestions: Suggestion[];
+  length_m: number;
+  seconds: number;
+};
+
 /** The aspects of a Crux the user weighs up. */
 export type Factor =
   | "slope_size"
   | "release_volume"
   | "terrain_traps"
   | "safe_spots"
-  | "remote_triggering";
+  | "remote_triggering"
+  | "natural_release";
 
 /** The user's judgement of one aspect, or of the Crux overall, on a
  *  five-step scale from clearly in their favour to clearly against them. */
@@ -183,7 +252,17 @@ export type CruxEntry = Crux & {
   /** A hand-placed Crux's own colour and words; the identifier's have none. */
   color?: string;
   description?: string;
+} & CruxNotes;
+
+/** What the user writes down about a Crux beside their ratings: why they
+ *  assessed it as they did, and how the group will handle it - one at a
+ *  time down the slope, regroup at a safe spot. Each absent until written. */
+export type CruxNotes = {
+  comment?: string;
+  group_measures?: string;
 };
+
+export type CruxNote = keyof CruxNotes;
 
 /** What the Add crux form gives back. */
 export type ManualCruxInput = {

@@ -3,10 +3,10 @@ import type { LineString } from "geojson";
 import type {
   CorridorResponse,
   CruxResult,
-  LatLng,
-  RouteNetwork,
+  ImproveResponse,
   RouteResponse,
   Stretch,
+  Waypoints,
 } from "./types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
@@ -43,11 +43,9 @@ const postJson = async <T>(path: string, body: unknown, failed: string): Promise
   return data as T;
 };
 
-export const requestRoute = (
-  start: LatLng,
-  end: LatLng,
-  network: RouteNetwork
-): Promise<RouteResponse> => postJson("/route", { start, end, network }, "Routing failed");
+/** One Route through all the points, each leg on its own network. */
+export const requestRoute = ({ points, networks }: Waypoints): Promise<RouteResponse> =>
+  postJson("/route", { points, networks }, "Routing failed");
 
 /** Run the Crux Identifier on one Route's line. `exclude` is stretches of
  *  it read as safe ground - a road route's tunnels and ferries. */
@@ -61,3 +59,8 @@ export const requestCrux = (line: LineString, exclude?: Stretch[]): Promise<Crux
 /** The corridor around a line the router did not make. */
 export const requestCorridor = (line: LineString): Promise<CorridorResponse> =>
   postJson("/corridor", { line }, "Making the corridor failed");
+
+/** Where a line the router did not make could go a clearly cheaper way
+ *  close beside itself. */
+export const requestImprove = (line: LineString): Promise<ImproveResponse> =>
+  postJson("/improve", { line }, "Looking for improvements failed");

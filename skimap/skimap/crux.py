@@ -198,6 +198,50 @@ def identify(route: dict, sources: Optional[Sources] = None,
     }
 
 
+def ground(vertices: np.ndarray, sources: Optional[Sources] = None) -> dict:
+    """How much of a stretch of line crosses each kind of ground, in metres
+    - for setting one way beside another, as the optimiser's suggestions do.
+
+    `vertices` is the stretch on the metric grid. Read sample by sample,
+    without identify's merging: merging decides what to draw and where to
+    put a marker, and would make two short stretches differ by a whole area
+    over one sample. Each sample stands for the ground halfway to its
+    neighbours, as in identify.
+
+    steep_m, runout_m and no_data_m are the classes; release_m and fall_m
+    are the steep ground that is also a probable release area or a fall
+    hazard, so they are part of steep_m, not beside it.
+    """
+    sources = sources or Sources.national()
+    settings = config.CRUX
+    along, xy = exposure.sample_stations(np.asarray(vertices, dtype=np.float64),
+                                         float(settings["sample_spacing_m"]))
+    total = float(along[-1])
+    edges = np.concatenate([[0.0], (along[:-1] + along[1:]) / 2.0, [total]])
+    span = np.diff(edges)
+
+    pra = _read(sources.pra, xy, nodata_as=0.0)
+    slope = _read(sources.slope, xy, nodata_as=np.nan)
+    runout = _read(sources.runout, xy, nodata_as=np.inf)
+    codes = _classify(pra, slope, runout)
+    steep = codes == _STEEP
+    with np.errstate(invalid="ignore"):
+        release = steep & (pra > settings["pra_threshold"])
+        fall = steep & (slope >= settings["fall_threshold"])
+
+    def metres(mask: np.ndarray) -> float:
+        return round(float(span[mask].sum()), 1)
+
+    return {
+        "length_m": round(total, 1),
+        "steep_m": metres(steep),
+        "release_m": metres(release),
+        "fall_m": metres(fall),
+        "runout_m": metres(codes == _RUNOUT),
+        "no_data_m": metres(codes == _NO_DATA),
+    }
+
+
 # --- the line --------------------------------------------------------------
 
 

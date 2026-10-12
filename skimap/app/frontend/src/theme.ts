@@ -27,6 +27,15 @@ export const CRUX_COLORS = {
   snow: "#1E88E5",
 } as const;
 
+/** A suggested way on the map: dashed white over a dark casing, so it reads
+ *  as a proposal on any basemap and next to any danger colour - none of
+ *  which is white. The stretch it would replace gets a pale halo. */
+export const SUGGESTION_COLORS = {
+  way: "#FFFFFF",
+  casing: "#263238",
+  replaced: "#FFFFFF",
+} as const;
+
 /** The colour an area is drawn in, on the line and on its marker - one
  *  colour for the whole area, and the same one for both, so a marker never
  *  sits on a stretch of another colour.

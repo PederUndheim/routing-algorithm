@@ -16,8 +16,9 @@ export type RatingInfo = { question: string; up: string; down: string };
  *  Each is an open question rather than a yes/no, rated from clearly in the
  *  user's favour to clearly against them. They are kept apart on purpose:
  *  slope size is the terrain, release volume is today's snow, terrain traps
- *  are what happens if caught, safe spots are how exposed you are, and
- *  remote triggering is whether you can set it off without being on it. */
+ *  are what happens if caught, safe spots are how exposed you are, remote
+ *  triggering is whether you can set it off without being on it, and
+ *  natural release is whether it comes down with nobody setting it off. */
 export const QUESTIONS: ({ factor: Factor; title: string } & RatingInfo)[] = [
   {
     factor: "slope_size",
@@ -59,7 +60,25 @@ export const QUESTIONS: ({ factor: Factor; title: string } & RatingInfo)[] = [
     up: "A well-bonded snowpack with no persistent weak layer, no persistent slab problem in the forecast, and no signs of instability.",
     down: "A known persistent weak layer or persistent slab problem in the forecast, or whumpfs, shooting cracks or recent avalanches nearby.",
   },
+  {
+    factor: "natural_release",
+    title: "Natural release",
+    question:
+      "How likely is it, today and while you are below, that the slope above releases by itself and runs out over where you travel?",
+    up: "Settled, stable snow with no natural avalanches in the forecast or seen, and steady cold weather.",
+    down: "Natural avalanches in the forecast or seen nearby, heavy new snow or strong wind loading, rain, or rapid warming and strong sun on the slope above.",
+  },
 ];
+
+/** Which aspects each Danger class is asked about. A Runout area is the
+ *  flatter ground below a slope: it only slides when the slope above
+ *  releases, set off from a distance or by itself, so those two are all
+ *  there is to weigh. A Steep slope is where you are - set off by your own
+ *  weight - so it gets the other five. */
+const ASKED: Record<Crux["class"], Factor[]> = {
+  steep_slope: ["slope_size", "release_volume", "terrain_traps", "safe_spots", "remote_triggering"],
+  runout_area: ["remote_triggering", "natural_release"],
+};
 
 /** A snow conditions check has no aspects to rate: the overall rating is
  *  what the snow told the user there. */
@@ -78,15 +97,10 @@ export const OVERALL_INFO: RatingInfo = {
   down: "Critical - choose another line, another time, or turn back.",
 };
 
-/** A Runout area is the flatter ground below a slope: it only slides when set
- *  off from the steeper ground above, so remote triggering is all there is to
- *  weigh. Everything else - 30° and steeper - gets all five. */
+/** The questions a Crux is asked: those of its Danger class, or none for a
+ *  snow conditions check. */
 export const questionsFor = (crux: Pick<Crux, "class" | "snow_check">) =>
-  crux.snow_check
-    ? []
-    : crux.class === "runout_area"
-      ? QUESTIONS.filter((q) => q.factor === "remote_triggering")
-      : QUESTIONS;
+  crux.snow_check ? [] : QUESTIONS.filter((q) => ASKED[crux.class].includes(q.factor));
 
 /** The five ratings, in the order they are offered: what each is called -
  *  the same for an aspect, an overall rating and a snow check - and its
@@ -109,15 +123,9 @@ export const RATINGS: {
 
 export const ratingOf = (id: Rating) => RATINGS.find((r) => r.id === id)!;
 
-/** A Runout area is asked only one thing, so its one rating is its overall
- *  rating too - asking for the same judgement twice would only be noise.
- *  Everything else has the overall the user gave it. */
-export const hasOwnOverall = (crux: Pick<Crux, "class" | "snow_check">): boolean =>
-  questionsFor(crux).length !== 1;
-
-export const overallOf = (
-  crux: Pick<Crux, "class" | "snow_check"> & { answers: Answers; overall?: Rating }
-): Rating | undefined => (hasOwnOverall(crux) ? crux.overall : crux.answers.remote_triggering);
+/** The overall rating the user gave a Crux. Every Crux has its own, never
+ *  read off its answers. */
+export const overallOf = (crux: { overall?: Rating }): Rating | undefined => crux.overall;
 
 /** The user has evaluated the Crux and chosen to keep it. Until then it is
  *  drawn with a dashed border, as still to be done; one not kept is off the

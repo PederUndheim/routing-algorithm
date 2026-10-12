@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -11,10 +12,10 @@ import InsightsIcon from "@mui/icons-material/Insights";
 
 import { km } from "../format";
 import type { Route } from "../routes/routeList";
-import type { CruxEntry, Factor, Rating } from "../types";
+import type { CruxEntry, CruxNote, Factor, Rating } from "../types";
 import { COLORS } from "../theme";
 import CruxList from "./CruxList";
-import { outlinedSx } from "./styles";
+import { fittedButtonSx, fittedLabelSx, outlinedSx } from "./styles";
 
 type CorridorControlsProps = {
   showCorridor: boolean;
@@ -100,7 +101,7 @@ export const CorridorControls = ({
 
 /** Where CorridorControls go on a Route that has no corridor yet: drawn,
  *  uploaded, or edited since it was made. Outlined, so it does not compete
- *  with Identify cruxes right below it. */
+ *  with Identify cruxes below it, and short, to fit beside Optimise route. */
 export const MakeCorridorButton = ({
   isMaking,
   onMake,
@@ -115,9 +116,11 @@ export const MakeCorridorButton = ({
     disabled={isMaking}
     onClick={onMake}
     startIcon={isMaking ? <CircularProgress size={14} color="inherit" /> : <InsightsIcon />}
-    sx={{ ...outlinedSx, fontSize: 12 }}
+    sx={{ ...outlinedSx, ...fittedButtonSx, fontSize: 12 }}
   >
-    {isMaking ? "Making corridor..." : "Make corridor to route"}
+    <Box component="span" sx={fittedLabelSx}>
+      {isMaking ? "Making..." : "Make corridor"}
+    </Box>
   </Button>
 );
 
@@ -129,6 +132,7 @@ type SelectedRouteProps = {
   onAnswer: (cruxId: string, factor: Factor, value: Rating | undefined) => void;
   onOverall: (cruxId: string, value: Rating | undefined) => void;
   onKeep: (cruxId: string, keep: boolean | undefined) => void;
+  onNote: (cruxId: string, note: CruxNote, text: string) => void;
   onRestoreCrux: (cruxId: string) => void;
   onDeleteCrux: (cruxId: string) => void;
   onUndeleteCrux: (cruxId: string) => void;
@@ -138,6 +142,7 @@ type SelectedRouteProps = {
   placingCrux: boolean;
   placingText: string;
   onPlaceCrux: () => void;
+  addCruxForm: ReactNode;
   editingExtent: boolean;
   onFinishExtent: () => void;
   onResetExtent: () => void;
@@ -154,6 +159,7 @@ const SelectedRoute = ({
   onAnswer,
   onOverall,
   onKeep,
+  onNote,
   onRestoreCrux,
   onDeleteCrux,
   onUndeleteCrux,
@@ -163,6 +169,7 @@ const SelectedRoute = ({
   placingCrux,
   placingText,
   onPlaceCrux,
+  addCruxForm,
   editingExtent,
   onFinishExtent,
   onResetExtent,
@@ -203,6 +210,23 @@ const SelectedRoute = ({
         </Typography>
       )}
 
+      {route.unanalysedM !== undefined && (
+        <Typography
+          sx={{
+            fontSize: 12,
+            color: COLORS.orange,
+            p: 1.5,
+            borderRadius: 2,
+            backgroundColor: "rgba(0,0,0,0.18)",
+            border: "1px solid rgba(255,255,255,0.10)",
+            flexShrink: 0,
+          }}
+        >
+          {km(route.unanalysedM)} of route changed since cruxes were identified, and not
+          analysed yet. Update cruxes to check it.
+        </Typography>
+      )}
+
       <CruxList
         cruxes={route.cruxes}
         analysed={route.crux !== null}
@@ -212,6 +236,7 @@ const SelectedRoute = ({
         onAnswer={onAnswer}
         onOverall={onOverall}
         onKeep={onKeep}
+        onNote={onNote}
         onRestore={onRestoreCrux}
         onDelete={onDeleteCrux}
         onUndelete={onUndeleteCrux}
@@ -223,6 +248,7 @@ const SelectedRoute = ({
         placing={placingCrux}
         placingText={placingText}
         onPlace={onPlaceCrux}
+        addForm={addCruxForm}
         editingExtent={editingExtent}
         onFinishExtent={onFinishExtent}
         onResetExtent={onResetExtent}

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 import Box from "@mui/material/Box";
 import Divider from "@mui/material/Divider";
@@ -11,14 +12,27 @@ import CloseIcon from "@mui/icons-material/Close";
 
 import { isRoadRoute } from "../routes/routeList";
 import type { Route } from "../routes/routeList";
-import type { AddMode, CruxEntry, Factor, LatLng, PickMode, Rating } from "../types";
+import type {
+  AddMode,
+  CruxEntry,
+  CruxNote,
+  Factor,
+  LatLng,
+  PickMode,
+  Rating,
+  RouteNetwork,
+  Waypoints,
+} from "../types";
 import { COLORS, PANEL_WIDTH } from "../theme";
 
 import { DrawPane, GeneratePane, ModePicker, UploadPane } from "./AddRoute";
 import { SectionHeading } from "./CollapseToggle";
 import ResizeHandle from "./ResizeHandle";
+import EditRouteBox from "./EditRouteBox";
 import RouteListSection, { IdentifyButton } from "./RouteListSection";
 import SelectedRoute, { CorridorControls, MakeCorridorButton } from "./SelectedRoute";
+import Suggestions, { OptimiseButton } from "./Suggestions";
+import type { SuggestionsProps } from "./Suggestions";
 import { hintSx, scrollbarSx } from "./styles";
 
 type RoutePanelProps = {
@@ -29,21 +43,23 @@ type RoutePanelProps = {
   onResetPanelWidth: () => void;
   addMode: AddMode;
   onAddModeChange: (mode: AddMode) => void;
-  startPoint: LatLng | null;
-  endPoint: LatLng | null;
+  waypoints: Waypoints;
   pickMode: PickMode;
   onPickModeChange: (mode: PickMode) => void;
-  onClearStart: () => void;
-  onClearEnd: () => void;
+  onPickPoints: () => void;
+  onRemovePoint: (index: number) => void;
+  onNetworkChange: (leg: number, network: RouteNetwork) => void;
+  onClearPoints: () => void;
   onGenerate: () => void;
-  roadsOnly: boolean;
-  onRoadsOnlyChange: (on: boolean) => void;
   isRouting: boolean;
   backendReady: boolean | null;
   isDrawing: boolean;
   onStartDrawing: () => void;
   draft: readonly LatLng[];
-  editingName: string | null;
+  /** A Route open for editing on the map, and how many points its line has. */
+  editing: { name: string; points: number } | null;
+  onSaveEdit: () => void;
+  onCancelEdit: () => void;
   onUndoDraft: () => void;
   onClearDraft: () => void;
   onFinishDraft: () => void;
@@ -57,6 +73,7 @@ type RoutePanelProps = {
   onUpload: (files: File[]) => void;
   isIdentifying: boolean;
   onIdentify: () => void;
+  onStartOver: () => void;
   activeCruxId: string | null;
   /** The Crux being edited, moved or having its extent edited, if any. */
   highlightedCruxId: string | null;
@@ -64,6 +81,7 @@ type RoutePanelProps = {
   onAnswer: (routeId: string, cruxId: string, factor: Factor, value: Rating | undefined) => void;
   onOverall: (routeId: string, cruxId: string, value: Rating | undefined) => void;
   onKeep: (routeId: string, cruxId: string, keep: boolean | undefined) => void;
+  onNote: (routeId: string, cruxId: string, note: CruxNote, text: string) => void;
   onRestoreCrux: (routeId: string, cruxId: string) => void;
   onDeleteCrux: (routeId: string, cruxId: string) => void;
   onUndeleteCrux: (routeId: string, cruxId: string) => void;
@@ -73,6 +91,8 @@ type RoutePanelProps = {
   placingCrux: boolean;
   placingText: string;
   onPlaceCrux: () => void;
+  /** The Add crux form for a spot just picked, or null. */
+  addCruxForm: ReactNode;
   editingExtent: boolean;
   onFinishExtent: () => void;
   onResetExtent: () => void;
@@ -82,6 +102,9 @@ type RoutePanelProps = {
   onCorridorOpacityChange: (opacity: number) => void;
   isMakingCorridor: boolean;
   onMakeCorridor: () => void;
+  /** Optimise route and what it found, for the Selected route - everything
+   *  the Suggestions section needs but the suggestions, which are on it. */
+  suggestionControls: Omit<SuggestionsProps, "suggestions">;
 };
 
 const RoutePanel = ({
@@ -92,21 +115,22 @@ const RoutePanel = ({
   onResetPanelWidth,
   addMode,
   onAddModeChange,
-  startPoint,
-  endPoint,
+  waypoints,
   pickMode,
   onPickModeChange,
-  onClearStart,
-  onClearEnd,
+  onPickPoints,
+  onRemovePoint,
+  onNetworkChange,
+  onClearPoints,
   onGenerate,
-  roadsOnly,
-  onRoadsOnlyChange,
   isRouting,
   backendReady,
   isDrawing,
   onStartDrawing,
   draft,
-  editingName,
+  editing,
+  onSaveEdit,
+  onCancelEdit,
   onUndoDraft,
   onClearDraft,
   onFinishDraft,
@@ -120,12 +144,14 @@ const RoutePanel = ({
   onUpload,
   isIdentifying,
   onIdentify,
+  onStartOver,
   activeCruxId,
   highlightedCruxId,
   onActivateCrux,
   onAnswer,
   onOverall,
   onKeep,
+  onNote,
   onRestoreCrux,
   onDeleteCrux,
   onUndeleteCrux,
@@ -135,6 +161,7 @@ const RoutePanel = ({
   placingCrux,
   placingText,
   onPlaceCrux,
+  addCruxForm,
   editingExtent,
   onFinishExtent,
   onResetExtent,
@@ -144,6 +171,7 @@ const RoutePanel = ({
   onCorridorOpacityChange,
   isMakingCorridor,
   onMakeCorridor,
+  suggestionControls,
 }: RoutePanelProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
@@ -152,6 +180,17 @@ const RoutePanel = ({
   const width = isMobile ? Math.min(window.innerWidth * 0.8, PANEL_WIDTH) : panelWidth;
 
   const selected = routes.find((r) => r.id === selectedId) ?? null;
+  // Only for a line the router did not make: a routed one is already the
+  // cheapest way on the same surface, so there would be nothing to find.
+  // Not while a line is being edited - what it found describes the line
+  // before the edit.
+  const canOptimise = selected !== null && selected.routed === null && !editing;
+  const optimiseButton = (
+    <OptimiseButton
+      isSearching={suggestionControls.isSearching}
+      onSearch={suggestionControls.onSearch}
+    />
+  );
   // Folding a section only hides it here: a line being drawn or a point
   // being picked carries on on the map.
   const [addOpen, setAddOpen] = useState(true);
@@ -223,15 +262,14 @@ const RoutePanel = ({
             <Box sx={{ mt: 1.5 }}>
               {addMode === "generate" && (
                 <GeneratePane
-                  startPoint={startPoint}
-                  endPoint={endPoint}
+                  waypoints={waypoints}
                   pickMode={pickMode}
                   onPickModeChange={onPickModeChange}
-                  onClearStart={onClearStart}
-                  onClearEnd={onClearEnd}
+                  onPickPoints={onPickPoints}
+                  onRemovePoint={onRemovePoint}
+                  onNetworkChange={onNetworkChange}
+                  onClear={onClearPoints}
                   onGenerate={onGenerate}
-                  roadsOnly={roadsOnly}
-                  onRoadsOnlyChange={onRoadsOnlyChange}
                   isRouting={isRouting}
                   backendReady={backendReady}
                 />
@@ -241,7 +279,6 @@ const RoutePanel = ({
                   isDrawing={isDrawing}
                   onStart={onStartDrawing}
                   points={draft}
-                  editingName={editingName}
                   onUndo={onUndoDraft}
                   onClear={onClearDraft}
                   onFinish={onFinishDraft}
@@ -264,17 +301,29 @@ const RoutePanel = ({
           onEdit={onEditRoute}
           open={routesOpen}
           onToggle={() => setRoutesOpen((prev) => !prev)}
+          banner={
+            editing && (
+              <EditRouteBox
+                name={editing.name}
+                points={editing.points}
+                onSave={onSaveEdit}
+                onCancel={onCancelEdit}
+              />
+            )
+          }
         >
           {/* Part of the route part, folded with the list, and above the
               button so the Cruxes it finds come straight under it. A Route
               without a corridor gets the button that makes one in the same
-              place, so the controls take over where it was once it is made.
-              Both inset the same on either side - narrower than Identify
-              cruxes below, and still centred under it - and in a box of one
-              fixed height, taller than either, so swapping one for the other
-              moves nothing below it. */}
+              place, so the controls take over where it was once it is made;
+              Optimise route sits beside it, or in a row of its own under the
+              controls, which need the whole width. Rows are inset the same on
+              either side - narrower than Identify cruxes below, and still
+              centred under it - and of one fixed height, taller than the
+              buttons, so swapping one for another moves nothing below it and
+              the last one leaves the same room above Identify cruxes. */}
           {selected && (
-            <Box sx={{ mt: 1, px: 2, height: 48, display: "flex", alignItems: "center" }}>
+            <Box sx={{ mt: 1, px: 2, height: 48, display: "flex", alignItems: "center", gap: 1 }}>
               {selected.corridor ? (
                 <CorridorControls
                   showCorridor={showCorridor}
@@ -289,8 +338,23 @@ const RoutePanel = ({
                   A drive stays on the road, so it has no corridor.
                 </Typography>
               ) : (
-                <MakeCorridorButton isMaking={isMakingCorridor} onMake={onMakeCorridor} />
+                <>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <MakeCorridorButton isMaking={isMakingCorridor} onMake={onMakeCorridor} />
+                  </Box>
+                  {canOptimise && <Box sx={{ flex: 1, minWidth: 0 }}>{optimiseButton}</Box>}
+                </>
               )}
+            </Box>
+          )}
+          {canOptimise && selected.corridor && (
+            <Box sx={{ px: 2, height: 48, display: "flex", alignItems: "center" }}>
+              {optimiseButton}
+            </Box>
+          )}
+          {canOptimise && selected.suggestions !== undefined && !suggestionControls.isSearching && (
+            <Box sx={{ mt: 0.5, mb: 1, px: 2 }}>
+              <Suggestions suggestions={selected.suggestions} {...suggestionControls} />
             </Box>
           )}
         </RouteListSection>
@@ -298,8 +362,13 @@ const RoutePanel = ({
         <Box sx={{ mt: selected && routesOpen ? 1 : 2.5 }}>
           <IdentifyButton
             disabled={selected === null}
+            identified={
+              selected !== null &&
+              (selected.crux !== null || selected.cruxes.some((c) => c.source === "identified"))
+            }
             isIdentifying={isIdentifying}
             onIdentify={onIdentify}
+            onStartOver={onStartOver}
           />
         </Box>
 
@@ -312,6 +381,7 @@ const RoutePanel = ({
             onAnswer={(cruxId, factor, value) => onAnswer(selected.id, cruxId, factor, value)}
             onOverall={(cruxId, value) => onOverall(selected.id, cruxId, value)}
             onKeep={(cruxId, keep) => onKeep(selected.id, cruxId, keep)}
+            onNote={(cruxId, note, text) => onNote(selected.id, cruxId, note, text)}
             onRestoreCrux={(cruxId) => onRestoreCrux(selected.id, cruxId)}
             onDeleteCrux={(cruxId) => onDeleteCrux(selected.id, cruxId)}
             onUndeleteCrux={(cruxId) => onUndeleteCrux(selected.id, cruxId)}
@@ -321,6 +391,7 @@ const RoutePanel = ({
             placingCrux={placingCrux}
             placingText={placingText}
             onPlaceCrux={onPlaceCrux}
+            addCruxForm={addCruxForm}
             editingExtent={editingExtent}
             onFinishExtent={onFinishExtent}
             onResetExtent={onResetExtent}

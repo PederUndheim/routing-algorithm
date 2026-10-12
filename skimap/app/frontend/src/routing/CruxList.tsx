@@ -1,13 +1,17 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 
 import Box from "@mui/material/Box";
 import ClickAwayListener from "@mui/material/ClickAwayListener";
 import Button from "@mui/material/Button";
 import ButtonBase from "@mui/material/ButtonBase";
+import FormControlLabel from "@mui/material/FormControlLabel";
 import IconButton from "@mui/material/IconButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
+import Switch from "@mui/material/Switch";
+import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Tooltip from "@mui/material/Tooltip";
@@ -26,7 +30,6 @@ import {
   OVERALL_INFO,
   SNOW_CHECK_INFO,
   RATINGS,
-  hasOwnOverall,
   isDecided,
   questionsFor,
   ratingOf,
@@ -36,13 +39,60 @@ import {
 import type { RatingInfo } from "../crux/assessment";
 import { cruxBadge, cruxTitle, dangerIcons } from "../dangerClasses";
 import { km } from "../format";
-import type { CruxEntry, Factor, Rating } from "../types";
+import type { CruxEntry, CruxNote, Factor, Rating } from "../types";
 import { COLORS, dangerColor, lighten } from "../theme";
 import RatingMark, { VerdictDisc } from "../ui/RatingMark";
 import CollapseToggle from "./CollapseToggle";
 import { outlinedSx, scrollbarSx } from "./styles";
 
 const MUTED = "rgba(255,255,255,0.75)";
+
+/** What the user can write about each Crux beside their ratings: why they
+ *  assessed it as they did, and how the group will handle it - one at a
+ *  time, where to regroup. Each is switched on for every Crux at once, in
+ *  this order: its name, on the switch and over the field, and its hint. */
+const NOTES: { note: CruxNote; title: string; placeholder: string }[] = [
+  {
+    note: "comment",
+    title: "Comment",
+    placeholder: "Why you assessed it as you did",
+  },
+  {
+    note: "group_measures",
+    title: "Group measures",
+    placeholder: "E.g. one at a time down the slope, regroup by the boulder",
+  },
+];
+
+type NotesShown = Record<CruxNote, boolean>;
+
+const noteKey = (note: CruxNote) => `skimap.note.${note}`;
+
+/** Which notes each Crux asks for. A way of working rather than something
+ *  about one route, so it holds for every route and is remembered between
+ *  visits. Off until switched on. */
+const useNotesShown = (): [NotesShown, (note: CruxNote, on: boolean) => void] => {
+  const [shown, setShown] = useState<NotesShown>(() => {
+    const read = (note: CruxNote) => {
+      // Private-mode browsers throw on access rather than returning null.
+      try {
+        return window.localStorage.getItem(noteKey(note)) === "on";
+      } catch {
+        return false;
+      }
+    };
+    return { comment: read("comment"), group_measures: read("group_measures") };
+  });
+  const set = (note: CruxNote, on: boolean) => {
+    setShown((prev) => ({ ...prev, [note]: on }));
+    try {
+      window.localStorage.setItem(noteKey(note), on ? "on" : "off");
+    } catch {
+      // Not being able to remember it is not a reason to refuse the switch.
+    }
+  };
+  return [shown, set];
+};
 
 /** The rating buttons' size and spacing, and so the picker's width - which
  *  the Remove / Keep pair below matches, so its middle falls on the middle
@@ -186,19 +236,70 @@ const RatingRow = ({
   </Box>
 );
 
+/** Free text the user may write about a Crux, under a small title like a
+ *  rating row's. Optional, so it says so rather than waiting to be filled. */
+const NoteField = ({
+  title,
+  placeholder,
+  value,
+  onChange,
+}: {
+  title: string;
+  placeholder: string;
+  value: string | undefined;
+  onChange: (text: string) => void;
+}) => (
+  <Box sx={{ mt: 1 }}>
+    <Typography sx={{ fontSize: 11.5, color: "white", fontWeight: 600, mb: 0.5 }}>
+      {title}
+      <Box component="span" sx={{ ml: 0.5, fontWeight: 400, color: "rgba(255,255,255,0.55)" }}>
+        (optional)
+      </Box>
+    </Typography>
+    <TextField
+      fullWidth
+      multiline
+      minRows={1}
+      maxRows={5}
+      size="small"
+      placeholder={placeholder}
+      value={value ?? ""}
+      onChange={(e) => onChange(e.target.value)}
+      slotProps={{ htmlInput: { "aria-label": title } }}
+      sx={{
+        "& .MuiInputBase-root": { color: "white", fontSize: 12, py: 0.75 },
+        "& .MuiOutlinedInput-notchedOutline": { borderColor: "rgba(255,255,255,0.25)" },
+        "& .MuiInputBase-root.Mui-focused .MuiOutlinedInput-notchedOutline": {
+          borderColor: COLORS.teal,
+        },
+      }}
+    />
+  </Box>
+);
+
 type AssessmentProps = {
   crux: CruxEntry;
+  /** Which notes the user has asked each Crux for. */
+  notesShown: NotesShown;
   onAnswer: (factor: Factor, value: Rating | undefined) => void;
   onOverall: (value: Rating | undefined) => void;
+  onNote: (note: CruxNote, text: string) => void;
   onKeep: (keep: boolean | undefined) => void;
 };
 
 /** Under an opened Crux: the user rates each aspect from clearly for to
  *  clearly against them, then - on the same scale, right below, where the
  *  pattern of their answers is in view - gives their own overall verdict,
- *  and decides whether the Crux stays in the list. Nothing is worked out
- *  for them. */
-const Assessment = ({ crux, onAnswer, onOverall, onKeep }: AssessmentProps) => {
+ *  may say why in a comment and how the group will handle it, and decides
+ *  whether the Crux stays in the list. Nothing is worked out for them. */
+const Assessment = ({
+  crux,
+  notesShown,
+  onAnswer,
+  onOverall,
+  onNote,
+  onKeep,
+}: AssessmentProps) => {
   const questions = questionsFor(crux);
   return (
     <Box
@@ -239,23 +340,35 @@ const Assessment = ({ crux, onAnswer, onOverall, onKeep }: AssessmentProps) => {
         </Box>
       )}
 
-      {/* A Runout area's one rating is its overall rating already. A snow
-          conditions check has nothing but the overall to rate. */}
-      {hasOwnOverall(crux) && (
-        <Box
-          sx={
-            questions.length > 0
-              ? { borderTop: "1px solid rgba(255,255,255,0.18)", mt: 1, pt: 1 }
-              : undefined
-          }
-        >
-          <RatingRow
-            title={crux.snow_check ? "Snow conditions" : "Overall assessment"}
-            info={crux.snow_check ? SNOW_CHECK_INFO : OVERALL_INFO}
-            value={crux.overall}
-            onChange={onOverall}
+      {/* A snow conditions check has nothing but the overall to rate. */}
+      <Box
+        sx={
+          questions.length > 0
+            ? { borderTop: "1px solid rgba(255,255,255,0.18)", mt: 1, pt: 1 }
+            : undefined
+        }
+      >
+        <RatingRow
+          title={crux.snow_check ? "Snow conditions" : "Overall assessment"}
+          info={crux.snow_check ? SNOW_CHECK_INFO : OVERALL_INFO}
+          value={crux.overall}
+          onChange={onOverall}
+        />
+      </Box>
+
+      {/* A note is shown even with its switch off once something is
+          written in it, so nothing the user wrote is out of sight - it
+          still goes out with the route. */}
+      {NOTES.filter(({ note }) => notesShown[note] || crux[note]).map(
+        ({ note, title, placeholder }) => (
+          <NoteField
+            key={note}
+            title={title}
+            placeholder={placeholder}
+            value={crux[note]}
+            onChange={(text) => onNote(note, text)}
           />
-        </Box>
+        )
       )}
 
       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 1.25 }}>
@@ -524,6 +637,7 @@ type CruxListProps = {
   onAnswer: (cruxId: string, factor: Factor, value: Rating | undefined) => void;
   onOverall: (cruxId: string, value: Rating | undefined) => void;
   onKeep: (cruxId: string, keep: boolean | undefined) => void;
+  onNote: (cruxId: string, note: CruxNote, text: string) => void;
   onRestore: (cruxId: string) => void;
   onDelete: (cruxId: string) => void;
   onUndelete: (cruxId: string) => void;
@@ -541,6 +655,9 @@ type CruxListProps = {
   /** What the map is waiting for, in words, while `placing`. */
   placingText: string;
   onPlace: () => void;
+  /** The Add crux form for a spot just picked, in place of the hint to
+   *  pick one; null until then. */
+  addForm: ReactNode;
   /** An extent is being edited: it is kept with Done, or put back to what
    *  it had with Reset. */
   editingExtent: boolean;
@@ -562,6 +679,7 @@ const CruxList = ({
   onAnswer,
   onOverall,
   onKeep,
+  onNote,
   onRestore,
   onDelete,
   onUndelete,
@@ -573,10 +691,12 @@ const CruxList = ({
   placing,
   placingText,
   onPlace,
+  addForm,
   editingExtent,
   onFinishExtent,
   onResetExtent,
 }: CruxListProps) => {
+  const [notesShown, setNoteShown] = useNotesShown();
   const active = cruxes.filter((c) => shelfOf(c) === "active");
   const notKept = cruxes.filter((c) => shelfOf(c) === "not_kept");
   const deleted = cruxes.filter((c) => shelfOf(c) === "deleted");
@@ -619,10 +739,45 @@ const CruxList = ({
         </Button>
       </Box>
 
-      {placing && (
-        <Typography sx={{ fontSize: 12, color: COLORS.orange, mb: 0.75 }}>
-          {placingText}
-        </Typography>
+      {addForm ??
+        (placing && (
+          <Typography sx={{ fontSize: 12, color: COLORS.orange, mb: 0.75 }}>
+            {placingText}
+          </Typography>
+        ))}
+
+      {open && (
+        <Box sx={{ mb: 0.5, flexShrink: 0 }}>
+          <Typography sx={{ fontSize: 11.5, color: "rgba(255,255,255,0.6)" }}>
+            For each crux, also write down:
+          </Typography>
+          <Box sx={{ display: "flex", flexWrap: "wrap", columnGap: 2 }}>
+            {NOTES.map(({ note, title }) => (
+              <FormControlLabel
+                key={note}
+                control={
+                  <Switch
+                    size="small"
+                    checked={notesShown[note]}
+                    onChange={(e) => setNoteShown(note, e.target.checked)}
+                    sx={{
+                      "& .MuiSwitch-switchBase.Mui-checked": { color: COLORS.teal },
+                      "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": {
+                        backgroundColor: COLORS.teal,
+                      },
+                    }}
+                  />
+                }
+                label={title}
+                sx={{
+                  color: MUTED,
+                  mx: 0,
+                  "& .MuiFormControlLabel-label": { fontSize: 12 },
+                }}
+              />
+            ))}
+          </Box>
+        </Box>
       )}
 
       {editingExtent && (
@@ -695,8 +850,10 @@ const CruxList = ({
                 {isActive && (
                   <Assessment
                     crux={crux}
+                    notesShown={notesShown}
                     onAnswer={(factor, value) => onAnswer(crux.id, factor, value)}
                     onOverall={(value) => onOverall(crux.id, value)}
+                    onNote={(note, text) => onNote(crux.id, note, text)}
                     onKeep={(keep) => {
                       onKeep(crux.id, keep);
                       // Kept: evaluated, so it folds away. Removed: it

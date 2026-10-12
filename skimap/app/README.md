@@ -168,15 +168,32 @@ near-optimal ground around it, everywhere you could cross instead without
 the trip costing much more. Navy along the route, fading out to nothing at
 the edge of the band, in the same blue ArcGIS draws it. Only the Selected
 route's - several overlapping bands would bury the terrain. A routed Route
-comes with one; a drawn, uploaded or edited one has **Make corridor around
-route** in its place, which asks `POST /corridor` for the band around that
+comes with one; a drawn, uploaded or edited one has **Make corridor** in
+its place, beside **Optimise route**, which asks `POST /corridor` for the band around that
 line instead - the ground within reach of the line itself, because a line
 drawn by hand has no optimum to be near. Its settings are
-`config.LINE_CORRIDOR`, which gives a short line at least the room a 2 km
-one would have. Editing a
+`config.LINE_CORRIDOR`: one fixed budget of cost, so the band is wide over
+easy ground and tight on steep ground, wherever it is and however long the
+line is, and never more than 300 m from the line. Editing a
 Route's line drops its corridor, routed or not, and the button comes back. The panel toggles it and sets how strongly it is drawn - it starts
 at 50%, because the terrain under it is usually the reason you are looking,
 and 100% is the ArcGIS rendering exactly.
+
+**Optimise route.** A drawn, uploaded or edited Route also has **Optimise
+route**, which asks `POST /improve` where a clearly cheaper way runs close
+beside its line. It does not route the line again: each suggestion leaves
+the line and rejoins it, stays inside the line's own corridor and beside
+the stretch it replaces, and is shown as a dashed white way next to a halo
+on that stretch. Its card says what it does to the ground - steep slope,
+release area, fall hazard, runout and length, before and after - and
+**Use this way** splices it into the line as an edit of that stretch alone,
+so the analysis and Cruxes either side stay; **Keep my line** drops it. By
+default only the ways that take the line off steep ground are listed; the
+switch shows the ones that only make the going easier by the cost surface.
+It never cuts off a summit or the far end of an out-and-back, never
+straightens switchbacks, and never takes a way more than 1.5 times as long
+as the stretch - see `routing.improve_line` and `config.IMPROVE`. A routed
+Route has no button: it is already the cheapest way on the same surface.
 
 **Identifying cruxes.** **Identify cruxes** runs the Crux Identifier on the
 Selected route, and only when pressed. The line is redrawn green where no

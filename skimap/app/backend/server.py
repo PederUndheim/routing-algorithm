@@ -10,17 +10,24 @@ Run it from the project directory - `skimap/`, the one holding `skimap/`,
     & "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m app.backend.server
 
     GET  /health              {"status": "ok"}, once GRASS is up
-    POST /route               {"start": {"lat": .., "lng": ..}, "end": {...},
-                               "network": "terrain" | "road"}
-                              -> the line as WGS84 GeoJSON, its length and
-                                 cost, and where to fetch its corridor.
-                                 "road" drives along the road network
-                                 instead, with no corridor; "terrain" is
-                                 the default
+    POST /route               {"points": [{"lat": .., "lng": ..}, ...],
+                               "networks": ["terrain" | "road", ...]}
+                              -> one line through the points as WGS84
+                                 GeoJSON, its length and cost, and where to
+                                 fetch its corridor. One network per leg:
+                                 "road" drives that leg along the road
+                                 network, and only terrain legs have a
+                                 corridor. {"start", "end", "network"} is
+                                 still taken, as a single leg
     GET  /corridor/<id>.png   that corridor, as an overlay for the map
     POST /corridor            {"line": <GeoJSON LineString, WGS84>}
                               -> the corridor around a drawn, uploaded or
                                  edited line, and the line's cost
+    POST /improve             {"line": <GeoJSON LineString, WGS84>}
+                              -> stretches of that line with a clearly
+                                 cheaper way close beside them, each with
+                                 the ground it crosses against the old
+                                 stretch's - see service.improve
     POST /crux                {"route": <GeoJSON LineString, WGS84>,
                                "exclude": [[start_m, end_m], ...]}
                               -> its Danger zones and Cruxes - see
@@ -44,9 +51,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from app.backend import service
 from skimap import crux
 
-# A start/end pair is a couple of hundred bytes. Anything larger is not ours,
-# and reading it would only be a way to be handed an unbounded body.
+# A point is a few dozen bytes, so even a long tour of waypoints is a few
+# kilobytes. Anything larger is not ours, and reading it would only be a way
+# to be handed an unbounded body.
 MAX_ROUTE_BODY_BYTES = 8 * 1024
+
+# A tour has a handful of waypoints. Each terrain leg is a GRASS run of its
+# own, so a request for hundreds would hold the server for minutes.
+MAX_ROUTE_POINTS = 20
+NETWORKS = ("terrain", "road")
 
 # A route to find cruxes on is a whole line, and an uploaded Route recorded
 # over a long day is tens of thousands of points - around a megabyte as GeoJSON.
@@ -115,26 +128,21 @@ class Handler(BaseHTTPRequestHandler):
             self._post_crux()
         elif self.path == "/corridor":
             self._post_corridor()
+        elif self.path == "/improve":
+            self._post_improve()
         else:
             self._send(404, {"message": f"No such endpoint: POST {self.path}"})
 
     def _post_route(self) -> None:
         try:
-            payload = self._read_json(MAX_ROUTE_BODY_BYTES, "a start and an end")
-            start = _point(payload, "start")
-            end = _point(payload, "end")
-            network = payload.get("network", "terrain")
-            if network not in ("terrain", "road"):
-                raise ValueError(f"'network' must be \"terrain\" or \"road\", not {network!r}.")
+            payload = self._read_json(MAX_ROUTE_BODY_BYTES, "the points to route through")
+            points, networks = _tour(payload)
         except ValueError as exc:
             self._send(400, {"message": str(exc)})
             return
 
         try:
-            if network == "road":
-                self._send(200, service.route_road(start, end))
-            else:
-                self._send(200, service.route(start, end))
+            self._send(200, service.route_tour(points, networks))
         except ValueError as exc:
             # Raised on purpose and worded for the user - an end too far
             # from any road, two ends with no road between them.
@@ -173,6 +181,21 @@ class Handler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json(MAX_CORRIDOR_BODY_BYTES, "a line")
             result = service.corridor(payload.get("line"))
+        except ValueError as exc:
+            self._send(400, {"message": str(exc)})
+            return
+        except Exception as exc:  # noqa: BLE001 - reported, the server stays up
+            traceback.print_exc()
+            self._send(400, {"message": f"{type(exc).__name__}: {exc}"})
+            return
+        self._send(200, result)
+
+    def _post_improve(self) -> None:
+        """Suggestions for a line the router did not make. Inside service's
+        GRASS lock, as /corridor is: it spreads through the cost surface."""
+        try:
+            payload = self._read_json(MAX_CORRIDOR_BODY_BYTES, "a line")
+            result = service.improve(payload.get("line"))
         except ValueError as exc:
             self._send(400, {"message": str(exc)})
             return
@@ -236,16 +259,36 @@ def _size(n_bytes: int) -> str:
     return f"{n_bytes / 1024:g} KB"
 
 
-def _point(payload: dict, key: str) -> tuple[float, float]:
-    point = payload.get(key)
+def _tour(payload: dict) -> tuple[list[tuple[float, float]], list[str]]:
+    """The points and each leg's network from a /route body - the list
+    form, or the single start/end leg the app sent before waypoints."""
+    if "points" not in payload:
+        points = [_point(payload.get("start"), "start"), _point(payload.get("end"), "end")]
+        networks = [payload.get("network", "terrain")]
+    else:
+        raw = payload["points"]
+        if not isinstance(raw, list) or not 2 <= len(raw) <= MAX_ROUTE_POINTS:
+            raise ValueError(f"'points' must be a list of 2 to {MAX_ROUTE_POINTS} points.")
+        points = [_point(p, f"point {i + 1}") for i, p in enumerate(raw)]
+        networks = payload.get("networks", ["terrain"] * (len(points) - 1))
+        if not isinstance(networks, list) or len(networks) != len(points) - 1:
+            raise ValueError("'networks' needs one entry per leg - one fewer than the points.")
+
+    for network in networks:
+        if network not in NETWORKS:
+            raise ValueError(f"A network must be \"terrain\" or \"road\", not {network!r}.")
+    return points, networks
+
+
+def _point(point, name: str) -> tuple[float, float]:
     if not isinstance(point, dict):
-        raise ValueError(f'Missing {key!r}: expected {{"lat": .., "lng": ..}}')
+        raise ValueError(f'Missing {name}: expected {{"lat": .., "lng": ..}}')
     try:
         lat, lng = float(point["lat"]), float(point["lng"])
     except (KeyError, TypeError, ValueError) as exc:
-        raise ValueError(f"{key!r} needs a numeric lat and lng.") from exc
+        raise ValueError(f"{name} needs a numeric lat and lng.") from exc
     if not (-90.0 <= lat <= 90.0 and -180.0 <= lng <= 180.0):
-        raise ValueError(f"{key!r} is not a WGS84 coordinate: {lat}, {lng}")
+        raise ValueError(f"{name} is not a WGS84 coordinate: {lat}, {lng}")
     return lat, lng
 
 

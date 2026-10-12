@@ -226,10 +226,10 @@ const STRETCH_STEP_M = 10;
  *  form is open; null once it is closed. */
 export type StretchPreview = { color: string; length_m: number };
 
-type AddCruxFormProps = {
+export type AddCruxFormProps = {
   /** What the analysed line says at the spot: the symbol the Crux starts
-   *  with, which also decides its questions - one for a Runout area, all
-   *  five otherwise. */
+   *  with, which also decides its questions - two for a Runout area, five
+   *  otherwise. */
   defaults: AddCruxDefaults;
   /** How much route is left ahead of the spot, which caps the stretch. */
   maxLength: number;
@@ -240,8 +240,12 @@ type AddCruxFormProps = {
 
 /** A hand-placed Crux: what the user says it is, its symbol and colour, and
  *  how much of the line ahead it colours. It starts from what the analysed
- *  line says where it was placed. */
-const AddCruxForm = ({ defaults, maxLength, onPreview, onCancel, onAdd }: AddCruxFormProps) => {
+ *  line says where it was placed.
+ *
+ *  Sits in the drawer rather than over the map, so the stretch it colours
+ *  can be watched on the map while the slider is dragged. Escape gives up,
+ *  as it does while the spot is being picked. */
+export const AddCruxForm = ({ defaults, maxLength, onPreview, onCancel, onAdd }: AddCruxFormProps) => {
   const fields = useDetails(
     { description: "", problem: defaults.problem, color: problemColor(defaults.problem) },
     false
@@ -258,8 +262,22 @@ const AddCruxForm = ({ defaults, maxLength, onPreview, onCancel, onAdd }: AddCru
   const add = () => onAdd({ ...fields.details, length_m: length });
 
   return (
-    <Box sx={{ p: 2.5 }}>
-      <Title>Add crux</Title>
+    <Box
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+      sx={{
+        flexShrink: 0,
+        px: 1.5,
+        pt: 1.25,
+        pb: 1.5,
+        mb: 0.75,
+        borderRadius: 2,
+        backgroundColor: "rgba(0,0,0,0.18)",
+        border: `1px solid ${COLORS.teal}`,
+      }}
+    >
+      <Typography sx={{ color: "white", fontSize: 14, fontWeight: 600 }}>New crux</Typography>
       <DetailsFields {...fields} onSubmit={add} />
 
       {longest > 0 && (
@@ -299,17 +317,6 @@ const AddCruxForm = ({ defaults, maxLength, onPreview, onCancel, onAdd }: AddCru
   );
 };
 
-type AddCruxDialogProps = AddCruxFormProps & {
-  /** Whether a spot has been picked and is waiting to be added. */
-  open: boolean;
-};
-
-const AddCruxDialog = ({ open, ...form }: AddCruxDialogProps) => (
-  <CruxDialog open={open} onClose={form.onCancel}>
-    <AddCruxForm {...form} />
-  </CruxDialog>
-);
-
 type EditCruxFormProps = {
   /** What the Crux is now, to start from. */
   initial: CruxDetails;
@@ -345,5 +352,3 @@ export const EditCruxDialog = ({ initial, ...form }: EditCruxDialogProps) => (
     {initial && <EditCruxForm initial={initial} {...form} />}
   </CruxDialog>
 );
-
-export default AddCruxDialog;

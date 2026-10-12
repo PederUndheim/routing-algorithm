@@ -116,6 +116,13 @@ class Snapping(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "No road within"):
             net.route(at(0, 5000), at(1000, 0))
 
+    def test_snapped_is_where_the_drive_starts(self):
+        # So a terrain leg routed to it meets the drive exactly.
+        net = network(road((0, 0), (1000, 0), (1000, 1000)))
+        point = net.snapped(at(1080, 500))
+        np.testing.assert_allclose(point, at(1000, 500), atol=0.01)
+        np.testing.assert_allclose(net.route(point, at(0, 0)).xy[0], point, atol=0.01)
+
     def test_two_unconnected_roads_are_refused(self):
         net = network(road((0, 0), (1000, 0)), road((0, 1000), (1000, 1000)))
         with self.assertRaisesRegex(ValueError, "No road connects"):

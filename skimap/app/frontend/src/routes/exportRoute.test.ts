@@ -21,6 +21,8 @@ const routeWithCruxes = () => {
     })!;
   const kept = place(100, "Lip <under> the ridge & cornice");
   list.setOverall(route.id, kept.id, "very_bad");
+  list.setNote(route.id, kept.id, "comment", "Fresh wind slab ");
+  list.setNote(route.id, kept.id, "group_measures", "One at a time");
   list.setKeep(route.id, kept.id, true);
   const removed = place(200, "Not this one");
   list.setKeep(route.id, removed.id, false);
@@ -35,7 +37,9 @@ describe("exporting a route", () => {
     expect(gpx.match(/<wpt /g)).toHaveLength(1);
     // Escaped, and the user's verdict along with it.
     expect(gpx).toContain("1. Lip &lt;under&gt; the ridge &amp; cornice");
-    expect(gpx).toContain("assessed: Very negative");
+    expect(gpx).toContain(
+      "assessed: Very negative, comment: Fresh wind slab, group measures: One at a time"
+    );
     expect(gpx).not.toContain("Not this one");
   });
 
@@ -50,6 +54,8 @@ describe("exporting a route", () => {
       symbol: "release_area",
       overall: "very_bad",
       kept: true,
+      comment: "Fresh wind slab",
+      group_measures: "One at a time",
     });
   });
 

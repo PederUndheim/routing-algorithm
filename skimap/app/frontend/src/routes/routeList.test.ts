@@ -91,6 +91,18 @@ describe("road routes", () => {
     expect(excludedStretches(terrain)).toEqual([]);
   });
 
+  it("mixed with terrain legs are Routes, still leaving their tunnels out", () => {
+    const list = createRouteList();
+    const mixed = list.addRouted({ ...driven(), network: "mixed", corridor: routed().corridor });
+
+    expect(mixed.name).toBe("Route 1");
+    expect(isRoadRoute(mixed)).toBe(false);
+    expect(excludedStretches(mixed)).toEqual([
+      [100, 400],
+      [900, 1500],
+    ]);
+  });
+
   it("become an ordinary line once edited - the stretches described the old one", () => {
     const list = createRouteList();
     const road = list.addRouted(driven());
@@ -453,7 +465,7 @@ describe("drawn Routes", () => {
     expect(second.lengthM).toBeLessThan(520);
   });
 
-  it("edited get the new line and length, lose their stale crux result, and are shown", () => {
+  it("edited get the new line and length, keep the analysis of what was not changed, and are shown", () => {
     const list = createRouteList();
     const route = list.addDrawn(line);
     list.attachCrux(route.id, cruxResult(40));
@@ -465,7 +477,10 @@ describe("drawn Routes", () => {
     const edited = list.getState().routes[0];
     expect(edited.line.coordinates).toEqual(longer);
     expect(edited.lengthM).toBeGreaterThan(route.lengthM * 1.9);
-    expect(edited.crux).toBeNull();
+    // The old line is all still there; only the added end is unanalysed.
+    expect(edited.crux?.segments).toHaveLength(1);
+    expect(edited.unanalysedM).toBeGreaterThan(route.lengthM * 0.9);
+    expect(edited.unanalysedM).toBeLessThan(route.lengthM * 1.1);
     expect(edited.visible).toBe(true);
     expect(edited.name).toBe("Drawn route 1");
   });
@@ -675,6 +690,29 @@ describe("cruxes on a Route", () => {
     expect(cruxesOf(list).some(isEdited)).toBe(true);
   });
 
+  it("keep a comment and group measures as typed, and drop one left blank", () => {
+    const list = createRouteList();
+    const route = list.addRouted(routed());
+    list.attachCrux(route.id, cruxResult(400));
+    const identified = cruxesOf(list)[0];
+
+    // The space after a word being typed stays; it is not the end of it.
+    list.setNote(route.id, identified.id, "comment", "Wind slab on the lee ");
+    list.setNote(route.id, identified.id, "group_measures", "One at a time");
+    expect(cruxesOf(list)[0]).toMatchObject({
+      comment: "Wind slab on the lee ",
+      group_measures: "One at a time",
+    });
+    // Written about is worked on: Update cruxes keeps it.
+    expect(isEdited(cruxesOf(list)[0])).toBe(true);
+
+    list.setNote(route.id, identified.id, "comment", "  ");
+    list.setNote(route.id, identified.id, "group_measures", "");
+    expect(cruxesOf(list)[0]).not.toHaveProperty("comment");
+    expect(cruxesOf(list)[0]).not.toHaveProperty("group_measures");
+    expect(isEdited(cruxesOf(list)[0])).toBe(false);
+  });
+
   it("can be moved along the Route, keeping their answers and renumbering to the new order", () => {
     const list = createRouteList();
     const route = list.addRouted(routed());
@@ -697,7 +735,7 @@ describe("cruxes on a Route", () => {
     expect(cruxesOf(list)[0].moved).toBeUndefined();
   });
 
-  it("can be deleted and brought back, and all go when the line is edited", () => {
+  it("can be deleted and brought back, and stay - snapped on - when the line is edited", () => {
     const list = createRouteList();
     const route = list.addDrawn([
       [7.8, 62.6],
@@ -721,6 +759,8 @@ describe("cruxes on a Route", () => {
       [7.8, 62.6],
       [7.82, 62.6],
     ]);
-    expect(cruxesOf(list)).toEqual([]);
+    // Placed by hand, so kept through the edit, with what was answered.
+    expect(cruxesOf(list)).toHaveLength(2);
+    expect(cruxesOf(list).find((c) => c.id === a.id)?.answers).toEqual({ slope_size: "bad" });
   });
 });
