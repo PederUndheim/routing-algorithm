@@ -1,0 +1,6 @@
+{
+  "name": "steep_spread_disk1",
+  "note": "Every cell >= 30 deg spreads to its 4 neighbours at full value - the least spread that closes the diagonal corner leak.",
+  "extends": "steep_spread_control",
+  "config": {"STEEP_SPREAD": {"radius_px": 1, "footprint": "disk", "share": 1.0}}
+}

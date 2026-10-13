@@ -1,0 +1,6 @@
+{
+  "name": "steep_spread_square2",
+  "note": "Every cell >= 30 deg spreads 2 cells (20 m) in every direction at full value - the upper bracket.",
+  "extends": "steep_spread_control",
+  "config": {"STEEP_SPREAD": {"radius_px": 2, "footprint": "square", "share": 1.0}}
+}

@@ -87,5 +87,49 @@ def steep_slope_barrier(
     return np.where(s < start_deg, 0.0, out).astype(np.float32, copy=False)
 
 
+def spread_steep(
+    cost: np.ndarray,
+    slope: np.ndarray,
+    *,
+    threshold_deg: float,
+    radius_px: int,
+    footprint: str,
+    share: float,
+) -> np.ndarray:
+    """Each cell costs at least `share` of the dearest steep cell within reach.
+
+    A steep cell is one at or above threshold_deg; within reach is
+    `radius_px` cells, over a "square" (Chebyshev) or "disk" (Euclidean)
+    footprint. Only steep cells spread, and a cell never gets cheaper.
+
+    Two things it is for. r.cost charges a diagonal step on its two end cells
+    only, so two steep cells that meet at a corner can be crossed through
+    that corner without paying for either - any spread closes that, a radius
+    1 disk being the least that does. And a route that hugs the edge of steep
+    ground at 10 m resolution is closer to it than the cells say.
+
+    Edges are not padded: give it arrays read with a halo of radius_px, or
+    the steep cells just past the array edge are missed.
+    """
+    if radius_px <= 0:
+        return cost
+    if footprint not in ("square", "disk"):
+        raise ValueError(f"footprint must be 'square' or 'disk', not {footprint!r}")
+
+    source = np.where(slope >= threshold_deg, cost, 0.0).astype(np.float32)
+    reach = source.copy()
+    rows, cols = source.shape
+    r = int(radius_px)
+    for dy in range(-r, r + 1):
+        for dx in range(-r, r + 1):
+            if (dy, dx) == (0, 0) or (footprint == "disk" and dy * dy + dx * dx > r * r):
+                continue
+            # reach[y, x] = max(reach[y, x], source[y + dy, x + dx]) where in bounds.
+            dst = reach[max(0, -dy):rows - max(0, dy), max(0, -dx):cols - max(0, dx)]
+            src = source[max(0, dy):rows - max(0, -dy), max(0, dx):cols - max(0, -dx)]
+            np.maximum(dst, src, out=dst)
+    return np.maximum(cost, np.float32(share) * reach).astype(np.float32, copy=False)
+
+
 def clip_round(cost: np.ndarray, *, min_cost: float, max_cost: float) -> np.ndarray:
     return np.round(np.clip(cost, min_cost, max_cost)).astype(np.uint16, copy=False)

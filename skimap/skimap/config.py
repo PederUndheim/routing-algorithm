@@ -124,6 +124,22 @@ WEIGHTS = {
     "pra_runout": 0.35,
 }
 
+# Steep ground spread onto its neighbours: a cell costs at least `share` of
+# the terrain cost of the dearest cell at or above `threshold_deg` within
+# `radius_px` cells - see combine.spread_steep. It closes the corner gaps
+# r.cost slips through diagonally between steep cells, and keeps routes a
+# cell or two off the edge of steep ground. "square" reaches the 8
+# neighbours at radius 1, "disk" the 4. Spread before the ridge charge and
+# the barriers, and the reduction gate still reads each cell's own slope, so
+# a road beside a steep cut keeps its reduction. radius_px 0 turns it off,
+# which is production - tried in data/test/lab/profiles/steep_spread_*.json.
+STEEP_SPREAD = {
+    "radius_px": 0,
+    "threshold_deg": 30.0,
+    "footprint": "square",
+    "share": 1.0,
+}
+
 # Applied after road/trail reductions, so a road cannot reduce a cliff back
 # to a walkable cost.
 STEEP_SLOPE_BARRIER = {
@@ -270,6 +286,19 @@ IMPROVE = {
     # or take this much line either side - never beside another part of the
     # line, as the far side of a loop tour is.
     "margin_m": 100.0,
+    # A suggestion leaves and rejoins the line going its way: over its first
+    # and last join_m, it heads no more than max_join_deg off the line's own
+    # heading there. Without this the cheapest way often reaches the line a
+    # little past where it rejoins, or leaves a little before, and doubles
+    # back along it to the station - a hook the user would never walk.
+    "join_m": 40.0,
+    "max_join_deg": 60.0,
+    # A line that is already good has few stretches that clear the savings
+    # above. Then the biggest of the smaller ones, which save at least what
+    # `minor` asks, are added - up to min_suggestions in all, marked minor -
+    # where they do not overlap one already found.
+    "min_suggestions": 3,
+    "minor": {"min_saving_share": 0.04, "saving_share_per_km": 0.04, "min_saving": 12.0},
 }
 
 # --- Road routing ---

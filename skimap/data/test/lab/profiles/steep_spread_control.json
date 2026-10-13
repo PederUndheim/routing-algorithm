@@ -1,0 +1,7 @@
+{
+  "name": "steep_spread_control",
+  "note": "CONTROL for steep_spread_*: production config as of 2026-10-13, built fresh - baseline was built 2026-09-10 and config has moved since. Tours: the 21 baseline tours still in tours.gpkg, then the 15 whose production route runs most metres per km within 10 m of >= 30 deg ground (tests.steep_spread_report pick). Measure the variants with --against steep_spread_control.",
+  "tours": [32, 45, 52, 53, 55, 57, 58, 77, 79, 83, 114, 118, 259, 342, 494, 638, 641, 755, 796, 1016, 1017,
+            1141, 1134, 350, 222, 1051, 420, 1040, 1072, 987, 626, 1140, 689, 1050, 511, 663],
+  "config": {}
+}

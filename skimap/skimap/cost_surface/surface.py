@@ -2,7 +2,8 @@
 
 Order matters:
   1. weighted sum of the terrain layers (slope, windshelter, pra_runout),
-     plus RIDGE_COST on exposed ridges
+     steep cells spread onto their neighbours (STEEP_SPREAD, off by
+     default), plus RIDGE_COST on exposed ridges
   2. MAX in the barriers (ocean, steep slope, plus anything enabled in
      config.BARRIERS)
   3. MIN in the reductions (road, tractor trail in forest, bridge), gated
@@ -36,7 +37,7 @@ from skimap import config, paths
 from skimap.cost_surface import combine, transforms
 from skimap.data_preprocessing import tracks as track_scale
 from skimap.grid import Tile, iter_tiles
-from skimap.raster import read_mask, read_tile, write_tile
+from skimap.raster import TILE_PX, read_mask, read_tile, write_tile
 
 # What 'cost --debug' writes alongside the surface, in build order. Each is
 # Float32 in the same cost units as the output, so they can be compared to
@@ -46,6 +47,7 @@ DEBUG_LAYERS = (
     "02_windshelter_cost",      # shelter index -> cost, via the logistic
     "03_pra_runout_cost",       # avalanche exposure, already in cost units
     "04_terrain_weighted_sum",  # the three above, weighted and normalized
+    "04a_steep_spread",         # extra charged next to steep ground (STEEP_SPREAD)
     "04b_ridge_cost",           # extra charged on exposed ridges
     "05_barriers",              # steep slope and whatever config.BARRIERS enables
     "06_reduction_gate",        # 0..1: how much of a road reduction may apply
@@ -88,8 +90,18 @@ def build_cost_surface(
     # Slope decides where the tile has ground at all: it comes from the DEM,
     # so its nodata is the country's outline plus whatever the DEM misses.
     # Every other layer is read with a neutral fill.
-    slope = read_tile("slope", tile)
-    valid = np.isfinite(slope)
+    #
+    # The terrain layers are read with a halo when steep ground is spread, so
+    # a steep cell just over the tile edge still reaches into this tile. Step
+    # 1 works on the padded arrays and crops them back; everything after it
+    # sees the tile alone. With the spread off the halo is 0 and the crop is
+    # the whole array.
+    spread = config.STEEP_SPREAD
+    halo = max(0, int(spread["radius_px"]))
+    inner = np.s_[halo:halo + TILE_PX, halo:halo + TILE_PX]
+
+    slope = read_tile("slope", tile, halo=halo)
+    valid = np.isfinite(slope[inner])
     slope = np.nan_to_num(slope, nan=0.0)
 
     def dbg(name: str, array: np.ndarray) -> None:
@@ -116,8 +128,8 @@ def build_cost_surface(
     # its neighbours: measured on land, every hole came out at cost 2 where
     # comparable ground outside read 4. That is a router that prefers to
     # travel through missing data.
-    windshelter = read_tile("windshelter", tile, fill=config.WINDSHELTER["x0"])
-    pra_runout = read_tile("pra_runout", tile, fill=config.MIN_COST)
+    windshelter = read_tile("windshelter", tile, fill=config.WINDSHELTER["x0"], halo=halo)
+    pra_runout = read_tile("pra_runout", tile, fill=config.MIN_COST, halo=halo)
 
     # --- 1. terrain -----------------------------------------------------
     # pra_runout arrives already in cost units - data_preprocessing.derived
@@ -127,13 +139,22 @@ def build_cost_surface(
         "windshelter": transforms.windshelter_cost(windshelter),
         "pra_runout": pra_runout,
     }
-    dbg("01_slope_cost", terrain["slope"])
-    dbg("02_windshelter_cost", terrain["windshelter"])
-    dbg("03_pra_runout_cost", terrain["pra_runout"])
+    dbg("01_slope_cost", terrain["slope"][inner])
+    dbg("02_windshelter_cost", terrain["windshelter"][inner])
+    dbg("03_pra_runout_cost", terrain["pra_runout"][inner])
 
     cost = combine.weighted_sum(terrain, config.WEIGHTS)
     cost = np.clip(cost, config.MIN_COST, config.BASE_MAX_COST)
-    dbg("04_terrain_weighted_sum", cost)
+    dbg("04_terrain_weighted_sum", cost[inner])
+
+    # --- 1a. steep ground spread ----------------------------------------
+    # Before the ridge charge, so what spreads is the terrain's own price for
+    # steep ground and not a crest surcharge; before the barriers, so a cliff
+    # stays exactly as wide as it is. The padded arrays end here.
+    spread_cost = combine.spread_steep(cost, slope, **spread)
+    dbg("04a_steep_spread", (spread_cost - cost)[inner])
+    cost = spread_cost[inner]
+    slope, windshelter, pra_runout = slope[inner], windshelter[inner], pra_runout[inner]
 
     # --- 1b. exposed ridges ---------------------------------------------
     # Not re-clipped to BASE_MAX_COST: ridges are often steep too, and

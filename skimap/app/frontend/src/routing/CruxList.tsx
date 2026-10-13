@@ -43,7 +43,7 @@ import type { CruxEntry, CruxNote, Factor, Rating } from "../types";
 import { COLORS, dangerColor, lighten } from "../theme";
 import RatingMark, { VerdictDisc } from "../ui/RatingMark";
 import CollapseToggle from "./CollapseToggle";
-import { outlinedSx, scrollbarSx } from "./styles";
+import { LIST_HEIGHT, outlinedSx, scrollbarSx } from "./styles";
 
 const MUTED = "rgba(255,255,255,0.75)";
 
@@ -708,7 +708,7 @@ const CruxList = ({
   }, [activeId]);
 
   return (
-    <Box sx={{ flex: open ? 1 : "none", minHeight: 0, display: "flex", flexDirection: "column" }}>
+    <Box sx={{ flex: open ? "1 0 auto" : "none", display: "flex", flexDirection: "column" }}>
       <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, mb: open ? 0.75 : 0 }}>
         <Typography sx={{ color: "white", fontSize: 14, fontWeight: 600 }}>
           Cruxes ({active.length})
@@ -816,7 +816,10 @@ const CruxList = ({
       )}
 
       {/* Takes whatever height the drawer has left and scrolls inside it, so
-          a long tour does not stretch the drawer into a scroll of its own. */}
+          a long tour does not stretch the drawer into a scroll of its own -
+          but never less than the route list's height: past that, the drawer
+          scrolls instead. A basis rather than a min-height, so the boxes
+          around it size from it and not from every row in the list. */}
       {open && cruxes.length > 0 && (
         <Box
           component="ol"
@@ -827,8 +830,7 @@ const CruxList = ({
             display: "flex",
             flexDirection: "column",
             gap: 0.5,
-            flex: 1,
-            minHeight: 0,
+            flex: `1 0 ${LIST_HEIGHT}px`,
             overflowY: "auto",
             ...scrollbarSx,
           }}

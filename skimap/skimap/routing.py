@@ -743,7 +743,8 @@ def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.
 
     Returns, in order along the line: first and last (indices into
     `cells`), path (the cells between, both ends included), cost (the
-    path's) and line_cost (the line's own between the two).
+    path's), line_cost (the line's own between the two) and minor (saves
+    only what IMPROVE's `minor` asks, filling up to min_suggestions).
     """
     from scipy.ndimage import distance_transform_edt
     from scipy.sparse.csgraph import dijkstra
@@ -872,7 +873,12 @@ def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.
         out[ok] = node[r[ok], c[ok]]
         return out
 
+    # Every way that saves what a minor suggestion must, and which of them
+    # also save what a full one must - the costs do not depend on the bar,
+    # so the searches are done once for both.
+    minor_params = {**params, **params["minor"]}
     candidates: dict[tuple[int, int], float] = {}
+    major: set[tuple[int, int]] = set()
     for a, b in allowed.items():
         block = int(block_of[a])
         source = node_at(block, stations[[a]])[0]
@@ -887,9 +893,13 @@ def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.
         line = station_spent[b] - station_spent[a]
         span = station_along[b] - station_along[a]
         good = (np.isfinite(found) & (apart_m(a, b) >= straightness * span)
-                & (line - found >= _needed_saving(line, span, params)))
+                & (line - found >= np.minimum(_needed_saving(line, span, params),
+                                              _needed_saving(line, span, minor_params))))
+        clears = line - found >= _needed_saving(line, span, params)
         for j in np.flatnonzero(good):
             candidates[(a, int(b[j]))] = float(found[j])
+            if clears[j]:
+                major.add((a, int(b[j])))
 
     paths: dict[int, np.ndarray] = {}
 
@@ -907,19 +917,43 @@ def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.
         walk.reverse()
         return np.column_stack([node_rows[walk], node_cols[walk]])
 
+    min_join_cos = np.cos(np.radians(float(params["max_join_deg"])))
+
+    def line_point(d: float) -> np.ndarray:
+        return cells[min(int(np.searchsorted(along, d)), len(cells) - 1)].astype(np.float64)
+
+    def joins_smoothly(path: np.ndarray, first: int, last: int) -> bool:
+        """Leaves and rejoins the line heading its way - see max_join_deg.
+        Each heading is over join_m, or half the way on a short one."""
+        walked = np.concatenate([[0.0], np.cumsum(np.hypot(*np.diff(path, axis=0).T))]) * res
+        join = min(float(params["join_m"]), walked[-1] / 2.0, (along[last] - along[first]) / 2.0)
+        if join <= 0:
+            return True
+        leaving = path[int(np.searchsorted(walked, join))] - path[0]
+        arriving = path[-1] - path[int(np.searchsorted(walked, walked[-1] - join, side="right")) - 1]
+        line_out = line_point(along[first] + join) - cells[first]
+        line_in = cells[last] - line_point(along[last] - join)
+        for way, line in ((leaving, line_out), (arriving, line_in)):
+            norms = np.hypot(*way) * np.hypot(*line)
+            if norms > 0 and float(way @ line) / norms < min_join_cos:
+                return False
+        return True
+
     def fits(path: np.ndarray, first: int, last: int) -> bool:
-        """Gets far enough from the line to be another way, and is not so
-        much longer than the stretch it replaces that it is another route."""
+        """Gets far enough from the line to be another way, is not so much
+        longer than the stretch it replaces that it is another route, and
+        joins the line going its way."""
         stretch = cells[first:last + 1]
         gaps = np.hypot(*(path[:, None, :] - stretch[None, :, :]).transpose(2, 0, 1))
         length = float(np.hypot(*np.diff(path, axis=0).T).sum()) * res
         return bool(gaps.min(axis=1).max() * res >= float(params["min_detour_m"])
-                    and length <= float(params["max_lengthening"]) * (along[last] - along[first]))
+                    and length <= float(params["max_lengthening"]) * (along[last] - along[first])
+                    and joins_smoothly(path, first, last))
 
     def saving(a: int, b: int) -> float:
         return float(station_spent[b] - station_spent[a]) - candidates[(a, b)]
 
-    def shorter(a: int, c: int) -> list[tuple[int, int]]:
+    def shorter(a: int, c: int, among: dict, p: dict) -> list[tuple[int, int]]:
         """(a, c), or the shorter suggestions it splits into. Kept whole only
         where it saves clearly more than the best two it could be split
         into - one long way round two separate fixes is two suggestions,
@@ -927,40 +961,61 @@ def _detours(cost: np.ndarray, inside: np.ndarray, cells: np.ndarray, along: np.
         parts is one."""
         whole, best, at = saving(a, c), 0.0, -1
         for b in range(a + 1, c):
-            if (a, b) in candidates and (b, c) in candidates:
+            if (a, b) in among and (b, c) in among:
                 parts = saving(a, b) + saving(b, c)
                 if parts > best:
                     best, at = parts, b
-        if at < 0 or whole > (1.0 + float(params["long_gain_share"])) * best:
+        if at < 0 or whole > (1.0 + float(p["long_gain_share"])) * best:
             return [(a, c)]
-        return shorter(a, at) + shorter(at, c)
+        return shorter(a, at, among, p) + shorter(at, c, among, p)
 
     keep = np.diff(station_spent)
-    while True:
-        chosen = [piece for a, c in _cheapest_whole(len(stations), keep, candidates)
-                  for piece in shorter(a, c)]
-        unfit = [(a, b) for a, b in chosen
-                 if not fits(path_of(a, b), int(stations[a]), int(stations[b]))]
-        if not unfit:
-            break
-        for pair in unfit:
-            del candidates[pair]
 
-    # A chosen way can come back to the line for a while between two places
-    # it leaves it - two separate fixes, which the user should be able to
-    # take one without the other. Split there, and keep the pieces that are
-    # still worth suggesting on their own.
-    detours = []
-    for a, b in chosen:
-        for first, last, path in _off_line(path_of(a, b), cells, int(stations[a]), int(stations[b]),
-                                           float(params["rejoin_m"]) / res):
-            way = float(((cost[path[:-1, 0], path[:-1, 1]] + cost[path[1:, 0], path[1:, 1]]) / 2.0
-                         * np.hypot(*np.diff(path, axis=0).T)).sum())
-            line = float(spent[last] - spent[first])
-            span = float(along[last] - along[first])
-            if line - way >= _needed_saving(line, span, params) and fits(path, first, last):
-                detours.append({"first": first, "last": last, "path": path,
-                                "cost": way, "line_cost": line})
+    def choose(among: dict[tuple[int, int], float], p: dict) -> list[dict]:
+        """The best set of suggestions from `among`, each saving what `p`
+        asks. Takes `among` over: what does not fit is dropped from it."""
+        while True:
+            chosen = [piece for a, c in _cheapest_whole(len(stations), keep, among)
+                      for piece in shorter(a, c, among, p)]
+            unfit = [(a, b) for a, b in chosen
+                     if not fits(path_of(a, b), int(stations[a]), int(stations[b]))]
+            if not unfit:
+                break
+            for pair in unfit:
+                del among[pair]
+
+        # A chosen way can come back to the line for a while between two
+        # places it leaves it - two separate fixes, which the user should be
+        # able to take one without the other. Split there, and keep the
+        # pieces that are still worth suggesting on their own.
+        found = []
+        for a, b in chosen:
+            for first, last, path in _off_line(path_of(a, b), cells, int(stations[a]),
+                                               int(stations[b]), float(p["rejoin_m"]) / res):
+                way = float(((cost[path[:-1, 0], path[:-1, 1]] + cost[path[1:, 0], path[1:, 1]])
+                             / 2.0 * np.hypot(*np.diff(path, axis=0).T)).sum())
+                line = float(spent[last] - spent[first])
+                span = float(along[last] - along[first])
+                if line - way >= _needed_saving(line, span, p) and fits(path, first, last):
+                    found.append({"first": first, "last": last, "path": path,
+                                  "cost": way, "line_cost": line, "minor": False})
+        return found
+
+    detours = choose({pair: candidates[pair] for pair in major}, params)
+
+    # A line that is already good: fill up with the biggest smaller savings,
+    # on stretches no full suggestion touches.
+    wanted = int(params["min_suggestions"]) - len(detours)
+    if wanted > 0:
+        def clear_of_detours(a: int, b: int) -> bool:
+            return all(stations[b] <= d["first"] or stations[a] >= d["last"] for d in detours)
+
+        rest = {pair: found for pair, found in candidates.items() if clear_of_detours(*pair)}
+        smaller = sorted(choose(rest, minor_params),
+                         key=lambda d: d["line_cost"] - d["cost"], reverse=True)[:wanted]
+        for d in smaller:
+            d["minor"] = True
+        detours = sorted(detours + smaller, key=lambda d: d["first"])
     return detours
 
 
@@ -1054,8 +1109,9 @@ def improve_line(line_xy: np.ndarray, *, cost_raster: str = COST_RASTER,
     Returns one dict per suggestion, in order along the line: start_m and
     end_m along it, where the suggestion leaves and rejoins it; xy, the new
     way between those two points of the line, smoothed as a routed line is;
-    old_xy, the line's own stretch it replaces; and cost and line_cost, the
-    new way's and the old one's.
+    old_xy, the line's own stretch it replaces; cost and line_cost, the
+    new way's and the old one's; and minor, for one that only fills up a
+    line with few clear savings - see IMPROVE's min_suggestions.
     """
     import grass.script as gs
     from grass.script import array as garray
@@ -1096,6 +1152,7 @@ def improve_line(line_xy: np.ndarray, *, cost_raster: str = COST_RASTER,
             "old_xy": np.vstack([at(start_m), xy[inside_old], at(end_m)]),
             "cost": detour["cost"],
             "line_cost": detour["line_cost"],
+            "minor": detour["minor"],
         })
     return suggestions
 

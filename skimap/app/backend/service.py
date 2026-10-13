@@ -322,7 +322,8 @@ def improve(line: dict) -> dict:
     measure, for the app to scale to its own), the new way as a WGS84
     LineString from the one point to the other, both costs, and what ground
     the old stretch and the new way each cross (crux.ground) - which is
-    what the user decides on, not the costs.
+    what the user decides on, not the costs. `minor` marks one that only
+    fills up a line with few clear savings.
 
     Raises ValueError for a line that is not one, which the server turns
     into a 400 like any other.
@@ -340,6 +341,7 @@ def improve(line: dict) -> dict:
             "line": {"type": "LineString", "coordinates": _lnglat(s["xy"])},
             "cost": round(s["cost"], 1),
             "old_cost": round(s["line_cost"], 1),
+            "minor": s["minor"],
             "before": crux.ground(s["old_xy"]),
             "after": crux.ground(s["xy"]),
         }

@@ -27,12 +27,13 @@ export const CRUX_COLORS = {
   snow: "#1E88E5",
 } as const;
 
-/** A suggested way on the map: dashed white over a dark casing, so it reads
- *  as a proposal on any basemap and next to any danger colour - none of
- *  which is white. The stretch it would replace gets a pale halo. */
+/** A suggested way on the map: a thin purple dash with a soft white edge -
+ *  a proposal, quieter than the line itself, and a colour no danger class or
+ *  Route uses. The stretch it would replace gets a pale halo while it is
+ *  open. */
 export const SUGGESTION_COLORS = {
-  way: "#FFFFFF",
-  casing: "#263238",
+  way: "#7E57C2",
+  casing: "#FFFFFF",
   replaced: "#FFFFFF",
 } as const;
 

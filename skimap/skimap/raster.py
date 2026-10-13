@@ -63,7 +63,7 @@ def tile_origin(tile: Tile) -> tuple[float, float]:
             oy + math.ceil((top - oy) / p) * p)
 
 
-def read_tile(name: str, tile: Tile, *, fill: float = np.nan) -> np.ndarray:
+def read_tile(name: str, tile: Tile, *, fill: float = np.nan, halo: int = 0) -> np.ndarray:
     """Read one layer over one tile as float32 in REAL units.
 
     No national layer carries a band scale or offset any more: slope,
@@ -76,16 +76,22 @@ def read_tile(name: str, tile: Tile, *, fill: float = np.nan) -> np.ndarray:
     Nodata becomes `fill`. Tiles that fall partly outside a layer's extent
     are padded with `fill` rather than failing: a layer need not cover the
     whole country.
+
+    `halo` widens the window by that many cells on every side, for a
+    neighbourhood operation that must see across the tile edge - without it
+    every tile is an island and the result has a seam on the tile grid.
     """
     ds = gdal.Open(str(paths.layer(name)))
     band = ds.GetRasterBand(1)
     px, py = window(ds, tile)
+    px, py = px - halo, py - halo
+    size = TILE_PX + 2 * halo
 
-    out = np.full((TILE_PX, TILE_PX), fill, dtype=np.float32)
+    out = np.full((size, size), fill, dtype=np.float32)
 
     # Clip the request to the layer, then place it in the right spot.
     sx0, sy0 = max(px, 0), max(py, 0)
-    sx1, sy1 = min(px + TILE_PX, ds.RasterXSize), min(py + TILE_PX, ds.RasterYSize)
+    sx1, sy1 = min(px + size, ds.RasterXSize), min(py + size, ds.RasterYSize)
     if sx1 > sx0 and sy1 > sy0:
         arr = band.ReadAsArray(sx0, sy0, sx1 - sx0, sy1 - sy0).astype(np.float32)
 

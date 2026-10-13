@@ -177,7 +177,6 @@ const SelectedRoute = ({
   // Here rather than in the list, so it holds across switching routes and
   // a folded list gives its height back to the drawer.
   const [listOpen, setListOpen] = useState(true);
-  const hasCruxes = route.cruxes.length > 0;
 
   return (
     <Box
@@ -186,10 +185,9 @@ const SelectedRoute = ({
         display: "flex",
         flexDirection: "column",
         gap: 1,
-        // Fills the rest of the drawer. Below this the list would be too
-        // short to use, so the drawer scrolls instead - only on a small screen.
-        flex: 1,
-        minHeight: hasCruxes && listOpen ? 180 : 0,
+        // Fills the rest of the drawer, and never shrinks below what it
+        // holds - the crux list keeps its height, and the drawer scrolls.
+        flex: "1 0 auto",
       }}
     >
       {/* A safety caveat, so always in plain sight. */}

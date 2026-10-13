@@ -21,7 +21,7 @@ import { isRoadRoute } from "../routes/routeList";
 import type { Route } from "../routes/routeList";
 import { COLORS } from "../theme";
 import { SectionHeading } from "./CollapseToggle";
-import { primarySx, scrollbarSx } from "./styles";
+import { LIST_HEIGHT, primarySx, scrollbarSx } from "./styles";
 
 const SOURCE = {
   routed: { Icon: RouteIcon, title: "Generated" },
@@ -179,7 +179,7 @@ const RouteListSection = ({
           display: "flex",
           flexDirection: "column",
           gap: 0.5,
-          maxHeight: 250,
+          maxHeight: LIST_HEIGHT,
           overflowY: "auto",
           p: "1px",
           ...scrollbarSx,

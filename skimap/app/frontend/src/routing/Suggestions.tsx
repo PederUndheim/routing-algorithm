@@ -84,6 +84,14 @@ const SuggestionCard = ({ suggestion: s, number, active, onActivate, onAccept, o
         <Typography sx={{ color: "white", fontSize: 13, fontWeight: 600, flex: 1 }}>
           {number}. {km(s.startM)} – {km(s.endM)}
         </Typography>
+        {s.minor && (
+          <Typography
+            title="A smaller improvement, shown because the line has few big ones"
+            sx={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}
+          >
+            small
+          </Typography>
+        )}
       </Box>
 
       {ROWS.filter((row) => row.always || s.before[row.key] > 0 || s.after[row.key] > 0).map(

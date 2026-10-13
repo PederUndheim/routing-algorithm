@@ -93,7 +93,44 @@ class Detours(unittest.TestCase):
 
     def test_a_saving_below_the_minimum_is_not_suggested(self):
         bump = [(50, 600), (400, 600), (500, 500), (600, 600), (1150, 600)]
-        self.assertEqual(search(bump, min_saving=1e6), [])
+        self.assertEqual(search(bump, min_saving=1e6, min_suggestions=0), [])
+
+    def test_a_good_line_still_gets_its_biggest_small_fixes(self):
+        # Three bumps, none saving what a full suggestion must: the two
+        # biggest are suggested as minor ones, in order along the line.
+        line = [(50, 600)]
+        for x, height in ((250, 30), (550, 60), (850, 45)):
+            line += [(x - 50, 600), (x, 600 - height), (x + 50, 600)]
+        line.append((1150, 600))
+        cells, along = _line_cells(np.array(line, float), 0.0, NORTH, RES)
+        found = search(line, min_saving=1e6, min_suggestions=2)
+        self.assertEqual(len(found), 2)
+        self.assertTrue(all(d["minor"] for d in found))
+        # Neither is the smallest bump's, which is over by 270 m along.
+        self.assertTrue(all(along[d["last"]] > 270 for d in found))
+        self.assertLessEqual(found[0]["last"], found[1]["first"])
+
+    def test_minor_suggestions_only_fill_up(self):
+        # A line with a full suggestion and min_suggestions 1 gets nothing more.
+        found = search([(50, 600), (400, 600), (500, 500), (600, 600), (1150, 600)],
+                       min_suggestions=1)
+        self.assertEqual([d["minor"] for d in found], [False])
+
+    def test_a_way_never_doubles_back_onto_the_line(self):
+        # A cheap track 40 m north of a dear line, walled off from it but for
+        # one way down 40 m past the line's end. The cheapest way to the end
+        # comes down there and runs back along the line - a hook, not a way
+        # anyone would walk.
+        def col_of(x: float) -> int:
+            return int(x // RES)
+
+        cost = np.full((SIZE, SIZE), 20.0)
+        cost[row_of(640), col_of(100):col_of(850)] = 2.0
+        cost[row_of(630):row_of(610) + 1, col_of(300):col_of(850)] = 200.0
+        cost[row_of(630):row_of(600), col_of(840)] = 2.0
+        line = [(50, 600), (800, 600)]
+        self.assertEqual(len(search(line, cost=cost, max_join_deg=180.0, min_suggestions=0)), 1)
+        self.assertEqual(search(line, cost=cost, min_suggestions=0), [])
 
     def test_a_way_never_runs_beside_another_part_of_the_line(self):
         # Out east on dear ground and back west 150 m north along a cheap
@@ -118,7 +155,8 @@ class Detours(unittest.TestCase):
         cost[2:118, 40:80] = 100.0
         line = [(50, 600), (1150, 600)]
         self.assertEqual(search(line, cost=cost), [])
-        self.assertEqual(len(search(line, cost=cost, max_lengthening=10.0)), 1)
+        # It leaves the line square on, to go round, so the join rule is off.
+        self.assertEqual(len(search(line, cost=cost, max_lengthening=10.0, max_join_deg=180.0)), 1)
 
     def test_a_small_bump_is_worth_a_suggestion(self):
         # 60 m out over 100 m of line: 56 m of extra walking, small but real.

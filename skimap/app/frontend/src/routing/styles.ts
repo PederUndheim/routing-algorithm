@@ -68,3 +68,9 @@ export const scrollbarSx = {
   },
   "&::-webkit-scrollbar-thumb:hover": { backgroundColor: "#2c657b" },
 } as const;
+
+/** The drawer's two lists, Routes and Cruxes, scroll inside themselves past
+ *  this height. The route list never grows taller; the crux list fills
+ *  whatever the drawer has left but never gets shorter, so a long Add a
+ *  route section scrolls the whole drawer instead of squeezing it. */
+export const LIST_HEIGHT = 250;

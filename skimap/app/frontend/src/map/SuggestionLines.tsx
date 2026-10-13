@@ -63,8 +63,9 @@ const Choice = ({ onAccept, onReject }: { onAccept: () => void; onReject: () => 
 );
 
 /** The Selected route's suggestions, numbered as the drawer numbers them:
- *  a halo on the stretch each would replace, and its new way dashed beside
- *  it. Clicking either opens it, here and in the drawer. */
+ *  its new way dashed beside the line, and a halo on the stretch it would
+ *  replace while it is open. Clicking either opens it, here and in the
+ *  drawer. */
 const SuggestionLines = ({
   line,
   suggestions,
@@ -88,15 +89,19 @@ const SuggestionLines = ({
         </Tooltip>
       );
       const middle = pointAtDistance(s.line, geodesicLength(s.line.coordinates) / 2);
+      // A small one is drawn a touch lighter than the rest.
+      const way = active ? 3.5 : s.minor ? 2 : 2.5;
       return (
         <Fragment key={s.id}>
           {replaced.length >= 2 && (
+            // Shown only while open; otherwise invisible, but still there to
+            // be clicked - a stroke at no opacity takes clicks all the same.
             <Polyline
               positions={replaced}
               pathOptions={{
                 color: SUGGESTION_COLORS.replaced,
-                weight: active ? 16 : 12,
-                opacity: faded ? 0.12 : active ? 0.45 : 0.28,
+                weight: active ? 14 : 12,
+                opacity: active ? 0.35 : 0,
                 lineCap: "round",
               }}
               eventHandlers={eventHandlers}
@@ -108,8 +113,8 @@ const SuggestionLines = ({
             positions={latLngsOf(s.line)}
             pathOptions={{
               color: SUGGESTION_COLORS.casing,
-              weight: active ? 8 : 6,
-              opacity: faded ? 0.25 : 0.75,
+              weight: way + 3,
+              opacity: faded ? 0.15 : active ? 0.7 : 0.45,
             }}
             eventHandlers={eventHandlers}
           >
@@ -119,9 +124,9 @@ const SuggestionLines = ({
             positions={latLngsOf(s.line)}
             pathOptions={{
               color: SUGGESTION_COLORS.way,
-              weight: active ? 4 : 3,
-              opacity: faded ? 0.4 : 1,
-              dashArray: "7 7",
+              weight: way,
+              opacity: faded ? 0.35 : active ? 1 : s.minor ? 0.7 : 0.85,
+              dashArray: "6 6",
             }}
             eventHandlers={eventHandlers}
           />

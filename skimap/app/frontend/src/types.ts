@@ -183,6 +183,9 @@ export type Suggestion = {
   line: LineString;
   cost: number;
   old_cost: number;
+  /** A smaller saving, suggested only because the line had few clear ones.
+   *  Missing from a Route saved before there were any. */
+  minor?: boolean;
   /** The stretch it replaces, and the new way. */
   before: GroundSummary;
   after: GroundSummary;
