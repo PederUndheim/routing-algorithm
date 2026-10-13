@@ -52,6 +52,7 @@ jobs:
           docker run --rm "$IMAGE:${{ github.sha }}" python3 -c "
           from app.backend import corridor, server
           corridor._style()
+          import scipy.ndimage, scipy.sparse.csgraph
           from skimap import routing
           routing.open_project()
           print('imports, style and GRASS: ok')

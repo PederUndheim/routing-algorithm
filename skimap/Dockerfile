@@ -4,7 +4,10 @@
 #
 # The official GRASS image already carries what the QGIS-bundled Python does
 # on a desktop: GRASS 8.5, a GDAL with matching osgeo bindings, and numpy.
-# The backend needs nothing else, so there is no pip install.
+# All but scipy, which road routing and the line improver need and the QGIS
+# Python happens to bundle. It is imported inside the functions that use it,
+# so a missing scipy only shows once the server is up and routing - the smoke
+# test in the deploy workflow imports it for that reason.
 #
 # No rasters are baked in. The national layers are ~20 GB, so they live on an
 # Azure Files share that the Container App mounts over data/input and
@@ -15,6 +18,8 @@ FROM osgeo/grass-gis:8.5.0-ubuntu
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     GISBASE=/usr/local/grass
+
+RUN python3 -m pip install --break-system-packages --no-cache-dir scipy
 
 WORKDIR /app
 
