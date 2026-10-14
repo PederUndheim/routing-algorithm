@@ -10,10 +10,12 @@ import useMediaQuery from "@mui/material/useMediaQuery";
 import { useTheme } from "@mui/material/styles";
 import CloseIcon from "@mui/icons-material/Close";
 
+import { hasWidths } from "../corridorWidths";
 import { isRoadRoute } from "../routes/routeList";
 import type { Route } from "../routes/routeList";
 import type {
   AddMode,
+  CorridorWidth,
   CruxEntry,
   CruxNote,
   Factor,
@@ -100,6 +102,8 @@ type RoutePanelProps = {
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
   onCorridorOpacityChange: (opacity: number) => void;
+  corridorWidth: CorridorWidth;
+  onCorridorWidthChange: (width: CorridorWidth) => void;
   isMakingCorridor: boolean;
   onMakeCorridor: () => void;
   /** Optimise route and what it found, for the Selected route - everything
@@ -169,6 +173,8 @@ const RoutePanel = ({
   onShowCorridorChange,
   corridorOpacity,
   onCorridorOpacityChange,
+  corridorWidth,
+  onCorridorWidthChange,
   isMakingCorridor,
   onMakeCorridor,
   suggestionControls,
@@ -330,6 +336,9 @@ const RoutePanel = ({
                   onShowCorridorChange={onShowCorridorChange}
                   corridorOpacity={corridorOpacity}
                   onCorridorOpacityChange={onCorridorOpacityChange}
+                  corridorWidth={corridorWidth}
+                  onCorridorWidthChange={onCorridorWidthChange}
+                  widthsAvailable={hasWidths(selected.corridor)}
                 />
               ) : isRoadRoute(selected) ? (
                 // A terrain corridor around a drive would be ground the car

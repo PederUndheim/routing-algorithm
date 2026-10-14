@@ -44,6 +44,7 @@ import re
 import shutil
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
@@ -59,6 +60,8 @@ ogr.UseExceptions()
 
 GRASS_PROJECT = "skimap25833"
 COST_RASTER = "nat_cost"
+# Only the r.walk engines read it; see config.WALK.
+DEM_RASTER = "nat_dem"
 ROUTES_LAYER = "routes"
 
 # Written per route alongside the line. Everything here is either free (C_opt
@@ -207,22 +210,54 @@ def switch_mapset(grassdata: Path, mapset: str) -> None:
 
 def start_session(grassdata: Optional[Path] = None, *,
                   surface: Optional[Path] = None,
-                  cost_raster: str = COST_RASTER):
+                  cost_raster: str = COST_RASTER,
+                  mapset: str = "PERMANENT"):
     """Start GRASS and link the cost surface in place.
 
     The DEM used to be linked here too, and checked against the surface for
     co-registration, because r.walk read the two as one grid and half a pixel
     of offset silently paired each elevation with a neighbouring cell's
-    friction. Routing is isotropic now and never opens the DEM, so both are
-    gone. Anything that brings elevation back into the router has to bring
-    that check back with it.
+    friction. Production routing is isotropic and never opens the DEM; the
+    r.walk engines (config.WALK) do, and bring the check back with them.
+
+    `mapset` other than PERMANENT routes in a mapset of its own, after
+    linking into PERMANENT where it can read them. The computational region
+    belongs to the mapset, so two batches in one mapset set it under each
+    other - every spread then runs in the other tour's window, and fails or
+    worse. Seen when two lab runs overlapped.
     """
     session, grassdata = open_project(grassdata)
+    surface = surface or paths.national_surface()
     # A variant surface is linked under its own GRASS name, so it can sit in
     # the mapset beside the production one instead of relinking on every
     # switch between them.
-    link_external(cost_raster, surface or paths.national_surface(), grassdata)
+    link_external(cost_raster, surface, grassdata)
+    if _engine() != "cost":
+        dem = paths.layer("dem")
+        check_lattice(surface, dem)
+        link_external(DEM_RASTER, dem, grassdata)
+    if mapset != "PERMANENT":
+        switch_mapset(grassdata, mapset)
     return session
+
+
+def check_lattice(a: Path, b: Path) -> None:
+    """Refuse two rasters whose cells do not line up.
+
+    Checked on the georeferencing, not the arrays: half a pixel of offset
+    leaves every array intact and pairs each cell with its neighbour's
+    value - see skimap.alignment.
+    """
+    ga = gdal.Open(str(a)).GetGeoTransform()
+    gb = gdal.Open(str(b)).GetGeoTransform()
+    if ga[1] != gb[1] or ga[5] != gb[5] or ga[2] or ga[4] or gb[2] or gb[4]:
+        raise RuntimeError(f"{a.name} and {b.name} have different or rotated pixels: "
+                           f"{ga} vs {gb}")
+    for i, size in ((0, ga[1]), (3, ga[5])):
+        off = (ga[i] - gb[i]) / size
+        if abs(off - round(off)) > 1e-6:
+            raise RuntimeError(f"{a.name} sits {off % 1:.2f} of a pixel off {b.name}'s "
+                               f"lattice; elevation would pair with a neighbour's cost.")
 
 
 # --- one route ----------------------------------------------------------
@@ -324,7 +359,10 @@ def _spread_and_trace(tour: Tour, *, cost_raster: str, memory: int, tag: str,
                       start_pt: str, end_pt: str, direction: str,
                       from_start: str, from_end: str, gap: str, gap_pos: str,
                       line: str, smooth: str, scored: str,
-                      params: dict, out_path: Path) -> tuple[ogr.Geometry, float]:
+                      params: dict, out_path: Path,
+                      width_paths: dict[str, Path],
+                      gap_path: Optional[Path] = None,
+                      timings: Optional[dict] = None) -> tuple[ogr.Geometry, float]:
     """One window's worth of work: spread, trace, score, write the corridor.
 
     Everything here depends on the computational region already being set,
@@ -333,62 +371,208 @@ def _spread_and_trace(tour: Tour, *, cost_raster: str, memory: int, tag: str,
     region is the caller's business rather than this function's.
 
     Returns the smoothed line and the symmetric optimal cost; the corridor
-    goes to `out_path`.
+    goes to `out_path`, and each band of config.CORRIDOR_WIDTHS named in
+    `width_paths` to its own.
     """
     import grass.script as gs
 
-    # Spreads from both ends: their sum at a cell is the cost of the best
-    # route through that cell, which is what makes a corridor definable.
-    #
-    # The start-side one is written out separately because it carries outdir
-    # as well. That direction raster records the way back to the start from
-    # every cell and is what r.path walks to build the line, so this single
-    # spread covers both the route and the corridor's `start->x` half.
-    gs.run_command("r.cost", input=cost_raster, start_points=start_pt,
-                   output=from_start, outdir=direction, memory=memory,
-                   overwrite=True, quiet=True)
-    gs.run_command("r.cost", input=cost_raster, start_points=end_pt,
-                   output=from_end, memory=memory, overwrite=True, quiet=True)
-
-    cost_opt = _value_at(from_start, end_pt)
+    timed = _timer(timings)
+    with timed("spread"):
+        cost_opt = _spreads(cost_raster=cost_raster, memory=memory, tag=tag,
+                            start_pt=start_pt, end_pt=end_pt, direction=direction,
+                            from_start=from_start, from_end=from_end, timings=timings)
 
     # How much worse than optimal a route through each cell would be. Clamped
     # at zero because floating point puts the cells on the optimal line a
     # hair below it.
-    gs.mapcalc(f"{gap} = ({from_start} + {from_end}) - {cost_opt}", overwrite=True, quiet=True)
-    gs.mapcalc(
-        f"{gap_pos} = if(isnull({from_start}) || isnull({from_end}), null(), "
-        f"if({gap} < 0, 0, {gap}))",
-        overwrite=True, quiet=True,
-    )
-
-    gs.run_command("r.path", input=direction, format="auto", start_points=end_pt,
-                   vector_path=line, overwrite=True, quiet=True)
-    gs.run_command("v.generalize", input=line, output=smooth, method="douglas",
-                   threshold=float(config.ROUTING["smooth_threshold"]),
+    with timed("corridor"):
+        gs.mapcalc(f"{gap} = ({from_start} + {from_end}) - {cost_opt}",
                    overwrite=True, quiet=True)
-    geometry = _route_geometry(smooth)
+        gs.mapcalc(
+            f"{gap_pos} = if(isnull({from_start}) || isnull({from_end}), null(), "
+            f"if({gap} < 0, 0, {gap}))",
+            overwrite=True, quiet=True,
+        )
 
-    # Ceiling, not a fixed budget - see config.CORRIDOR. The slack term still
-    # governs anything below the ceiling, which is what keeps short tours
-    # band-shaped instead of collapsing to a disc.
-    max_gap = min(cost_opt * float(params["slack"]), float(params["max_gap"]))
-    # 1 on the optimal line, falling to 0 at the edge of the slack band, then
-    # raised to gamma to control how fast it falls away.
-    gs.mapcalc(
-        f"{scored} = float(pow(if({gap_pos} <= {max_gap}, "
-        f"1 - ({gap_pos} / {max_gap}), null()), {params['gamma']}))",
-        overwrite=True, quiet=True,
-    )
-    gs.run_command("r.out.gdal", input=scored, output=str(out_path),
-                   format="GTiff", type="Float32", nodata=config.NODATA,
-                   createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
-                   flags="c", overwrite=True, quiet=True)
+    with timed("line"):
+        gs.run_command("r.path", input=direction, format="auto", start_points=end_pt,
+                       vector_path=line, overwrite=True, quiet=True)
+        gs.run_command("v.generalize", input=line, output=smooth, method="douglas",
+                       threshold=float(config.ROUTING["smooth_threshold"]),
+                       overwrite=True, quiet=True)
+        geometry = _route_geometry(smooth)
+
+    # The narrower and wider bands are the same gap read against another
+    # budget, so they cost a pass over the region each and no spread.
+    with timed("corridor"):
+        for width, path in {None: out_path, **width_paths}.items():
+            band = _band(params, width)
+            max_gap = _max_gap(cost_opt, band)
+            # 1 on the optimal line, falling to 0 at the edge of the slack band,
+            # then raised to gamma to control how fast it falls away.
+            gs.mapcalc(
+                f"{scored} = float(pow(if({gap_pos} <= {max_gap}, "
+                f"1 - ({gap_pos} / {max_gap}), null()), {band['gamma']}))",
+                overwrite=True, quiet=True,
+            )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            _write_corridor(scored, path)
+        if gap_path is not None:
+            # The raw gap, so a band at any other budget can be cut from it
+            # afterwards without spreading again - only the lab asks.
+            # Float32 loses digits a band threshold never reads, so -f.
+            gap_path.parent.mkdir(parents=True, exist_ok=True)
+            gs.run_command("r.out.gdal", input=gap_pos, output=str(gap_path),
+                           format="GTiff", type="Float32", nodata=config.NODATA,
+                           createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
+                           flags="cf", overwrite=True, quiet=True)
     return geometry, cost_opt
 
 
+def _engine() -> str:
+    engine = config.ROUTING.get("engine", "cost")
+    if engine not in ("cost", "walk_line", "walk"):
+        raise ValueError(f"config.ROUTING['engine'] is {engine!r}; "
+                         f"one of 'cost', 'walk_line', 'walk'")
+    return engine
+
+
+def _timer(timings: Optional[dict]):
+    """A context manager adding its block's wall time to timings[key]."""
+    @contextmanager
+    def timed(key: str):
+        t0 = time.perf_counter()
+        try:
+            yield
+        finally:
+            if timings is not None:
+                timings[key] = timings.get(key, 0.0) + time.perf_counter() - t0
+    return timed
+
+
+def _walk_args() -> dict:
+    walk = config.WALK
+    return {"walk_coeff": walk["walk_coeff"], "slope_factor": float(walk["slope_factor"]),
+            "lambda": float(walk["lambda"])}
+
+
+def _spreads(*, cost_raster: str, memory: int, tag: str, start_pt: str, end_pt: str,
+             direction: str, from_start: str, from_end: str,
+             timings: Optional[dict]) -> float:
+    """The two spreads the corridor is made of, and the direction raster the
+    line is traced along. Returns cost_opt, in the corridor's own units.
+
+    Their sum at a cell is the cost of the best route through that cell,
+    which is what makes a corridor definable - and only while both are priced
+    the same way and in the same direction of travel. See config.WALK for
+    how each engine keeps to that.
+    """
+    import grass.script as gs
+
+    engine = _engine()
+    common = dict(memory=memory, overwrite=True, quiet=True)
+    timed = _timer(timings)
+
+    if engine == "cost":
+        # The start-side spread carries outdir as well. That direction raster
+        # records the way back to the start from every cell and is what
+        # r.path walks to build the line, so this single spread covers both
+        # the route and the corridor's `start->x` half.
+        gs.run_command("r.cost", input=cost_raster, start_points=start_pt,
+                       output=from_start, outdir=direction, **common)
+        gs.run_command("r.cost", input=cost_raster, start_points=end_pt,
+                       output=from_end, **common)
+        return _value_at(from_start, end_pt)
+
+    if engine == "walk_line":
+        # The line from r.walk, the corridor from r.cost as in production.
+        # The two disagree about what the optimum is, so the line need not
+        # run along the corridor's spine.
+        walk = f"walk_{tag}"
+        gs.run_command("r.walk", elevation=DEM_RASTER, friction=cost_raster,
+                       start_points=start_pt, output=walk, outdir=direction,
+                       **_walk_args(), **common)
+        if timings is not None:
+            timings["walk_cost"] = _value_at(walk, end_pt)
+        gs.run_command("g.remove", type="raster", name=walk, flags="f", quiet=True)
+        gs.run_command("r.cost", input=cost_raster, start_points=start_pt,
+                       output=from_start, **common)
+        gs.run_command("r.cost", input=cost_raster, start_points=end_pt,
+                       output=from_end, **common)
+        return _value_at(from_start, end_pt)
+
+    # "walk": from the end over -DEM is the cost from each cell TO the end,
+    # walked the tour's way round; see config.WALK.
+    negated = f"negdem_{tag}"
+    with timed("negate"):
+        gs.mapcalc(f"{negated} = -{DEM_RASTER}", overwrite=True, quiet=True)
+    gs.run_command("r.walk", elevation=DEM_RASTER, friction=cost_raster,
+                   start_points=start_pt, output=from_start, outdir=direction,
+                   **_walk_args(), **common)
+    gs.run_command("r.walk", elevation=negated, friction=cost_raster,
+                   start_points=end_pt, output=from_end, **_walk_args(), **common)
+    gs.run_command("g.remove", type="raster", name=negated, flags="f", quiet=True)
+    cost_opt = _value_at(from_start, end_pt)
+    if timings is not None:
+        # The same trip priced from the other end. Equal unless the negation
+        # is not doing what config.WALK says it does.
+        timings["cost_check"] = _value_at(from_end, start_pt)
+    return cost_opt
+
+
+def _band(params: dict, width: Optional[str]) -> dict:
+    """`params` for the standard band (width None), or narrowed or widened
+    by config.CORRIDOR_WIDTHS."""
+    return params if width is None else {**params, **config.CORRIDOR_WIDTHS[width]}
+
+
+def _max_gap(cost_opt: float, params: dict) -> float:
+    """How much dearer than optimal a route through a cell may be and still
+    be in the band. A ceiling, not a fixed budget - see config.CORRIDOR. The
+    slack term still governs anything below the ceiling, which is what keeps
+    short tours band-shaped instead of collapsing to a disc.
+
+    The ceiling is in the spread's own units, so under r.walk it is scaled
+    by config.WALK["max_gap_scale"]."""
+    cap = float(params["max_gap"])
+    if _engine() == "walk":
+        cap *= float(config.WALK["max_gap_scale"])
+    return min(cost_opt * float(params["slack"]), cap)
+
+
+def _write_corridor(raster: str, out_path: Path) -> None:
+    import grass.script as gs
+
+    gs.run_command("r.out.gdal", input=raster, output=str(out_path),
+                   format="GTiff", type="Float32", nodata=config.NODATA,
+                   createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
+                   flags="c", overwrite=True, quiet=True)
+
+
+def width_dir(corridor_dir: Path, width: str) -> Path:
+    """Where the `width` band of every corridor in `corridor_dir` goes: a
+    sibling folder, corridors/ -> corridors_narrow/. Beside rather than
+    inside, so whatever globs corridors/*.tif still finds the standard band
+    and only that - merging, scoring, pruning and the lab all do."""
+    return corridor_dir.with_name(f"{corridor_dir.name}_{width}")
+
+
+def corridor_widths(corridor: Path) -> dict[str, Path]:
+    """The narrower and wider bands written beside one standard corridor,
+    those that are on disk. Empty for one routed before there were any."""
+    found = {}
+    for width in config.CORRIDOR_WIDTHS:
+        path = width_dir(corridor.parent, width) / corridor.name
+        if path.is_file():
+            found[width] = path
+    return found
+
+
 def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
-              cost_raster: str = COST_RASTER) -> tuple[ogr.Geometry, float, Path]:
+              cost_raster: str = COST_RASTER,
+              widths: bool = True,
+              gap_path: Optional[Path] = None,
+              timings: Optional[dict] = None) -> tuple[ogr.Geometry, float, Path]:
     """Route one tour and write its corridor.
 
     `buffer_m` is a ceiling, not a fixed value - see `_region_buffer`.
@@ -398,6 +582,13 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
     not by the terrain, and the line inside it is not known to be the best
     one, because r.cost never looked past the edge. See `_window_ladder` and
     config.ROUTING["region_buffer_retry_cap_m"].
+
+    `widths` also writes each band of config.CORRIDOR_WIDTHS into its own
+    folder beside `corridor_dir` - see width_dir and corridor_widths.
+
+    `gap_path` also writes the raw gap raster there. `timings`, if given, is
+    filled with seconds per step, the window's cell count and how many
+    windows it took - what the lab compares engines by.
 
     Returns the smoothed line, the symmetric optimal cost, and the corridor.
     """
@@ -417,6 +608,8 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
     corridor_dir.mkdir(parents=True, exist_ok=True)
     out_path = corridor_dir / f"{tour.fid:03d}_{slug(tour.name)}.tif"
     params = config.CORRIDOR
+    width_paths = ({width: width_dir(corridor_dir, width) / out_path.name
+                    for width in config.CORRIDOR_WIDTHS} if widths else {})
 
     # Widest window first would be simpler and is the wrong way round: the
     # window is quadratic in the buffer and almost every tour is fine in its
@@ -430,6 +623,9 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
         gs.run_command("g.region", raster=cost_raster, align=cost_raster,
                        w=min(xs) - region_buffer_m, e=max(xs) + region_buffer_m,
                        s=min(ys) - region_buffer_m, n=max(ys) + region_buffer_m)
+        if timings is not None:
+            timings["attempts"] = attempt + 1
+            timings["cells"] = timings.get("cells", 0) + int(gs.region()["cells"])
 
         # Re-imported per attempt: v.in.ascii writes into the current region,
         # so points imported under the previous window are not reusable here.
@@ -441,10 +637,16 @@ def route_one(tour: Tour, corridor_dir: Path, *, buffer_m: float,
             start_pt=start_pt, end_pt=end_pt, direction=direction,
             from_start=from_start, from_end=from_end, gap=gap, gap_pos=gap_pos,
             line=line, smooth=smooth, scored=scored, params=params,
-            out_path=out_path,
+            out_path=out_path, width_paths=width_paths,
+            gap_path=gap_path, timings=timings,
         )
 
-        touching = corridor_touches_edge(out_path)
+        # The widest band is the one to ask. The bands are nested, so it
+        # reaches the edge whenever any does - and one cut off by the window
+        # draws as a straight edge in the review whichever width it is.
+        widest = max([None, *width_paths],
+                     key=lambda width: _max_gap(cost_opt, _band(params, width)))
+        touching = corridor_touches_edge(width_paths.get(widest, out_path))
         if not touching:
             break
         if attempt == len(ladder) - 1:
@@ -546,13 +748,26 @@ class _LineBand:
     along: np.ndarray      # metres along the line where each is entered
     on_line: np.ndarray    # the surface under each
     line_cost: float
+    # `used` against each narrower or wider budget asked for, by width.
+    used_widths: dict[str, str]
 
 
-def _line_band(line_xy: np.ndarray, *, cost_raster: str, tag: str) -> _LineBand:
+def _line_params(width: Optional[str]) -> dict:
+    """config.LINE_CORRIDOR for the standard band (width None), or narrowed
+    or widened by config.LINE_CORRIDOR_WIDTHS."""
+    params = config.LINE_CORRIDOR
+    return params if width is None else {**params, **config.LINE_CORRIDOR_WIDTHS[width]}
+
+
+def _line_band(line_xy: np.ndarray, *, cost_raster: str, tag: str,
+               widths: Iterable[str] = ()) -> _LineBand:
     """Spread from the line through the surface, and score every cell by
     how much of the budget reaching it takes - see the note above
     _line_cells. Shared by the corridor and the optimiser, so a suggestion
-    never leaves the band the map shows."""
+    never leaves the band the map shows.
+
+    `widths` scores the same spread against the budgets of those bands of
+    config.LINE_CORRIDOR_WIDTHS too, in a window big enough for the widest."""
     import grass.script as gs
     from grass.script import array as garray
 
@@ -561,7 +776,7 @@ def _line_band(line_xy: np.ndarray, *, cost_raster: str, tag: str) -> _LineBand:
         raise ValueError("A line needs at least two points.")
     starts, reach, distance, used = (f"lstart_{tag}", f"lreach_{tag}",
                                      f"ldist_{tag}", f"lused_{tag}")
-    params = config.LINE_CORRIDOR
+    bands = {None: _line_params(None), **{w: _line_params(w) for w in widths}}
     memory = int(config.ROUTING["grass_memory_mb"])
     west, east = xy[:, 0].min(), xy[:, 0].max()
     south, north = xy[:, 1].min(), xy[:, 1].max()
@@ -599,56 +814,70 @@ def _line_band(line_xy: np.ndarray, *, cost_raster: str, tag: str) -> _LineBand:
     # spare is room for the cheapest way to a cell near the edge of the band
     # to swing out around something first. A routed corridor widens its
     # window and tries again when it touches an edge; this one has no need.
-    max_m = float(params["max_m"])
-    buffer_m = 2 * max_m if max_m > 0 else float(config.ROUTING["region_buffer_floor_m"])
+    # Sized for the widest band asked for, which the others fit inside.
+    floor_m = float(config.ROUTING["region_buffer_floor_m"])
+    buffer_m = max(2 * float(p["max_m"]) if float(p["max_m"]) > 0 else floor_m
+                   for p in bands.values())
     gs.run_command("g.region", raster=cost_raster, align=cost_raster,
                    w=west - buffer_m, e=east + buffer_m,
                    s=south - buffer_m, n=north + buffer_m)
     wide = gs.region()
     gs.run_command("r.cost", input=cost_raster, start_raster=starts,
                    output=reach, memory=memory, overwrite=True, quiet=True)
+    scratch = [starts, reach]
+    if any(float(p["max_m"]) > 0 for p in bands.values()):
+        gs.run_command("r.grow.distance", input=starts, distance=distance,
+                       overwrite=True, quiet=True)
+        scratch.append(distance)
+
     # How far through its budget each cell is: the cost to reach it against
     # max_cost, or its distance from the line against max_m, whichever is
     # further on. The band fades on that, so where the cap is what stops it
     # the edge still fades rather than cuts.
-    share = f"{reach} / {float(params['max_cost'])}"
-    scratch = [starts, reach, used]
-    if max_m > 0:
-        gs.run_command("r.grow.distance", input=starts, distance=distance,
-                       overwrite=True, quiet=True)
-        share = f"max({share}, {distance} / {max_m})"
-        scratch.append(distance)
-    gs.mapcalc(f"{used} = float({share})", overwrite=True, quiet=True)
+    names = {}
+    for width, params in bands.items():
+        name = used if width is None else f"{used}_{width}"
+        share = f"{reach} / {float(params['max_cost'])}"
+        if float(params["max_m"]) > 0:
+            share = f"max({share}, {distance} / {float(params['max_m'])})"
+        gs.mapcalc(f"{name} = float({share})", overwrite=True, quiet=True)
+        scratch.append(name)
+        names[width] = name
 
     # Into the wide window's own rows and columns, where the caller reads.
     offset = np.array([round((wide["n"] - narrow["n"]) / res),
                        round((narrow["w"] - wide["w"]) / res)])
     return _LineBand(used=used, scratch=scratch, cells=cells + offset, along=along,
-                     on_line=on_line, line_cost=line_cost)
+                     on_line=on_line, line_cost=line_cost,
+                     used_widths={w: n for w, n in names.items() if w is not None})
 
 
 def line_corridor(line_xy: np.ndarray, out_path: Path, *,
-                  cost_raster: str = COST_RASTER, tag: str = "line") -> float:
+                  cost_raster: str = COST_RASTER, tag: str = "line",
+                  width_paths: Optional[dict[str, Path]] = None) -> float:
     """Write the corridor around `line_xy` (EPSG:25833, in order) to
     `out_path`, and return the line's own cost.
+
+    `width_paths` also writes those bands of config.LINE_CORRIDOR_WIDTHS,
+    each to its own path, from the same spread.
 
     The cost is what r.cost would charge to walk the cells the line crosses,
     so it is on the same scale as a routed Route's.
     """
     import grass.script as gs
 
-    band = _line_band(line_xy, cost_raster=cost_raster, tag=tag)
+    width_paths = width_paths or {}
+    band = _line_band(line_xy, cost_raster=cost_raster, tag=tag, widths=width_paths)
     scored = f"lscore_{tag}"
-    gs.mapcalc(
-        f"{scored} = float(pow(if({band.used} <= 1, 1 - {band.used}, null()), "
-        f"{config.LINE_CORRIDOR['gamma']}))",
-        overwrite=True, quiet=True,
-    )
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    gs.run_command("r.out.gdal", input=scored, output=str(out_path),
-                   format="GTiff", type="Float32", nodata=config.NODATA,
-                   createopt="COMPRESS=DEFLATE,PREDICTOR=3,TILED=YES",
-                   flags="c", overwrite=True, quiet=True)
+    for width, path in {None: out_path, **width_paths}.items():
+        used = band.used if width is None else band.used_widths[width]
+        gs.mapcalc(
+            f"{scored} = float(pow(if({used} <= 1, 1 - {used}, null()), "
+            f"{_line_params(width)['gamma']}))",
+            overwrite=True, quiet=True,
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_corridor(scored, path)
     gs.run_command("g.remove", type="raster", name=",".join(band.scratch + [scored]),
                    flags="f", quiet=True)
     return band.line_cost
@@ -1219,16 +1448,25 @@ def _corridor_files(corridor_dir: Path, tour_fid: int) -> list[Path]:
 
     Matched on the numeric prefix rather than on `f"{fid:03d}_"`, so fid 58
     cannot claim fid 588's files, and a tour renamed since it was routed still
-    finds the corridor it wrote under the old name.
+    finds the corridor it wrote under the old name. Its narrower and wider
+    bands go with it, from their own folders.
     """
-    if not corridor_dir.is_dir():
-        return []
     out = []
-    for path in corridor_dir.glob("*.tif*"):   # .tif, .tif.aux.xml, .tif.ovr
-        match = re.match(r"^(\d+)_", path.name)
-        if match and int(match.group(1)) == tour_fid:
-            out.append(path)
+    for directory in [corridor_dir, *_width_dirs(corridor_dir)]:
+        if not directory.is_dir():
+            continue
+        for path in directory.glob("*.tif*"):   # .tif, .tif.aux.xml, .tif.ovr
+            match = re.match(r"^(\d+)_", path.name)
+            if match and int(match.group(1)) == tour_fid:
+                out.append(path)
     return out
+
+
+def _width_dirs(corridor_dir: Path) -> list[Path]:
+    """The width folders beside `corridor_dir`, by config.CORRIDOR_WIDTHS -
+    not by globbing corridors_*, which would also match corridors_all.tif
+    and any backup folder someone made by hand."""
+    return [width_dir(corridor_dir, width) for width in config.CORRIDOR_WIDTHS]
 
 
 def _corridor_fids(corridor_dir: Path) -> set[int]:
@@ -1356,6 +1594,8 @@ def run_batch(
     prune: bool = True,
     surface: Optional[Path] = None,
     cost_raster: str = COST_RASTER,
+    gap_dir: Optional[Path] = None,
+    mapset: str = "PERMANENT",
 ) -> list[RouteResult]:
     """Route every tour, writing lines to routes.gpkg and corridors beside it.
 
@@ -1366,6 +1606,10 @@ def run_batch(
     prune_stale. It MUST be False whenever `tours` is a subset rather than the
     whole file, because every tour left out of the subset looks exactly like a
     deleted one; the CLI turns it off for --fid.
+
+    Each tour's timings go to timings.csv beside routes.gpkg - see
+    TIMING_FIELDS. `gap_dir` keeps every tour's raw gap raster there too.
+    `mapset` - see start_session.
     """
     out_dir = out_dir or paths.ROUTES
     routes_path = out_dir / "routes.gpkg"
@@ -1390,6 +1634,9 @@ def run_batch(
                     "re-run."
                 )
         _clear_dir(corridor_dir)
+        for directory in _width_dirs(corridor_dir):
+            _clear_dir(directory)
+        (out_dir / TIMINGS).unlink(missing_ok=True)
     elif prune:
         # After --force there is nothing left to prune; before it, this is what
         # keeps routes.gpkg in step with a tour file that has been edited.
@@ -1400,23 +1647,37 @@ def run_batch(
 
     floor_m = float(config.ROUTING["region_buffer_floor_m"])
     print(f"{len(tours)} tours, {len(tours) - len(todo)} already routed, {len(todo)} to do")
+    # Said rather than re-routed: a build from before the widths existed
+    # would otherwise be routed again in full the first time it is resumed,
+    # which is a day for the country and should be asked for with --force.
+    for width in config.CORRIDOR_WIDTHS:
+        have = _corridor_fids(width_dir(corridor_dir, width))
+        lacking = len((done & {t.fid for t in tours}) - have)
+        if lacking:
+            print(f"  {lacking} routed tour(s) have no {width} corridor - "
+                  f"--force to route them again with one")
     print(f"  buffer {floor_m:.0f}-{buffer_m:.0f} m, scaled to each tour's length -> {out_dir}")
     if not todo:
         if merge:
             merge_corridors(corridor_dir, out_dir / "corridors_all.tif")
         return []
 
-    start_session(surface=surface, cost_raster=cost_raster)
+    start_session(surface=surface, cost_raster=cost_raster, mapset=mapset)
     ds, layer = _open_routes(routes_path)
     results: list[RouteResult] = []
     started = time.time()
 
     for i, tour in enumerate(todo, 1):
         t0 = time.time()
+        timings: dict = {}
         try:
+            gap_path = (gap_dir / f"{tour.fid:03d}_{slug(tour.name)}.tif"
+                        if gap_dir is not None else None)
             geometry, cost_opt, corridor = route_one(
-                tour, corridor_dir, buffer_m=buffer_m, cost_raster=cost_raster)
+                tour, corridor_dir, buffer_m=buffer_m, cost_raster=cost_raster,
+                gap_path=gap_path, timings=timings)
             length = geometry.Length()
+            _write_timings(out_dir / TIMINGS, tour, time.time() - t0, cost_opt, timings)
 
             feat = ogr.Feature(layer.GetLayerDefn())
             feat.SetField("tour_fid", tour.fid)
@@ -1449,6 +1710,30 @@ def run_batch(
     if merge:
         merge_corridors(corridor_dir, out_dir / "corridors_all.tif")
     return results
+
+
+TIMINGS = "timings.csv"
+# Seconds per step of route_one, summed over every window it took. `spread`
+# includes `negate`; `other` is region setup, point imports and clean-up.
+TIMING_FIELDS = ("tour_fid", "engine", "seconds", "spread", "negate", "line",
+                 "corridor", "other", "attempts", "cells", "cost_opt",
+                 "walk_cost", "cost_check")
+
+
+def _write_timings(path: Path, tour: Tour, seconds: float, cost_opt: float,
+                   timings: dict) -> None:
+    import csv
+
+    steps = sum(timings.get(k, 0.0) for k in ("spread", "line", "corridor"))
+    row = {"tour_fid": tour.fid, "engine": _engine(), "seconds": seconds,
+           "other": seconds - steps, "cost_opt": cost_opt, **timings}
+    new = not path.exists()
+    with path.open("a", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=TIMING_FIELDS)
+        if new:
+            writer.writeheader()
+        writer.writerow({k: (round(v, 3) if isinstance(v, float) else v)
+                         for k, v in row.items() if k in TIMING_FIELDS})
 
 
 def merge_corridors(corridor_dir: Optional[Path] = None,

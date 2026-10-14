@@ -27,8 +27,20 @@
     {
       "name": "baseline",
       "label": "Production 3.0 / 3.0",
-      "routes": "routing_output/routes.gpkg",
-      "corridors": "routing_output/corridors"
+      "routes": "review/frozen/baseline_20260918/routes.gpkg",
+      "corridors": "review/frozen/baseline_20260918/corridors"
+    },
+    {
+      "name": "edge_buffer2",
+      "label": "Corners + buffer 2 (production)",
+      "routes": "test/track_variants/edge_buffer2/routes.gpkg",
+      "corridors": "test/track_variants/edge_buffer2/corridors"
+    },
+    {
+      "name": "edge_buffer5",
+      "label": "Corners + buffer 5",
+      "routes": "test/track_variants/edge_buffer5/routes.gpkg",
+      "corridors": "test/track_variants/edge_buffer5/corridors"
     },
     {
       "name": "more_tracks_5",

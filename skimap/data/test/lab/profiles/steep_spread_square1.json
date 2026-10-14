@@ -1,6 +1,0 @@
-{
-  "name": "steep_spread_square1",
-  "note": "Every cell >= 30 deg spreads its terrain cost to its 8 neighbours at full value - the original proposal.",
-  "extends": "steep_spread_control",
-  "config": {"STEEP_SPREAD": {"radius_px": 1, "footprint": "square", "share": 1.0}}
-}

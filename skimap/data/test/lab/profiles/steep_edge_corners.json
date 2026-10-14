@@ -1,0 +1,11 @@
+{
+  "name": "steep_edge_corners",
+  "note": "Corner gaps only: where two cells >= 30 deg meet at a corner with gentle ground both other sides, the steeper gentle cell takes the cheaper steep cost. Result (96 tours vs control): 12 moved >50 m, 6 >250 m - near-ties tipped where the line used a corner gap (1060, 1096, 1012). Totals flat: on >=30 deg +0.3%, within 10 m -4.7%, exp/km +2.4% (11 up / 11 down). Closes the leak; does not by itself move routes off edges.",
+  "extends": "steep_edge_control",
+  "config": {
+    "STEEP_EDGE": {
+      "corners": true,
+      "buffer": 0.0
+    }
+  }
+}

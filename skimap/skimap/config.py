@@ -124,20 +124,33 @@ WEIGHTS = {
     "pra_runout": 0.35,
 }
 
-# Steep ground spread onto its neighbours: a cell costs at least `share` of
-# the terrain cost of the dearest cell at or above `threshold_deg` within
-# `radius_px` cells - see combine.spread_steep. It closes the corner gaps
-# r.cost slips through diagonally between steep cells, and keeps routes a
-# cell or two off the edge of steep ground. "square" reaches the 8
-# neighbours at radius 1, "disk" the 4. Spread before the ridge charge and
-# the barriers, and the reduction gate still reads each cell's own slope, so
-# a road beside a steep cut keeps its reduction. radius_px 0 turns it off,
-# which is production - tried in data/test/lab/profiles/steep_spread_*.json.
-STEEP_SPREAD = {
-    "radius_px": 0,
+# The edge of steep ground (slope >= threshold_deg), made harder to slip
+# past. Two independent steps; production has both since 2026-10-13, corners
+# plus a buffer of 2, picked from the lab runs in
+# data/test/lab/profiles/steep_edge_*.json (96 tours: 85 moved off the edge,
+# none onto it, steep metres and exposure flat). Buffer 5 is built beside it
+# as data/test/track_variants/edge_buffer5 for the corridor review.
+#
+# `corners` closes the diagonal gaps: r.cost charges a diagonal step on its
+# two end cells only, so where two steep cells meet at a corner with gentle
+# ground on both other sides, a route crosses between them and pays for
+# neither. The steeper of the two gentle cells takes the cheaper of the two
+# steep cells' cost - one cell per gap, nothing else moves. See
+# combine.fill_corners.
+#
+# `buffer` adds that many cost units to every gentle cell touching steep
+# ground (filled corners count as steep), keeping routes a cell off the edge.
+# Keep it small: pricing the edge like the steep ground itself closes the
+# gentle gaps between steep patches, and routes then cut across the steep
+# ground instead of round it - measured, +24% metres >= 30 deg.
+#
+# Both run before the ridge charge and the barriers, and the reduction gate
+# still reads each cell's own slope, so a road beside a steep cut keeps its
+# reduction.
+STEEP_EDGE = {
     "threshold_deg": 30.0,
-    "footprint": "square",
-    "share": 1.0,
+    "corners": True,
+    "buffer": 2.0,
 }
 
 # Applied after road/trail reductions, so a road cannot reduce a cliff back
@@ -206,6 +219,41 @@ ROUTING = {
     # 0 disables the retry and restores the single-window behaviour.
     "region_buffer_retry_cap_m": 20000.0,
     "grass_memory_mb": 2500,
+    # Which spread routes - see WALK. "cost" is production.
+    "engine": "cost",
+}
+
+# Anisotropic routing, for trying r.walk in place of r.cost. Chosen by
+# ROUTING["engine"]:
+#
+#   "cost"       two r.cost spreads; the line and the corridor alike.
+#   "walk_line"  r.walk draws the line, two r.cost spreads still make the
+#                corridor - what routing did before it went isotropic. Three
+#                spreads, and the line is not the corridor's optimum.
+#   "walk"       both spreads r.walk. The end-side one runs over the NEGATED
+#                DEM: r.walk prices a step away from its start point, so from
+#                the end over -DEM it prices each step the way the tour walks
+#                it, giving the cost from a cell TO the end. start->x + x->end
+#                is then the best route through x, as with r.cost. Checked on
+#                fid 45: 8865 from either end, to the unit.
+#
+# Defaults are the parameters the r.walk router last ran with (Langmuir's
+# walking coefficients, lambda 0.6), read back from GRASS's own history.
+WALK = {
+    "walk_coeff": "0.72,6.0,1.9998,-1.9998",
+    "lambda": 0.6,
+    "slope_factor": -0.2125,
+    # r.walk counts seconds of walking plus lambda * friction per METRE, where
+    # r.cost counts friction per cell: fid 45 is 394 one way and 8865 the
+    # other. CORRIDOR's max_gap is in the spread's own units, so under "walk"
+    # it is multiplied by this to buy a band of comparable width.
+    #
+    # 8 matches r.cost's band area over the 96 lab tours (1.08x, IoU 0.77;
+    # tests.walk_report calibrate). The units ratio, a median 12.4, gives
+    # 1.43x: slack is a share of the trip's cost, and under r.walk that cost
+    # includes the climb, which a sideways detour does not pay again. So at 8
+    # the cap, not slack, sets the band on 68 of 96 tours against r.cost's 36.
+    "max_gap_scale": 8.0,
 }
 
 # Band of near-optimal ground around a route. `slack` bounds the budget as a
@@ -213,6 +261,21 @@ ROUTING = {
 # `max_gap` caps it outright, holding its extent on long ones. `gamma`
 # sharpens the edge falloff.
 CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0}
+
+# A narrower and a wider band written beside CORRIDOR's, from the same two
+# spreads - each is one more threshold on the gap raster, not another route.
+# Each folder of corridors gets a sibling per width (corridors_narrow/,
+# corridors_wide/ beside corridors/), so everything that reads corridors/
+# still reads the standard band and nothing else; see routing.width_dir.
+#
+# max_gap scales with slack: it is the cap that takes over on long tours, so
+# left at 300 the wide band would be the standard one wherever cost_opt
+# passes 1500 - most of the tours long enough for width to matter.
+# An empty dict writes the standard band alone.
+CORRIDOR_WIDTHS = {
+    "narrow": {"slack": 0.1, "max_gap": 150.0},
+    "wide": {"slack": 0.3, "max_gap": 450.0},
+}
 
 # Band around a line the router did not make - drawn, uploaded or edited; see
 # routing.line_corridor. Its own settings so the two kinds can be tuned apart.
@@ -237,6 +300,18 @@ CORRIDOR = {"slack": 0.2, "gamma": 4.0, "max_gap": 300.0}
 # The optimiser searches inside this same band, so a thinner corridor also
 # keeps its suggestions closer to the line.
 LINE_CORRIDOR = {"max_cost": 75.0, "max_m": 300.0, "gamma": 4.0}
+
+# LINE_CORRIDOR's narrower and wider bands, from the same spread. Both limits
+# move by the same factor, two thirds and double, so the band narrows or
+# widens on easy and steep ground alike rather than only where one of them
+# bites. Wide is the 150 that read as too wide for the standard band - as a
+# choice beside it, that is the point. 1.5x (110 / 450 m) was tried first
+# and was too close to standard to be worth a step of its own.
+# The optimiser always searches the standard band, whichever is on screen.
+LINE_CORRIDOR_WIDTHS = {
+    "narrow": {"max_cost": 50.0, "max_m": 200.0},
+    "wide": {"max_cost": 150.0, "max_m": 600.0},
+}
 
 # Improving a drawn or uploaded line: stretches of it with a clearly cheaper
 # way inside its own corridor, each for the user to accept or not - see

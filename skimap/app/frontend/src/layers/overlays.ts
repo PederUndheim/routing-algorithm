@@ -1,9 +1,11 @@
 import slopeThumb from "../assets/overlays/slope.png";
 import runoutThumb from "../assets/overlays/runout.png";
+import coloredCorridorsThumb from "../assets/overlays/colored_corridors.png";
 
 /** NVE's steepness tiles - the same two the cost surface is built to agree
- *  with, so they are the quickest way to see whether a route makes sense. */
-export type OverlayId = "slope" | "slope_runout";
+ *  with, so they are the quickest way to see whether a route makes sense -
+ *  and the reviewed tours' corridors, in the exposure class each one got. */
+export type OverlayId = "slope" | "slope_runout" | "colored_corridors";
 
 export type OverlayDef = {
   id: OverlayId;
@@ -15,9 +17,17 @@ export type OverlayDef = {
   opacityDefault: number;
   onByDefault: boolean;
   thumbUrl: string;
+  /** For a layer that covers a little of a large area: a JSON list of the
+   *  tiles that exist, so only those are fetched (see IndexedTileLayer). */
+  tileIndexUrl?: string;
 };
 
 const NVE = "https://gis3.nve.no/arcgis/rest/services/wmts";
+
+/** Static tiles shipped with the app, written by `python -m app.corridor_tiles`
+ *  from data/colored_corridors. BASE_URL, because Pages serves the site
+ *  under the repo name. */
+const COLORED_CORRIDORS = `${import.meta.env.BASE_URL}colored_corridors`;
 
 export const OVERLAYS: OverlayDef[] = [
   {
@@ -37,6 +47,16 @@ export const OVERLAYS: OverlayDef[] = [
     opacityDefault: 0.38,
     onByDefault: false,
     thumbUrl: runoutThumb,
+  },
+  {
+    id: "colored_corridors",
+    label: "Corridors",
+    tileUrl: `${COLORED_CORRIDORS}/{z}/{x}/{y}.png`,
+    maxNativeZoom: 12,
+    opacityDefault: 0.5,
+    onByDefault: false,
+    thumbUrl: coloredCorridorsThumb,
+    tileIndexUrl: `${COLORED_CORRIDORS}/index.json`,
   },
 ];
 

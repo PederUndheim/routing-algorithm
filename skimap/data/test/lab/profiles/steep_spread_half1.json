@@ -1,6 +1,0 @@
-{
-  "name": "steep_spread_half1",
-  "note": "Every cell >= 30 deg spreads to its 8 neighbours at HALF value - a toll ring rather than a wider wall.",
-  "extends": "steep_spread_control",
-  "config": {"STEEP_SPREAD": {"radius_px": 1, "footprint": "square", "share": 0.5}}
-}

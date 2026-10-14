@@ -49,7 +49,7 @@ from typing import Optional
 from skimap import paths, routing, tours as tours_module
 from skimap.corridor_review import models as models_module
 from skimap.corridor_review import render, server, sources, stats as stats_module
-from skimap.corridor_review.store import LADDER, Store
+from skimap.corridor_review.store import LADDER, Store, verdict_width
 
 EXPORT = paths.DATA / "review" / "export"
 
@@ -57,6 +57,7 @@ EXPORT = paths.DATA / "review" / "export"
 # both kept, not just the result - see store.py.
 REVIEW_FIELDS = (
     ("review_model", "OFTString"),      # which model's corridor won
+    ("review_width", "OFTString"),      # at which width: narrow, standard, wide
     ("review_colour", "OFTString"),     # the class after the reviewer's shift
     ("review_computed", "OFTString"),   # what exposure.classify() had said
     ("review_shift", "OFTInteger"),     # -1, 0 or +1
@@ -157,6 +158,11 @@ def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
     for name in sorted(unknown):
         print(f"  {name:16s} {counts[name]:4d}         (not in the current config)")
 
+    print("\nchosen width:")
+    by_width = store.counts_by_width(names)
+    for width in sources.widths():
+        print(f"  {width:8s} {by_width.get(width, 0):4d}")
+
     print("\nexposure class as reviewed:")
     by_colour = store.counts_by_colour(names)
     for colour in LADDER:
@@ -198,7 +204,7 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     rows = {m.name: sources.model_rows(m) for m in config.models}
-    corridors = {m.name: sources.corridor_paths(m) for m in config.models}
+    corridors = _CorridorLookup()
     tour_list = tours_module.read_tours(paths.TOURS)
 
     out_path = out_dir / "tours_reviewed.gpkg"
@@ -243,11 +249,12 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
                 for key in ("exp_score", "length_m", "cost_opt"):
                     if row.get(key) is not None:
                         feature.SetField(key, float(row[key]))
-                corridor = corridors[model.name].get(tour.fid)
+                corridor = corridors.get(model, verdict_width(verdict), tour.fid)
                 if corridor is not None and verdict["colour"] in winners:
                     winners[verdict["colour"]].append(corridor)
 
             feature.SetField("review_model", verdict["model"])
+            feature.SetField("review_width", verdict_width(verdict))
             feature.SetField("review_colour", verdict["colour"])
             feature.SetField("review_computed", verdict["colour_computed"])
             feature.SetField("review_shift", int(verdict["shift"]))
@@ -296,6 +303,23 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
     return out_path
 
 
+class _CorridorLookup:
+    """Corridor paths by model, width and fid, each folder read once.
+
+    A verdict names the width it was picked at, so the final layer draws
+    each tour's corridor at its own width - narrow up one valley, wide in
+    the next - rather than one width for the country."""
+
+    def __init__(self):
+        self._found: dict[tuple[str, str], dict[int, Path]] = {}
+
+    def get(self, model, width: str, fid: int) -> Optional[Path]:
+        key = (model.name, width)
+        if key not in self._found:
+            self._found[key] = sources.corridor_paths(model, width)
+        return self._found[key].get(fid)
+
+
 def _route_geometry(model, fid: int):
     """The model's own line for one tour, in EPSG:25833, or None."""
     from osgeo import ogr
@@ -335,7 +359,7 @@ def colored_corridors(out_dir: Optional[Path] = None) -> dict[str, Path]:
         print(f"{len(unreviewed)} tour(s) have no verdict yet, left out of "
               f"colored_corridors: {unreviewed}")
 
-    corridor_cache: dict[str, dict[int, Path]] = {}
+    corridor_cache = _CorridorLookup()
     lines: dict[int, "overlap.Line"] = {}
     corridors: dict[int, Path] = {}
     skipped: list[tuple[int, str]] = []
@@ -345,10 +369,10 @@ def colored_corridors(out_dir: Optional[Path] = None) -> dict[str, Path]:
         if model is None:
             skipped.append((fid, f"model {verdict['model']!r} not in {review_config.path.name}"))
             continue
-        by_fid = corridor_cache.setdefault(model.name, sources.corridor_paths(model))
-        corridor = by_fid.get(fid)
+        width = verdict_width(verdict)
+        corridor = corridor_cache.get(model, width, fid)
         if corridor is None:
-            skipped.append((fid, f"no corridor for {model.name}"))
+            skipped.append((fid, f"no {width} corridor for {model.name}"))
             continue
         geometry = _route_geometry(model, fid)
         if geometry is None or geometry.GetPointCount() < 2:

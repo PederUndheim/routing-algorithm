@@ -17,6 +17,7 @@ this one cannot be built on every machine that needs to review corridors.
     POST /api/clear               drop a verdict
     POST /api/flag                mark a tour as needing work in tours.gpkg
     GET  /corridor/<model>/<fid>.png   one corridor overlay, rendered on demand
+    GET  /corridor/<model>/<width>/<fid>.png   the same at a narrower or wider width
     GET  /tracks/<fid>.json       where this tour's GPS tracks go, or none
     GET  /tracks/<fid>.png        that overlay
 
@@ -52,7 +53,8 @@ MAX_BODY_BYTES = 16 * 1024
 
 # Anchored and character-classed, so nothing reaching the filesystem can hold
 # a separator or a "..". The whole path is matched, not searched.
-CORRIDOR_PATH = re.compile(r"/corridor/(?P<model>[A-Za-z0-9_.-]{1,64})/(?P<fid>\d{1,9})\.png")
+CORRIDOR_PATH = re.compile(r"/corridor/(?P<model>[A-Za-z0-9_.-]{1,64})/"
+                           r"(?:(?P<width>[a-z]{1,16})/)?(?P<fid>\d{1,9})\.png")
 TOUR_PATH = re.compile(r"/api/tour/(?P<fid>\d{1,9})")
 STATIC_PATH = re.compile(r"/static/(?P<name>[A-Za-z0-9_.-]{1,64})")
 
@@ -92,6 +94,14 @@ class Review:
 
         self.rows = {m.name: sources.model_rows(m) for m in self.config.models}
         self.corridors = {m.name: sources.corridor_paths(m) for m in self.config.models}
+        # The narrower and wider bands, by model and width. A model routed
+        # before there were any has none, and its panel stays at standard.
+        self.widths = sources.widths()
+        self.width_corridors = {
+            m.name: {w: sources.corridor_paths(m, w)
+                     for w in self.widths if w != sources.STANDARD}
+            for m in self.config.models
+        }
         self.tours = sources.tour_order()
         self.index = {tour["fid"]: i for i, tour in enumerate(self.tours)}
 
@@ -111,8 +121,11 @@ class Review:
                 print(f"  group {group!r} ({label}) - "
                       f"{len(self.group_fids[group])} tours")
             for model in members:
+                by_width = "".join(
+                    f", {len(found):4d} {width}"
+                    for width, found in self.width_corridors[model.name].items())
                 print(f"  {model.name:16s} {len(self.rows[model.name]):4d} routes, "
-                      f"{len(self.corridors[model.name]):4d} corridors")
+                      f"{len(self.corridors[model.name]):4d} corridors{by_width}")
         print(f"  {len(self.tours)} tours, {self._reviewed()} already reviewed")
         orphaned = len(self.store.verdicts) - self._reviewed()
         if orphaned:
@@ -141,11 +154,13 @@ class Review:
             "classes": [{"from": lower, "colour": colour}
                         for lower, colour in config.EXPOSURE_CLASSES],
             "ladder": list(LADDER),
+            "widths": self.widths,
             "total": len(self.tours),
             "reviewed": self._reviewed(),
             "needs_fix": len(self.store.fix_list(self.index)),
             "by_model": self.store.counts_by_model(self.index),
             "by_colour": self.store.counts_by_colour(self.index),
+            "by_width": self.store.counts_by_width(self.index),
         }
 
     def tour_list(self) -> list[dict[str, Any]]:
@@ -186,6 +201,11 @@ class Review:
                 "colour": colour,
                 "has_corridor": corridor is not None,
                 "png": f"/corridor/{model.name}/{fid}.png" if corridor else None,
+                # The other widths this model has for this tour. All of a
+                # tour's bands come off one window, so they share `bounds`.
+                "pngs": {width: f"/corridor/{model.name}/{width}/{fid}.png"
+                         for width, found in self.width_corridors[model.name].items()
+                         if fid in found},
                 "bounds": (render.cached_bounds(model.name, fid, corridor)
                            if corridor else None),
                 "route": sources.route_geojson(model, fid),
@@ -225,10 +245,13 @@ class Review:
     def record(self, body: dict[str, Any]) -> dict[str, Any]:
         fid = int(body["fid"])
         model_name = str(body["model"])
+        width = str(body.get("width") or sources.STANDARD)
         if fid not in self.index:
             raise KeyError(f"no tour with fid {fid}")
         if self.config.model(model_name) is None:
             raise KeyError(f"{model_name!r} is not a configured model")
+        # A pick of a width that is not on disk would export as nothing.
+        self._corridor(model_name, fid, width)
 
         row = self.rows[model_name].get(fid) or {}
         computed = row.get("colour") or "blue"
@@ -237,6 +260,7 @@ class Review:
             verdict = self.store.record(
                 fid, model=model_name, colour_computed=computed,
                 shift=int(body.get("shift", 0)), note=str(body.get("note", "")),
+                width=width,
             )
         return {
             "verdict": verdict,
@@ -293,15 +317,26 @@ class Review:
             raise KeyError(f"no track data near tour {fid}")
         return result[0]
 
-    def corridor_png(self, model_name: str, fid: int) -> Path:
-        model = self.config.model(model_name)
-        if model is None:
+    def _corridor(self, model_name: str, fid: int, width: str) -> Path:
+        if self.config.model(model_name) is None:
             raise KeyError(f"{model_name!r} is not a configured model")
-        corridor = self.corridors[model_name].get(fid)
+        if width == sources.STANDARD:
+            corridor = self.corridors[model_name].get(fid)
+        elif width in self.width_corridors[model_name]:
+            corridor = self.width_corridors[model_name][width].get(fid)
+        else:
+            raise KeyError(f"{width!r} is not a corridor width")
         if corridor is None:
-            raise KeyError(f"{model_name} has no corridor for tour {fid}")
+            raise KeyError(f"{model_name} has no {width} corridor for tour {fid}")
+        return corridor
+
+    def corridor_png(self, model_name: str, fid: int,
+                     width: str = sources.STANDARD) -> Path:
+        corridor = self._corridor(model_name, fid, width)
         colour = (self.rows[model_name].get(fid) or {}).get("colour") or "blue"
-        png, _ = render.cached_png(model_name, fid, corridor, colour)
+        # Each width cached in a folder of its own under the model's.
+        key = model_name if width == sources.STANDARD else f"{model_name}/{width}"
+        png, _ = render.cached_png(key, fid, corridor, colour)
         return png
 
 
@@ -380,7 +415,8 @@ class Handler(BaseHTTPRequestHandler):
             match = CORRIDOR_PATH.fullmatch(path)
             if match:
                 png = self.review.corridor_png(match.group("model"),
-                                               int(match.group("fid")))
+                                               int(match.group("fid")),
+                                               match.group("width") or sources.STANDARD)
                 self._file(png)
                 return
 

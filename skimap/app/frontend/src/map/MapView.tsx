@@ -15,7 +15,7 @@ import type { Route } from "../routes/routeList";
 import type { RouteSuggestion } from "../routes/suggestions";
 import type { LineString } from "geojson";
 
-import type { AddMode, Corridor, Extent, LatLng, MapFocus } from "../types";
+import type { AddMode, CorridorImage, Extent, LatLng, MapFocus } from "../types";
 import { COLORS } from "../theme";
 
 import { endIcon, startIcon, waypointIcon } from "../ui/MarkerIcons";
@@ -30,6 +30,7 @@ import CruxPlacer from "./CruxPlacer";
 import ExtentEditor from "./ExtentEditor";
 import DrawLayer from "./DrawLayer";
 import FocusController from "./FocusController";
+import IndexedTileLayer from "./IndexedTileLayer";
 import LayerControl from "./LayerControl";
 import MapActions from "./MapActions";
 import MapController from "./MapController";
@@ -104,7 +105,7 @@ type MapViewProps = {
   onSelectRoute: (id: string) => void;
   focus: MapFocus | null;
   onDropFiles: (files: File[]) => void;
-  corridor: Corridor | null;
+  corridor: CorridorImage | null;
   showCorridor: boolean;
   corridorOpacity: number;
   onCruxClick: (routeId: string, cruxId: string) => void;
@@ -272,7 +273,7 @@ const MapView = ({
         </Pane>
 
         <Pane name="overlays" style={{ zIndex: 300 }}>
-          {OVERLAYS.filter((o) => overlays[o.id]).map((o) => (
+          {OVERLAYS.filter((o) => overlays[o.id] && !o.tileIndexUrl).map((o) => (
             <TileLayer
               key={o.id}
               url={o.tileUrl}
@@ -280,6 +281,23 @@ const MapView = ({
               maxNativeZoom={o.maxNativeZoom}
               opacity={overlayOpacity[o.id] ?? o.opacityDefault}
               pane="overlays"
+            />
+          ))}
+        </Pane>
+
+        {/* The tour corridors, over the slope layers rather than among them:
+            in one pane the last layer switched on would go on top. Still
+            under the routed corridor, which is the one being worked on. */}
+        <Pane name="tourCorridors" style={{ zIndex: 320, pointerEvents: "none" }}>
+          {OVERLAYS.filter((o) => overlays[o.id] && o.tileIndexUrl).map((o) => (
+            <IndexedTileLayer
+              key={o.id}
+              url={o.tileUrl}
+              indexUrl={o.tileIndexUrl!}
+              maxZoom={MAX_ZOOM}
+              maxNativeZoom={o.maxNativeZoom}
+              opacity={overlayOpacity[o.id] ?? o.opacityDefault}
+              pane="tourCorridors"
             />
           ))}
         </Pane>

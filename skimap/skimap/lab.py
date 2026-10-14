@@ -105,18 +105,26 @@ class Profile:
     note: str
     fids: tuple[int, ...]
     overrides: bool = False   # does "config" ask for anything?
+    # Route over another profile's surface instead of building one - for an
+    # experiment on the router rather than the surface. Its tiles, VRT and
+    # GRASS link are that profile's, so the two cannot drift apart.
+    surface_from: Optional[str] = None
 
     @property
     def root(self) -> Path:
         return LAB / self.name
 
     @property
+    def surface_root(self) -> Path:
+        return LAB / (self.surface_from or self.name)
+
+    @property
     def tiles_dir(self) -> Path:
-        return self.root / "tiles"
+        return self.surface_root / "tiles"
 
     @property
     def vrt(self) -> Path:
-        return self.root / "cost_surface.vrt"
+        return self.surface_root / "cost_surface.vrt"
 
     @property
     def routes(self) -> Path:
@@ -140,7 +148,7 @@ class Profile:
         """
         from skimap import routing
 
-        return f"lab_{routing.slug(self.name)}"
+        return f"lab_{routing.slug(self.surface_from or self.name)}"
 
 
 def resolve(name_or_path: str) -> Path:
@@ -205,6 +213,8 @@ def load(path: Path) -> Profile:
         note=str(data.get("note") or ""),
         fids=fids,
         overrides=bool(data.get("config")),
+        surface_from=(resolve(data["surface_from"]).stem
+                      if data.get("surface_from") else None),
     )
 
 
@@ -336,6 +346,15 @@ def build_surface(profile: Profile, *, jobs: int = 1, force: bool = False,
     from skimap import mosaic
     from skimap.cost_surface.surface import build_all
 
+    if profile.surface_from:
+        if not profile.vrt.exists():
+            raise SystemExit(f"{profile.name} routes over {profile.surface_from}'s surface, "
+                             f"and there is none at {profile.vrt}. Build that one first.")
+        print(f"surface: {profile.surface_from}'s, not rebuilt ({profile.vrt})")
+        profile.root.mkdir(parents=True, exist_ok=True)
+        _dump_config(profile)
+        return []
+
     tile_ids = plan_tiles(profile, buffer_m=buffer_m)
     failed = build_all(only=tile_ids, force=force, jobs=jobs, tiles_root=profile.tiles_dir)
     if failed:
@@ -350,14 +369,15 @@ def build_surface(profile: Profile, *, jobs: int = 1, force: bool = False,
 
 def route(profile: Profile, *, force: bool = False, buffer_m: Optional[float] = None,
           merge: bool = False):
-    from skimap import routing
+    from skimap import config, routing
 
     _live(profile)
     if not profile.vrt.exists():
         raise SystemExit(f"No surface at {profile.vrt}. Run 'lab surface {profile.name}' first.")
 
     tours = _tours(profile)
-    print(f"routing {len(tours)} tours through {profile.vrt}")
+    print(f"routing {len(tours)} tours through {profile.vrt}, "
+          f"engine {config.ROUTING.get('engine', 'cost')}")
     return routing.run_batch(
         tours, out_dir=profile.root, buffer_m=buffer_m, force=force, merge=merge,
         # The tour list is a subset of the file by construction, and to
@@ -365,6 +385,13 @@ def route(profile: Profile, *, force: bool = False, buffer_m: Optional[float] = 
         # deleted one. Nothing else writes here, so there is nothing to prune.
         prune=False,
         surface=profile.vrt, cost_raster=profile.cost_raster,
+        # The raw gap under r.walk, whose corridor budget is in other units
+        # than r.cost's: kept, it can be re-cut at any budget without routing
+        # again - see config.WALK["max_gap_scale"].
+        gap_dir=profile.root / "gaps" if config.ROUTING.get("engine") == "walk" else None,
+        # Its own mapset, so a second lab run started meanwhile cannot move
+        # this one's region - see routing.start_session.
+        mapset=f"lab_{routing.slug(profile.name)}",
     )
 
 

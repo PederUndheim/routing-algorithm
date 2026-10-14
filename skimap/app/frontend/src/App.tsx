@@ -9,6 +9,7 @@ import Snackbar from "@mui/material/Snackbar";
 import Typography from "@mui/material/Typography";
 
 import { checkHealth, requestCorridor, requestCrux, requestImprove, requestRoute } from "./api";
+import { corridorImage } from "./corridorWidths";
 import { defaultsAt, problemOf } from "./crux/assessment";
 import { cruxTitle } from "./dangerClasses";
 import { DEFAULT_BASEMAP } from "./layers/basemaps";
@@ -38,6 +39,7 @@ import { usePanelWidth } from "./routing/usePanelWidth";
 import { dangerColor } from "./theme";
 import type {
   AddMode,
+  CorridorWidth,
   CruxEntry,
   Extent,
   LatLng,
@@ -121,6 +123,8 @@ const App = () => {
   // Half strength by default: the style is solid along the route, and the
   // terrain under it is usually the reason you are looking at the corridor.
   const [corridorOpacity, setCorridorOpacity] = useState(0.5);
+  // A setting of the map, not of one Route: picking another Route keeps it.
+  const [corridorWidth, setCorridorWidth] = useState<CorridorWidth>("standard");
   const [isRouting, setIsRouting] = useState(false);
   const [isIdentifying, setIsIdentifying] = useState(false);
   // The Route a corridor is being made for, so the button spins on that one
@@ -539,6 +543,7 @@ const App = () => {
   // Only the Selected route's corridor, and only while it is on the map:
   // several overlapping bands would make the terrain under them unreadable.
   const corridor = selected?.visible ? selected.corridor : null;
+  const corridorShown = corridor ? corridorImage(corridor, corridorWidth) : null;
 
   return (
     <div style={{ height: "100dvh" }}>
@@ -576,7 +581,7 @@ const App = () => {
         onSelectRoute={routeList.select}
         focus={focus}
         onDropFiles={upload}
-        corridor={corridor}
+        corridor={corridorShown}
         showCorridor={showCorridor}
         corridorOpacity={corridorOpacity}
         onCruxClick={openCrux}
@@ -700,6 +705,8 @@ const App = () => {
         onShowCorridorChange={setShowCorridor}
         corridorOpacity={corridorOpacity}
         onCorridorOpacityChange={setCorridorOpacity}
+        corridorWidth={corridorWidth}
+        onCorridorWidthChange={setCorridorWidth}
         isMakingCorridor={makingCorridorId !== null && makingCorridorId === selectedId}
         onMakeCorridor={() => void makeCorridor()}
         suggestionControls={{

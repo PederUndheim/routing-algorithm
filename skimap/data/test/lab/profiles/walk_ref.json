@@ -1,0 +1,7 @@
+{
+  "name": "walk_ref",
+  "note": "REFERENCE for walk_*: production r.cost routing, re-run on the steep_edge_control surface only to time it beside the r.walk runs on the same machine and day. Routes should match steep_edge_control exactly.",
+  "extends": "steep_edge_control",
+  "surface_from": "steep_edge_control",
+  "config": {}
+}

@@ -24,7 +24,7 @@ from typing import Any, Optional
 
 from osgeo import ogr, osr
 
-from skimap import exposure, paths, tours as tours_module
+from skimap import config, exposure, paths, routing, tours as tours_module
 from skimap.corridor_review.models import Model
 
 ogr.UseExceptions()
@@ -145,6 +145,23 @@ def route_geojson(model: Model, fid: int) -> Optional[dict[str, Any]]:
             "coordinates": [[float(x), float(y)] for x, y, *_ in points]}
 
 
-def corridor_paths(model: Model) -> dict[int, Path]:
-    """tour_fid -> its corridor .tif, off the `<fid>_<slug>.tif` naming."""
-    return exposure.corridors_by_fid(model.corridors)
+STANDARD = "standard"
+
+
+def corridor_paths(model: Model, width: str = STANDARD) -> dict[int, Path]:
+    """tour_fid -> its corridor .tif, off the `<fid>_<slug>.tif` naming.
+
+    `width` reads the narrower or wider band from its folder beside the
+    model's corridors instead - empty for a model routed before there were
+    any, which the review then shows at the standard width only."""
+    if width == STANDARD:
+        return exposure.corridors_by_fid(model.corridors)
+    folder = routing.width_dir(model.corridors, width)
+    return exposure.corridors_by_fid(folder) if folder.is_dir() else {}
+
+
+def widths() -> list[str]:
+    """Every width the review can show, narrowest first."""
+    slack = {STANDARD: config.CORRIDOR["slack"],
+             **{w: p["slack"] for w, p in config.CORRIDOR_WIDTHS.items()}}
+    return sorted(slack, key=slack.get)

@@ -1,0 +1,11 @@
+{
+  "name": "steep_edge_corners_buffer3",
+  "note": "Corner gaps closed, then +3 cost units on every gentle cell touching steep ground (filled corners count as steep). Result: 38 moved >50 m, 9 >250 m, median 39 m. Within 10 m of steep -42% (0 tours up / 85 down), on >=30 deg -0.9% (18/18), exp/km -0.4% (23 up / 41 down), length -0.4%.",
+  "extends": "steep_edge_control",
+  "config": {
+    "STEEP_EDGE": {
+      "corners": true,
+      "buffer": 3.0
+    }
+  }
+}

@@ -278,6 +278,19 @@ both deliberately, and both wrong for this one - `blue.lyrx` is a
 matplotlib objects, which is a lot to load into a web server for a colour
 lookup. `corridor.py` reads the class breaks itself, in about thirty lines.
 
+**Tour corridors overlay.** Map settings has a third overlay beside NVE's
+two: `data/colored_corridors`, the reviewed tours' corridors in their
+exposure class. It is national at 10 m and almost all empty, so it ships as
+static PNG tiles in `frontend/public/colored_corridors/` - z12 warped from
+the four class rasters and coloured with `green/blue/red/black.lyrx`, the
+zooms above built from the tiles under them - with an `index.json` of the
+tiles that exist, so the map asks for nothing else. Rebuild after
+`python -m skimap.corridor_review colored-corridors`:
+
+```powershell
+& "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m app.corridor_tiles
+```
+
 **Direction.** `r.path` walks the direction raster backwards from the end, so
 the line comes out of GRASS running end to start. `service._start_to_end`
 turns it round, checking which end it starts at rather than assuming. The

@@ -38,7 +38,8 @@ WGS84_EPSG = 4326
 # the browser to fetch. Scratch in the real sense: the GeoTIFF goes as soon
 # as it is converted, and only the last few pictures are kept.
 SCRATCH = paths.ROUTES / "app_scratch"
-KEEP_CORRIDORS = 12
+# Pictures, not routes: three per route, one for each corridor width.
+KEEP_CORRIDORS = 36
 
 # The app gets its own mapset rather than working in PERMANENT.
 #
@@ -201,13 +202,15 @@ def route_tour(points: list[tuple[float, float]], networks: list[str]) -> dict:
                     lines[i] = np.array(geometry.GetPoints(), dtype=np.float64)[:, :2]
 
                 # Inside the lock: the next route writes the same GeoTIFFs.
-                corridor_id = uuid4().hex[:12]
-                bounds = corridor_png.to_png(tifs, SCRATCH / f"{corridor_id}.png")
+                by_width = {width: [routing.corridor_widths(tif)[width] for tif in tifs]
+                            for width in config.CORRIDOR_WIDTHS}
+                corridor = _corridor_pngs(tifs, by_width)
             finally:
                 for tif in tifs:
                     tif.unlink(missing_ok=True)
+                    for extra in routing.corridor_widths(tif).values():
+                        extra.unlink(missing_ok=True)
         _prune_corridors()
-        corridor = {"png_path": f"/corridor/{corridor_id}.png", "bounds": bounds}
     seconds = time.time() - started
 
     line, starts_m = join_legs(lines)
@@ -297,19 +300,37 @@ def corridor(line: dict) -> dict:
     started = time.time()
     with _LOCK:
         line_tif = SCRATCH / "line_app.tif"
-        cost = routing.line_corridor(xy, line_tif, tag="app")
-        # Inside the lock for route()'s reason: the next one writes here too.
-        corridor_id = uuid4().hex[:12]
-        bounds = corridor_png.to_png(line_tif, SCRATCH / f"{corridor_id}.png")
-        line_tif.unlink(missing_ok=True)
+        width_tifs = {width: SCRATCH / f"line_app_{width}.tif"
+                      for width in config.LINE_CORRIDOR_WIDTHS}
+        try:
+            cost = routing.line_corridor(xy, line_tif, tag="app", width_paths=width_tifs)
+            # Inside the lock for route()'s reason: the next one writes here too.
+            corridor = _corridor_pngs([line_tif], {w: [p] for w, p in width_tifs.items()})
+        finally:
+            for tif in [line_tif, *width_tifs.values()]:
+                tif.unlink(missing_ok=True)
     seconds = time.time() - started
 
     _prune_corridors()
     return {
-        "corridor": {"png_path": f"/corridor/{corridor_id}.png", "bounds": bounds},
+        "corridor": corridor,
         "cost": round(cost, 1),
         "seconds": round(seconds, 1),
     }
+
+
+def _corridor_pngs(standard: list[Path], widths: dict[str, list[Path]]) -> dict:
+    """The corridor as the map gets it: the standard band's picture, and
+    under `widths` the narrower and wider ones', each its own PNG. All three
+    are made up front so switching between them on the map is instant -
+    the extra two cost a fraction of a second against the spread."""
+    def picture(tifs: list[Path]) -> dict:
+        corridor_id = uuid4().hex[:12]
+        bounds = corridor_png.to_png(tifs, SCRATCH / f"{corridor_id}.png")
+        return {"png_path": f"/corridor/{corridor_id}.png", "bounds": bounds}
+
+    return {**picture(standard),
+            "widths": {width: picture(tifs) for width, tifs in widths.items()}}
 
 
 def improve(line: dict) -> dict:

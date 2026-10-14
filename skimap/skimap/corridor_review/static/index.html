@@ -42,6 +42,13 @@
     <span id="shift-hint" class="muted"></span>
   </div>
 
+  <div class="control-group">
+    <span class="control-label">Corridor width</span>
+    <!-- Filled in from session.widths. Every panel shows this width, and a
+         pick records it: it is the width the final layer draws the tour at. -->
+    <span class="groups" id="width-pick"></span>
+  </div>
+
   <div class="control-group grow">
     <span class="control-label">Note</span>
     <input id="note" type="text" placeholder="optional - why this one" autocomplete="off">
@@ -63,7 +70,7 @@
 <main id="panels"><p class="empty">loading</p></main>
 
 <footer id="legend">
-  <span class="muted">click a panel or press its number to pick &middot; click a class to set it, S back to computed, U/D to step &middot; arrows to step, Enter for the next unreviewed &middot; G switches model set</span>
+  <span class="muted">click a panel or press its number to pick &middot; click a class to set it, S back to computed, U/D to step &middot; W for corridor width &middot; arrows to step, Enter for the next unreviewed &middot; G switches model set</span>
   <span class="spacer"></span>
   <label class="check"><input type="checkbox" id="show-slope" checked> slope WMTS</label>
   <label class="check"><input type="checkbox" id="show-runout"> runout</label>

@@ -193,7 +193,7 @@ const LayerControl = ({
                   display: "flex",
                   alignItems: "center",
                   gap: { xs: 1.25, sm: 2 },
-                  mb: 0.5,
+                  mb: 1.5,
                 }}
               >
                 <Box

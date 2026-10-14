@@ -1,0 +1,6 @@
+{
+  "name": "steep_edge_corners_buffer2",
+  "note": "Corner gaps closed, then +2 cost unit(s) on every gentle cell touching steep ground (filled corners count as steep).",
+  "extends": "steep_edge_control",
+  "config": {"STEEP_EDGE": {"corners": true, "buffer": 2.0}}
+}

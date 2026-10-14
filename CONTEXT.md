@@ -34,7 +34,11 @@ terrain asks for attention.
   Route's is the ground within reach of its own line, since such a line has
   no optimum to be near (`routing.line_corridor`, `config.LINE_CORRIDOR`).
   The second has one fixed budget of cost, so it is wide over easy ground
-  and tight on steep ground, whatever the line's length.
+  and tight on steep ground, whatever the line's length. Each kind comes in
+  three **widths** - narrow, standard, wide (`config.CORRIDOR_WIDTHS`,
+  `LINE_CORRIDOR_WIDTHS`) - from the same spread; on disk the other two sit
+  in sibling folders (`corridors_narrow/`, `corridors_wide/`), so
+  `corridors/` is always the standard band.
 - **Suggestion** - a stretch of a drawn, uploaded or edited Route where
   Optimise route finds a clearly cheaper way close beside it, inside its
   Corridor. Leaves the line and rejoins it; never cuts off a summit or an

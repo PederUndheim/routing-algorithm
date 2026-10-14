@@ -1,0 +1,9 @@
+{
+  "name": "walk_line",
+  "note": "r.walk draws the line (Langmuir coefficients, lambda 0.6 - the old router's settings), r.cost still makes the corridor. Three spreads per route. Lines identical to 'walk'. 1.56x the compute of r.cost (4.8 vs 3.1 s/route). The r.walk line stays inside the r.cost corridor on 95 of 96 tours. See config.WALK.",
+  "extends": "steep_edge_control",
+  "surface_from": "steep_edge_control",
+  "config": {
+    "ROUTING": {"engine": "walk_line"}
+  }
+}

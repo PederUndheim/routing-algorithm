@@ -10,9 +10,10 @@ import Switch from "@mui/material/Switch";
 import Typography from "@mui/material/Typography";
 import InsightsIcon from "@mui/icons-material/Insights";
 
+import { CORRIDOR_WIDTH_LABELS, CORRIDOR_WIDTHS } from "../corridorWidths";
 import { km } from "../format";
 import type { Route } from "../routes/routeList";
-import type { CruxEntry, CruxNote, Factor, Rating } from "../types";
+import type { CorridorWidth, CruxEntry, CruxNote, Factor, Rating } from "../types";
 import { COLORS } from "../theme";
 import CruxList from "./CruxList";
 import { fittedButtonSx, fittedLabelSx, outlinedSx } from "./styles";
@@ -22,15 +23,22 @@ type CorridorControlsProps = {
   onShowCorridorChange: (show: boolean) => void;
   corridorOpacity: number;
   onCorridorOpacityChange: (opacity: number) => void;
+  corridorWidth: CorridorWidth;
+  onCorridorWidthChange: (width: CorridorWidth) => void;
+  /** False for a corridor that came with the standard band alone. */
+  widthsAvailable: boolean;
 };
 
-/** A Route's corridor: on or off, and how strong. Compact - it is a
- *  setting, not something to read. */
+/** A Route's corridor: on or off, how wide, and how strong. Compact - it
+ *  is a setting, not something to read. */
 export const CorridorControls = ({
   showCorridor,
   onShowCorridorChange,
   corridorOpacity,
   onCorridorOpacityChange,
+  corridorWidth,
+  onCorridorWidthChange,
+  widthsAvailable,
 }: CorridorControlsProps) => (
   <Box sx={{ flex: 1, display: "flex", alignItems: "center", gap: 1 }}>
     <FormControlLabel
@@ -61,43 +69,146 @@ export const CorridorControls = ({
     <Box
       sx={{
         flex: 1,
+        minWidth: 0,
         display: "flex",
         alignItems: "center",
         gap: 1.25,
-        pl: 0.5,
+        pl: 1.5,
         pr: 0.5,
         opacity: showCorridor ? 1 : 0.45,
         pointerEvents: showCorridor ? "auto" : "none",
         transition: "opacity 0.15s ease",
       }}
     >
-      <Slider
-        value={corridorOpacity}
-        min={0}
-        max={1}
-        step={0.05}
-        size="small"
-        disabled={!showCorridor}
-        onChange={(_, v) => onCorridorOpacityChange(v as number)}
+      {/* Centred in whatever room the drawer's width leaves between the
+          switch and the opacity slider, which keeps its own size. */}
+      <Box sx={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
+        <WidthSlider
+          width={corridorWidth}
+          onChange={onCorridorWidthChange}
+          disabled={!showCorridor || !widthsAvailable}
+          title={
+            widthsAvailable
+              ? "How much room around the route the corridor shows"
+              : "This corridor was made with one width only - route or make it again for the others"
+          }
+        />
+      </Box>
+      {/* Built like WidthSlider - same box, same padding, its readout where
+          the step names sit - so the two rails share one line. */}
+      {/* The one thing in the row that gives way on a narrow drawer. */}
+      <Box
         sx={{
-          color: COLORS.teal,
-          "& .MuiSlider-thumb": { width: 12, height: 12 },
-        }}
-      />
-      <Typography
-        sx={{
-          fontSize: 12,
-          color: "white",
-          minWidth: 34,
-          textAlign: "right",
-          fontVariantNumeric: "tabular-nums",
+          ...sliderBoxSx,
+          flex: `0 1 ${OPACITY_SLIDER_PX}px`,
+          minWidth: 44,
+          ml: 1,
+          position: "relative",
         }}
       >
-        {Math.round(corridorOpacity * 100)}%
-      </Typography>
+        <Slider
+          value={corridorOpacity}
+          min={0}
+          max={1}
+          step={0.05}
+          size="small"
+          disabled={!showCorridor}
+          onChange={(_, v) => onCorridorOpacityChange(v as number)}
+          aria-label="Corridor opacity"
+          sx={sliderSx}
+        />
+        <Typography
+          sx={{
+            ...sliderLabelSx,
+            position: "absolute",
+            left: "50%",
+            transform: "translateX(-50%)",
+            top: SLIDER_BOX_PT_PX + SLIDER_LABEL_TOP_PX,
+            color: "white",
+            fontWeight: 300,
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          {Math.round(corridorOpacity * 100)}%
+        </Typography>
+      </Box>
     </Box>
   </Box>
 );
+
+const WIDTH_SLIDER_PX = 78;
+const OPACITY_SLIDER_PX = 84;
+
+// Shared by both sliders in the corridor row, so their rails sit at one
+// height and the labels under them on one line.
+const SLIDER_BOX_PT_PX = 2;
+const SLIDER_LABEL_TOP_PX = 16;
+const sliderBoxSx = { flexShrink: 0, pt: `${SLIDER_BOX_PT_PX}px`, pb: 1.75 };
+const sliderLabelSx = { fontSize: 10, lineHeight: 1, whiteSpace: "nowrap" };
+const sliderSx = {
+  color: COLORS.teal,
+  display: "block",
+  py: "6px",
+  "&.Mui-disabled": { color: "rgba(255,255,255,0.5)" },
+  "& .MuiSlider-thumb": { width: 12, height: 12 },
+};
+
+/** Narrow, normal or wide, as three stops on a short slider with the name
+ *  of each under it. A slider rather than three buttons because the widths
+ *  are steps along one scale, and it reads as such; no track, because no
+ *  stop is "more" of the setting than another. */
+const WidthSlider = ({
+  width,
+  onChange,
+  disabled,
+  title,
+}: {
+  width: CorridorWidth;
+  onChange: (width: CorridorWidth) => void;
+  disabled: boolean;
+  title: string;
+}) => {
+  const at = CORRIDOR_WIDTHS.indexOf(width);
+  return (
+    <Box title={title} sx={{ ...sliderBoxSx, width: WIDTH_SLIDER_PX }}>
+      <Slider
+        value={at}
+        min={0}
+        max={CORRIDOR_WIDTHS.length - 1}
+        step={1}
+        track={false}
+        size="small"
+        disabled={disabled}
+        onChange={(_, v) => onChange(CORRIDOR_WIDTHS[v as number])}
+        aria-label="Corridor width"
+        getAriaValueText={(v) => CORRIDOR_WIDTH_LABELS[CORRIDOR_WIDTHS[v]]}
+        marks={CORRIDOR_WIDTHS.map((w, i) => ({
+          value: i,
+          label: CORRIDOR_WIDTH_LABELS[w],
+        }))}
+        sx={{
+          ...sliderSx,
+          // MUI leaves room under a marked slider for labels at its default
+          // size; these are smaller and sit in the row's own padding.
+          "&.MuiSlider-marked": { mb: 0 },
+          "& .MuiSlider-rail": { opacity: 0.35 },
+          "& .MuiSlider-mark": {
+            width: 4,
+            height: 4,
+            borderRadius: "50%",
+            backgroundColor: "rgba(255,255,255,0.7)",
+          },
+          "& .MuiSlider-markLabel": {
+            ...sliderLabelSx,
+            top: SLIDER_LABEL_TOP_PX,
+            color: "rgba(255,255,255,0.6)",
+          },
+          [`& .MuiSlider-markLabel[data-index="${at}"]`]: { color: "white", fontWeight: 600 },
+        }}
+      />
+    </Box>
+  );
+};
 
 /** Where CorridorControls go on a Route that has no corridor yet: drawn,
  *  uploaded, or edited since it was made. Outlined, so it does not compete

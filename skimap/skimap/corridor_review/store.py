@@ -14,6 +14,10 @@ closed laptop.
 ## What a verdict records
 
     model            which model's corridor was picked
+    width            at which width: narrow, standard or wide - what
+                     colored-corridors and export draw it at. A verdict
+                     from before there were widths has none, and means
+                     standard
     colour_computed  what exposure.classify() said about that corridor
     shift            the reviewer's disagreement with it, in ladder steps
                      (-3..+3 for four classes; 0 is agreement)
@@ -61,6 +65,15 @@ LADDER = tuple(colour for _, colour in config.EXPOSURE_CLASSES)
 # The reviewer picks a class outright rather than nudging one rung, so a
 # verdict may legitimately be three rungs from what classify() said.
 MAX_SHIFT = len(LADDER) - 1
+
+
+STANDARD_WIDTH = "standard"
+
+
+def verdict_width(verdict: dict[str, Any]) -> str:
+    """The width a verdict picked. One recorded before widths existed has
+    none, and was a pick of the only corridor there was: the standard one."""
+    return verdict.get("width") or STANDARD_WIDTH
 
 
 def shift_colour(colour: str, shift: int) -> str:
@@ -121,7 +134,8 @@ class Store:
     # --- verdicts --------------------------------------------------------
 
     def record(self, fid: int, *, model: str, colour_computed: str,
-               shift: int = 0, note: str = "") -> dict[str, Any]:
+               shift: int = 0, note: str = "",
+               width: str = STANDARD_WIDTH) -> dict[str, Any]:
         fid = int(fid)
         # Clamped to the ladder, not to one step. It used to be one step,
         # from when the control could only say "more severe" or "less" - and
@@ -138,6 +152,7 @@ class Store:
         # pause, and bury the real changes among them.
         amended = (previous is not None
                    and previous.get("model") == model
+                   and verdict_width(previous) == width
                    and int(previous.get("shift", 0)) == shift)
         if previous is not None and not amended:
             # Superseded, not overwritten - a changed mind is data too. The
@@ -150,6 +165,7 @@ class Store:
 
         verdict = {
             "model": model,
+            "width": width,
             "colour_computed": colour_computed,
             "shift": shift,
             "colour": shift_colour(colour_computed, shift),
@@ -228,6 +244,13 @@ class Store:
         counts: dict[str, int] = {}
         for verdict in self.current(among).values():
             counts[verdict["model"]] = counts.get(verdict["model"], 0) + 1
+        return counts
+
+    def counts_by_width(self, among: Optional[Container[int]] = None) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for verdict in self.current(among).values():
+            width = verdict_width(verdict)
+            counts[width] = counts.get(width, 0) + 1
         return counts
 
     def counts_by_colour(self, among: Optional[Container[int]] = None) -> dict[str, int]:

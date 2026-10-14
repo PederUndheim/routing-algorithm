@@ -46,6 +46,7 @@ const TRACK_OPACITY = 0.55;
 const DRAG_SLOP = 5;
 
 const MAIN_GROUP = "main";
+const STANDARD_WIDTH = "standard";
 
 const state = {
   session: null,
@@ -60,6 +61,10 @@ const state = {
   // shift per panel - and which panel it is is not known until the pick. The
   // store still records the shift; see choose().
   colour: null,
+  // The corridor width every panel shows, and the one a pick records. Kept
+  // from tour to tour, so a run of tours can be judged at one width; a tour
+  // with a verdict opens at the width it was picked at.
+  width: STANDARD_WIDTH,
   syncing: false,   // guards the pan/zoom echo between locked maps
 };
 
@@ -295,6 +300,8 @@ function syncFrom(source) {
 
 function renderTour(tour) {
   state.tour = tour;
+  if (tour.verdict) state.width = tour.verdict.width || STANDARD_WIDTH;
+  drawWidthButtons();
   $("tour-name").textContent = tour.name;
   $("tour-fid").textContent = `fid ${tour.fid} · ${tour.position + 1} of ${tour.total}`;
 
@@ -325,14 +332,7 @@ function renderTour(tour) {
     chip.textContent = data.colour;
     chip.className = `chip ${data.colour}`;
 
-    if (data.png && data.bounds) {
-      const b = data.bounds;
-      entry.corridor = L.imageOverlay(
-        `${data.png}?v=${tour.fid}`,
-        [[b.south, b.west], [b.north, b.east]],
-        { opacity: CORRIDOR_OPACITY, interactive: false },
-      ).addTo(entry.map);
-    }
+    drawCorridor(entry, data);
 
     if (data.route && $("show-route").checked) {
       const latlngs = data.route.coordinates.map(([lng, lat]) => [lat, lng]);
@@ -350,7 +350,9 @@ function renderTour(tour) {
       <span>len <b>${metres(m.length_m)}</b></span>
       <span>cost <b>${num(m.cost_opt, 0)}</b></span>
       <span>exp <b>${num(m.exp_score)}</b></span>
-      <span>/km <b>${num(m.exp_per_km, 2)}</b></span>`;
+      <span>/km <b>${num(m.exp_per_km, 2)}</b></span>
+      <span class="width-note muted"></span>`;
+    noteWidth(entry, data);
   }
 
   // One fit, then copied verbatim to the others.
@@ -388,6 +390,82 @@ function renderTour(tour) {
   applyTracks();
 }
 
+/* One panel's corridor at the width on screen, replacing whatever it drew.
+ *
+ * A model routed before there were widths has the standard band only. It
+ * draws that rather than nothing, and its foot says so - a missing band
+ * would read as a model that found no corridor at all. */
+function drawCorridor(entry, data) {
+  if (entry.corridor) { entry.map.removeLayer(entry.corridor); entry.corridor = null; }
+  if (!data || !data.png || !data.bounds) return;
+  const png = (state.width !== STANDARD_WIDTH && data.pngs && data.pngs[state.width]) || data.png;
+  const b = data.bounds;
+  entry.corridor = L.imageOverlay(
+    `${png}?v=${state.tour.fid}`,
+    [[b.south, b.west], [b.north, b.east]],
+    { opacity: CORRIDOR_OPACITY, interactive: false },
+  ).addTo(entry.map);
+  // Under the route and the tracks, which a re-added overlay would cover.
+  entry.corridor.bringToBack();
+}
+
+function noteWidth(entry, data) {
+  const note = entry.node.querySelector(".width-note");
+  if (!note) return;
+  const missing = data && data.png && state.width !== STANDARD_WIDTH
+    && !(data.pngs && data.pngs[state.width]);
+  note.textContent = missing ? `no ${state.width} band - standard shown` : "";
+}
+
+/* The width switch: one button per width, narrowest first, from
+ * session.widths - the names are config.CORRIDOR_WIDTHS' business. */
+function buildWidthButtons() {
+  const host = $("width-pick");
+  host.innerHTML = "";
+  for (const width of state.session.widths || [STANDARD_WIDTH]) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "group-button";
+    button.dataset.width = width;
+    button.textContent = width;
+    button.title = `Show every corridor at ${width} width (W cycles)`;
+    button.addEventListener("click", () => setWidth(width));
+    host.appendChild(button);
+  }
+}
+
+function drawWidthButtons() {
+  for (const button of $("width-pick").querySelectorAll("button")) {
+    button.classList.toggle("on", button.dataset.width === state.width);
+  }
+}
+
+/* Show every panel at `width`, and re-save a verdict picked at another one.
+ *
+ * Redraws the overlays only: a re-render would refit every map to the route
+ * and lose the zoom you were comparing the widths at. The re-save is
+ * setClass's reason - the width on screen and the width on disk must not
+ * disagree, with nothing to say which the export would use. */
+function setWidth(width) {
+  state.width = width;
+  drawWidthButtons();
+  const tour = state.tour;
+  if (!tour) return;
+  const byModel = new Map(tour.panels.map((p) => [p.model, p]));
+  for (const entry of state.panels) {
+    const data = byModel.get(entry.model);
+    drawCorridor(entry, data);
+    noteWidth(entry, data);
+  }
+  const verdict = tour.verdict;
+  if (verdict && (verdict.width || STANDARD_WIDTH) !== width) choose(verdict.model);
+}
+
+function cycleWidth() {
+  const widths = state.session.widths || [STANDARD_WIDTH];
+  setWidth(widths[(widths.indexOf(state.width) + 1) % widths.length]);
+}
+
 /* Which panel is picked, and what that made the class.
  *
  * Separate from renderTour because picking no longer reloads the tour: a
@@ -400,8 +478,10 @@ function showVerdict(verdict) {
     entry.node.classList.toggle("chosen", !!verdict && verdict.model === entry.model);
   }
   $("note").value = verdict ? (verdict.note || "") : "";
+  const width = verdict && verdict.width && verdict.width !== STANDARD_WIDTH
+    ? ` ${verdict.width}` : "";
   $("verdict-state").textContent = verdict
-    ? `picked ${verdict.model} · ${verdict.colour}${verdict.shift ? ` (shifted ${verdict.shift > 0 ? "up" : "down"} from ${verdict.colour_computed})` : ""}`
+    ? `picked ${verdict.model}${width} · ${verdict.colour}${verdict.shift ? ` (shifted ${verdict.shift > 0 ? "up" : "down"} from ${verdict.colour_computed})` : ""}`
     : "not reviewed";
 }
 
@@ -600,7 +680,7 @@ async function choose(model) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fid: tour.fid, model, shift, note: $("note").value.trim(),
+        fid: tour.fid, model, shift, width: state.width, note: $("note").value.trim(),
       }),
     });
     // Stay on the tour. Advancing on a pick meant a stray click while
@@ -813,6 +893,9 @@ function keyboard() {
       case "g":
         cycleGroup();
         break;
+      case "w":
+        cycleWidth();
+        break;
       case "l":
         $("toggle-list").click();
         break;
@@ -854,6 +937,8 @@ async function main() {
     $("list-scope").appendChild(option);
   }
   buildClassButtons();
+  buildWidthButtons();
+  drawWidthButtons();
   setGroup(MAIN_GROUP);
   overlayToggles();
   keyboard();

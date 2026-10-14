@@ -1,7 +1,7 @@
 import { ImageOverlay } from "react-leaflet";
 
 import { apiUrl } from "../api";
-import type { Corridor } from "../types";
+import type { CorridorImage } from "../types";
 
 /** The corridor, drawn under the route it belongs to.
  *
@@ -17,7 +17,7 @@ import type { Corridor } from "../types";
  * ArcGIS rendering.
  */
 const CorridorOverlay = ({ corridor, opacity = 0.5 }: {
-  corridor: Corridor;
+  corridor: CorridorImage;
   opacity?: number;
 }) => {
   const { west, south, east, north } = corridor.bounds;

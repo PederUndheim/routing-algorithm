@@ -38,13 +38,24 @@ export type CorridorBounds = {
   north: number;
 };
 
-/** The band of near-optimal ground around a route: everywhere you could go
- *  instead without the trip costing much more. Already warped to Web
- *  Mercator by the backend, which is the projection Leaflet stretches an
- *  image overlay in. `png_path` is relative to the API. */
-export type Corridor = {
+/** One picture of a corridor. Already warped to Web Mercator by the
+ *  backend, which is the projection Leaflet stretches an image overlay in.
+ *  `png_path` is relative to the API. */
+export type CorridorImage = {
   png_path: string;
   bounds: CorridorBounds;
+};
+
+/** How much room around the route the corridor shows. `standard` is the
+ *  one every corridor has; the other two come beside it. */
+export type CorridorWidth = "narrow" | "standard" | "wide";
+
+/** The band of near-optimal ground around a route: everywhere you could go
+ *  instead without the trip costing much more. The standard band, with a
+ *  narrower and a wider one under `widths` - absent from an older backend
+ *  and from a corridor made before there were any. */
+export type Corridor = CorridorImage & {
+  widths?: Partial<Record<Exclude<CorridorWidth, "standard">, CorridorImage>>;
 };
 
 /** A Danger class, as POST /crux names it. Ranked in this order; see

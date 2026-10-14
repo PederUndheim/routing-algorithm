@@ -19,7 +19,9 @@ Run it from the project directory - `skimap/`, the one holding `skimap/`,
                                  network, and only terrain legs have a
                                  corridor. {"start", "end", "network"} is
                                  still taken, as a single leg
-    GET  /corridor/<id>.png   that corridor, as an overlay for the map
+    GET  /corridor/<id>.png   that corridor, as an overlay for the map. A
+                              corridor names one PNG per width, under
+                              "widths" beside its standard one
     POST /corridor            {"line": <GeoJSON LineString, WGS84>}
                               -> the corridor around a drawn, uploaded or
                                  edited line, and the line's cost

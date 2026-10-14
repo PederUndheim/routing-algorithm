@@ -87,48 +87,85 @@ def steep_slope_barrier(
     return np.where(s < start_deg, 0.0, out).astype(np.float32, copy=False)
 
 
-def spread_steep(
+# Corner gaps are closed in at most this many passes. A fill can open a new
+# corner against the next steep cell along, so the pass repeats; the halo the
+# surface reads with has to cover the same number of cells.
+CORNER_PASSES = 4
+
+
+def fill_corners(
     cost: np.ndarray,
+    steep: np.ndarray,
     slope: np.ndarray,
     *,
-    threshold_deg: float,
-    radius_px: int,
-    footprint: str,
-    share: float,
-) -> np.ndarray:
-    """Each cell costs at least `share` of the dearest steep cell within reach.
+    passes: int = CORNER_PASSES,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Close every diagonal gap between steep cells with one cell.
 
-    A steep cell is one at or above threshold_deg; within reach is
-    `radius_px` cells, over a "square" (Chebyshev) or "disk" (Euclidean)
-    footprint. Only steep cells spread, and a cell never gets cheaper.
+    A gap is two steep cells meeting at a corner with both other cells of
+    that 2x2 gentle. r.cost moves 8-connected and charges a diagonal step on
+    its two end cells only, so it crosses there - between the two gentle
+    cells - and pays for neither steep one. Filling one of the gentle cells
+    makes the steep ground 4-connected through the corner, which is what an
+    8-connected route cannot cross.
 
-    Two things it is for. r.cost charges a diagonal step on its two end cells
-    only, so two steep cells that meet at a corner can be crossed through
-    that corner without paying for either - any spread closes that, a radius
-    1 disk being the least that does. And a route that hugs the edge of steep
-    ground at 10 m resolution is closer to it than the cells say.
+    The steeper of the two gentle cells is filled, with the cheaper of the
+    two steep cells' cost: the least change that closes the gap. A gap one
+    whole cell wide is not a corner and stays open - it is real ground.
 
-    Edges are not padded: give it arrays read with a halo of radius_px, or
-    the steep cells just past the array edge are missed.
+    Returns (cost, steep) with the filled cells added to `steep`, so a ring
+    spread after this counts them as steep. Edges are not padded: give it
+    arrays read with a halo of `passes` cells.
     """
-    if radius_px <= 0:
-        return cost
-    if footprint not in ("square", "disk"):
-        raise ValueError(f"footprint must be 'square' or 'disk', not {footprint!r}")
-
-    source = np.where(slope >= threshold_deg, cost, 0.0).astype(np.float32)
-    reach = source.copy()
-    rows, cols = source.shape
-    r = int(radius_px)
-    for dy in range(-r, r + 1):
-        for dx in range(-r, r + 1):
-            if (dy, dx) == (0, 0) or (footprint == "disk" and dy * dy + dx * dx > r * r):
+    cost = cost.astype(np.float32, copy=True)
+    steep = steep.astype(bool, copy=True)
+    s = np.s_
+    # (one steep cell, the other, one gentle corner, the other), as slices of
+    # the 2x2 window's top-left corner over the whole array.
+    diagonals = (
+        (s[:-1, :-1], s[1:, 1:], s[:-1, 1:], s[1:, :-1]),   # top-left to bottom-right
+        (s[:-1, 1:], s[1:, :-1], s[:-1, :-1], s[1:, 1:]),   # top-right to bottom-left
+    )
+    for _ in range(passes):
+        fill = np.zeros_like(cost)
+        for a, b, p, q in diagonals:
+            gap = steep[a] & steep[b] & ~steep[p] & ~steep[q]
+            if not gap.any():
                 continue
-            # reach[y, x] = max(reach[y, x], source[y + dy, x + dx]) where in bounds.
-            dst = reach[max(0, -dy):rows - max(0, dy), max(0, -dx):cols - max(0, dx)]
-            src = source[max(0, dy):rows - max(0, -dy), max(0, dx):cols - max(0, -dx)]
-            np.maximum(dst, src, out=dst)
-    return np.maximum(cost, np.float32(share) * reach).astype(np.float32, copy=False)
+            value = np.where(gap, np.minimum(cost[a], cost[b]), 0.0)
+            take_p = slope[p] >= slope[q]
+            np.maximum(fill[p], np.where(take_p, value, 0.0), out=fill[p])
+            np.maximum(fill[q], np.where(take_p, 0.0, value), out=fill[q])
+        filled = fill > 0
+        if not filled.any():
+            break
+        cost = np.maximum(cost, fill)
+        steep |= filled
+    return cost, steep
+
+
+def buffer_steep(cost: np.ndarray, steep: np.ndarray, *, add: float) -> np.ndarray:
+    """`add` cost units on every gentle cell touching steep ground (its 8
+    neighbours), on top of the cell's own cost.
+
+    A fixed toll, not the steep price: it keeps routes a cell off the edge of
+    steep ground, but a gentle gap between two steep patches stays far
+    cheaper than the patches, so it is still worth the detour. Pricing the
+    ring like the steep ground itself was tried and closed those gaps -
+    routes then cut across the steep ground instead of round it.
+
+    Edges are not padded: give it arrays read with a halo of one cell.
+    """
+    if not add:
+        return cost
+    near = steep.copy()
+    rows, cols = steep.shape
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy or dx:
+                dst = near[max(0, -dy):rows - max(0, dy), max(0, -dx):cols - max(0, dx)]
+                dst |= steep[max(0, dy):rows - max(0, -dy), max(0, dx):cols - max(0, -dx)]
+    return np.where(near & ~steep, cost + np.float32(add), cost).astype(np.float32, copy=False)
 
 
 def clip_round(cost: np.ndarray, *, min_cost: float, max_cost: float) -> np.ndarray:

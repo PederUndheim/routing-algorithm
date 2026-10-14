@@ -1,0 +1,14 @@
+{
+  "name": "walk",
+  "note": "Fully anisotropic: r.walk from the start over the DEM, r.walk from the end over the negated DEM, so the corridor is r.walk too. Two spreads per route. Routed 2026-10-13 at max_gap_scale 8, which matches r.cost's band area (standard 1.08x, IoU 0.77; the units ratio 12.4 gives 1.43x, because slack then also buys the climb). Cost from both ends equal on all 96. Lines vs steep_edge_control: 49 moved >50 m, 13 >250 m; length -4.9%, re-climb -39%, on >=30 +2.4%, <10 m of steep -7.2%, exp/km +6.1%. 1.88x the compute of r.cost (5.8 vs 3.1 s/route); a third of the r.walk spread time is negating the DEM. ArcGIS: tests.walk_report arcgis.",
+  "extends": "steep_edge_control",
+  "surface_from": "steep_edge_control",
+  "config": {
+    "ROUTING": {
+      "engine": "walk"
+    },
+    "WALK": {
+      "max_gap_scale": 8.0
+    }
+  }
+}

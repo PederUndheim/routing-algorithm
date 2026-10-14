@@ -2,8 +2,8 @@
 
 Order matters:
   1. weighted sum of the terrain layers (slope, windshelter, pra_runout),
-     steep cells spread onto their neighbours (STEEP_SPREAD, off by
-     default), plus RIDGE_COST on exposed ridges
+     diagonal gaps in steep ground closed and a toll on its edge
+     (STEEP_EDGE, off by default), plus RIDGE_COST on exposed ridges
   2. MAX in the barriers (ocean, steep slope, plus anything enabled in
      config.BARRIERS)
   3. MIN in the reductions (road, tractor trail in forest, bridge), gated
@@ -47,7 +47,7 @@ DEBUG_LAYERS = (
     "02_windshelter_cost",      # shelter index -> cost, via the logistic
     "03_pra_runout_cost",       # avalanche exposure, already in cost units
     "04_terrain_weighted_sum",  # the three above, weighted and normalized
-    "04a_steep_spread",         # extra charged next to steep ground (STEEP_SPREAD)
+    "04a_steep_edge",           # corner gaps closed, edge toll (STEEP_EDGE)
     "04b_ridge_cost",           # extra charged on exposed ridges
     "05_barriers",              # steep slope and whatever config.BARRIERS enables
     "06_reduction_gate",        # 0..1: how much of a road reduction may apply
@@ -91,13 +91,13 @@ def build_cost_surface(
     # so its nodata is the country's outline plus whatever the DEM misses.
     # Every other layer is read with a neutral fill.
     #
-    # The terrain layers are read with a halo when steep ground is spread, so
+    # The terrain layers are read with a halo when STEEP_EDGE is on, so
     # a steep cell just over the tile edge still reaches into this tile. Step
     # 1 works on the padded arrays and crops them back; everything after it
-    # sees the tile alone. With the spread off the halo is 0 and the crop is
+    # sees the tile alone. With it off the halo is 0 and the crop is
     # the whole array.
-    spread = config.STEEP_SPREAD
-    halo = max(0, int(spread["radius_px"]))
+    edge = config.STEEP_EDGE
+    halo = (combine.CORNER_PASSES if edge["corners"] else 0) + (1 if edge["buffer"] else 0)
     inner = np.s_[halo:halo + TILE_PX, halo:halo + TILE_PX]
 
     slope = read_tile("slope", tile, halo=halo)
@@ -147,13 +147,17 @@ def build_cost_surface(
     cost = np.clip(cost, config.MIN_COST, config.BASE_MAX_COST)
     dbg("04_terrain_weighted_sum", cost[inner])
 
-    # --- 1a. steep ground spread ----------------------------------------
-    # Before the ridge charge, so what spreads is the terrain's own price for
-    # steep ground and not a crest surcharge; before the barriers, so a cliff
-    # stays exactly as wide as it is. The padded arrays end here.
-    spread_cost = combine.spread_steep(cost, slope, **spread)
-    dbg("04a_steep_spread", (spread_cost - cost)[inner])
-    cost = spread_cost[inner]
+    # --- 1a. steep edge: corner gaps closed, then a toll beside it ------
+    # Before the ridge charge, so a filled corner takes the terrain's own
+    # price for steep ground and not a crest surcharge; before the barriers,
+    # so a cliff stays exactly as wide as it is. The padded arrays end here.
+    steep = slope >= edge["threshold_deg"]
+    edge_cost = cost
+    if edge["corners"]:
+        edge_cost, steep = combine.fill_corners(edge_cost, steep, slope)
+    edge_cost = combine.buffer_steep(edge_cost, steep, add=edge["buffer"])
+    dbg("04a_steep_edge", (edge_cost - cost)[inner])
+    cost = edge_cost[inner]
     slope, windshelter, pra_runout = slope[inner], windshelter[inner], pra_runout[inner]
 
     # --- 1b. exposed ridges ---------------------------------------------
