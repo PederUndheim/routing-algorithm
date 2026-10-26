@@ -277,6 +277,16 @@ CORRIDOR_WIDTHS = {
     "wide": {"slack": 0.3, "max_gap": 450.0},
 }
 
+# Bands only the corridor review offers. Routing does not write these - the
+# app would render every one on every route for a slider that never shows
+# it. They are cut afterwards from the standard band, which holds the gap
+# exactly (see skimap.corridor_bands), into corridors_<width>/ like the
+# others. Narrower than standard only: a band can be cut from the standard
+# one only where the standard one reaches.
+REVIEW_CORRIDOR_WIDTHS = {
+    "very_narrow": {"slack": 0.05, "max_gap": 75.0},
+}
+
 # Band around a line the router did not make - drawn, uploaded or edited; see
 # routing.line_corridor. Its own settings so the two kinds can be tuned apart.
 #

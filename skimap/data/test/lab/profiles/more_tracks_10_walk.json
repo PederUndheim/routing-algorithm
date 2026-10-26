@@ -1,0 +1,23 @@
+{
+  "name": "more_tracks_10_walk",
+  "note": "Round 3: more_tracks_10's own surface, routed with r.walk (engine 'walk', max_gap_scale 8, as forest_1_2_walk). Against more_tracks_10 only the engine differs.",
+  "extends": "flagged_round3",
+  "surface_from": "more_tracks_10",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 10.0,
+      "max_reduction_forest": 10.0,
+      "presence_floor": 0.5
+    },
+    "STEEP_EDGE": {
+      "corners": false,
+      "buffer": 0.0
+    },
+    "ROUTING": {
+      "engine": "walk"
+    },
+    "WALK": {
+      "max_gap_scale": 8.0
+    }
+  }
+}

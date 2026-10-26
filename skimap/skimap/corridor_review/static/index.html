@@ -61,6 +61,12 @@
     <input id="fix-note" type="text" placeholder="what is wrong with it" autocomplete="off" disabled>
   </div>
 
+  <div class="control-group more-tracks-group">
+    <label class="check" title="Try a stronger track reduction on this tour - collected for the next more_tracks bench (T)">
+      <input type="checkbox" id="more-tracks"> more track reduction
+    </label>
+  </div>
+
   <div class="control-group">
     <span id="verdict-state" class="muted"></span>
     <button id="clear" title="Drop this tour's verdict (Backspace)">clear verdict</button>
@@ -70,11 +76,11 @@
 <main id="panels"><p class="empty">loading</p></main>
 
 <footer id="legend">
-  <span class="muted">click a panel or press its number to pick &middot; click a class to set it, S back to computed, U/D to step &middot; W for corridor width &middot; arrows to step, Enter for the next unreviewed &middot; G switches model set</span>
+  <span class="muted">click a panel or press its number to pick &middot; click a class to set it, S back to computed, U/D to step &middot; W for corridor width &middot; arrows to step, Enter for the next unreviewed &middot; G switches model set &middot; F fix tour, T more track reduction &middot; A GPS tracks on/off &middot; dashed = earlier round's pick</span>
   <span class="spacer"></span>
   <label class="check"><input type="checkbox" id="show-slope" checked> slope WMTS</label>
   <label class="check"><input type="checkbox" id="show-runout"> runout</label>
-  <label class="check"><input type="checkbox" id="show-tracks"> GPS tracks <span id="tracks-state" class="muted"></span></label>
+  <label class="check" title="Toggle GPS tracks (P)"><input type="checkbox" id="show-tracks"> GPS tracks <span id="tracks-state" class="muted"></span></label>
   <label class="check"><input type="checkbox" id="show-route" checked> route line</label>
   <label class="check"><input type="checkbox" id="lock-maps" checked> lock pan/zoom</label>
   <span class="spacer"></span>
@@ -88,10 +94,12 @@
     <input id="list-filter" type="text" placeholder="filter by name or fid" autocomplete="off">
     <select id="list-scope">
       <option value="all">all</option>
-      <option value="todo">unreviewed</option>
-      <option value="done">reviewed</option>
+      <option value="todo">unreviewed this round</option>
+      <option value="done">reviewed this round</option>
+      <option value="earlier">earlier round only</option>
       <option value="shifted">class shifted</option>
       <option value="fix">needs fixing</option>
+      <option value="more_tracks">more track reduction</option>
     </select>
     <button id="close-list">close</button>
   </div>

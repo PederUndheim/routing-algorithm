@@ -49,6 +49,15 @@ one rather than two kinds of output for two audiences.
 A tour whose corridor has not been reviewed contributes nothing to the
 "covered" side - see corridor_review.cli.colored_corridors for why a tour
 is simply left out rather than filled in from a fallback model.
+
+--model NAME asks the other question: not what the review approved, but
+what one model reaches if it is used for every tour - measured against that
+track variant's own standard-width merge,
+data/test/track_variants/NAME/corridors_all.tif. No colour split (a single
+model's merge has none) and no gap rasters (their paths belong to the
+reviewed run); the summary goes to stats/track_coverage_NAME.json.
+
+    python -m skimap.corridor_track_coverage --model forest_1_2
 """
 
 from __future__ import annotations
@@ -137,8 +146,17 @@ def _window(ds: gdal.Dataset, tile) -> np.ndarray:
     return out
 
 
+def model_raster(model: str) -> Path:
+    """A track variant's standard-width merge of every tour's corridor."""
+    path = paths.DATA / "test" / "track_variants" / model / "corridors_all.tif"
+    if not path.is_file():
+        raise SystemExit(f"No {path} - route the {model!r} variant first.")
+    return path
+
+
 def analyze(corridor_dir: Optional[Path] = None, *, top: int = 15,
-           write_gap_raster: bool = True) -> dict:
+           write_gap_raster: bool = True,
+           corridor_raster: Optional[Path] = None) -> dict:
     """National track weight, how much of it the corridors reach, and the
     tiles carrying the most of what is left - overall, per colour, and
     ranked. Colours can share a few cells in overlap.py's cross-fade seams,
@@ -151,15 +169,19 @@ def analyze(corridor_dir: Optional[Path] = None, *, top: int = 15,
     running total kept beside the one this already computes.
     """
     corridor_dir = Path(corridor_dir) if corridor_dir else paths.COLORED_CORRIDORS
-    colours = [name for _, name in config.EXPOSURE_CLASSES]
-
     datasets: dict[str, gdal.Dataset] = {}
-    for colour in colours:
-        path = corridor_dir / f"corridors_{colour}.tif"
-        if path.is_file():
-            datasets[colour] = gdal.Open(str(path))
-        else:
-            print(f"  no {path.name} in {corridor_dir} - treated as no coverage")
+    if corridor_raster:
+        # One merged raster, no colours to split it by.
+        colours = []
+        datasets["all"] = gdal.Open(str(corridor_raster))
+    else:
+        colours = [name for _, name in config.EXPOSURE_CLASSES]
+        for colour in colours:
+            path = corridor_dir / f"corridors_{colour}.tif"
+            if path.is_file():
+                datasets[colour] = gdal.Open(str(path))
+            else:
+                print(f"  no {path.name} in {corridor_dir} - treated as no coverage")
 
     total = 0.0
     covered = 0.0
@@ -183,7 +205,8 @@ def analyze(corridor_dir: Optional[Path] = None, *, top: int = 15,
             for colour, ds in datasets.items():
                 mask = _window(ds, tile) > MEMBERSHIP_FLOOR
                 if mask.any():
-                    by_colour[colour] += float(tracks[mask].sum())
+                    if colour in by_colour:
+                        by_colour[colour] += float(tracks[mask].sum())
                     union |= mask
             covered += float(tracks[union].sum())
             uncovered = np.where(union, 0.0, tracks)
@@ -228,7 +251,7 @@ def analyze(corridor_dir: Optional[Path] = None, *, top: int = 15,
         gap_cog = mosaic.to_cog(gap_vrt, GAP_COG)
 
     return {
-        "corridor_dir": str(corridor_dir),
+        "corridor_dir": str(corridor_raster or corridor_dir),
         "national_track_total": total,
         "covered_track_total": covered,
         "covered_pct": (covered / total * 100.0) if total else 0.0,
@@ -472,16 +495,26 @@ def render_quicklook(raster_path: Path, out_png: Path = GAP_PCT_PNG, *,
 
 
 def run(corridor_dir: Optional[Path] = None, out: Optional[Path] = None, *,
-       top: int = 15, write_gap_raster: bool = True) -> Path:
+       top: int = 15, write_gap_raster: bool = True,
+       model: Optional[str] = None) -> Path:
     corridor_dir = Path(corridor_dir) if corridor_dir else paths.COLORED_CORRIDORS
-    print(f"summing national track density against {corridor_dir}")
-    result = analyze(corridor_dir, top=top, write_gap_raster=write_gap_raster)
+    corridor_raster = model_raster(model) if model else None
+    if model:
+        write_gap_raster = False
+        out = out or OUT.with_name(f"track_coverage_{model}.json")
+    print(f"summing national track density against {corridor_raster or corridor_dir}")
+    result = analyze(corridor_dir, top=top, write_gap_raster=write_gap_raster,
+                     corridor_raster=corridor_raster)
+    if model:
+        result["model"] = model
 
+    what = f"the {model} corridors (every tour, standard width)" if model else "the reviewed corridors"
     print(f"\n{result['covered_pct']:.2f}% of all recorded ski touring in Norway "
-          f"falls inside the reviewed corridors")
+          f"falls inside {what}")
     print(f"  national total  {result['national_track_total']:,.0f}")
     print(f"  covered         {result['covered_track_total']:,.0f}")
-    print("\nby colour (share of the NATIONAL total, not of what's covered):")
+    if result["by_colour"]:
+        print("\nby colour (share of the NATIONAL total, not of what's covered):")
     for colour, row in result["by_colour"].items():
         print(f"  {colour:8s} {row['track_total']:14,.0f}  {row['pct_of_national']:5.2f}%")
 
@@ -517,6 +550,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--corridors", type=Path,
                         help="directory of corridors_<colour>.tif (default data/colored_corridors)")
+    parser.add_argument("--model",
+                        help="measure one track variant's standard corridors for every "
+                             "tour instead (e.g. forest_1_2); implies --no-gap-raster")
     parser.add_argument("--out", type=Path, help="where to write the summary JSON")
     parser.add_argument("--top", type=int, default=15,
                         help="how many uncovered tiles to rank (default 15)")
@@ -536,7 +572,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     if args.outline:
         write_gap_outline()
         return 0
-    run(args.corridors, args.out, top=args.top, write_gap_raster=not args.no_gap_raster)
+    run(args.corridors, args.out, top=args.top, write_gap_raster=not args.no_gap_raster,
+        model=args.model)
     return 0
 
 

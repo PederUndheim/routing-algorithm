@@ -29,6 +29,13 @@ const TILES = {
   runout: `${NVE}/Bratthet_med_utlop_2024/MapServer/WMTS/tile/1.0.0/wmts_Bratthet_med_utlop_2024/default/GoogleMapsCompatible/{z}/{y}/{x}.png`,
 };
 
+// NVE lists levels to 19 but answers 400 past 16, and Kartverket stops at 18;
+// past those each layer is scaled up rather than fetched (maxNativeZoom), so
+// the map can zoom deeper than either has tiles for - the same as the skimap
+// app. Every tile layer needs maxZoom too, or Leaflet hides it past 18.
+const MAX_ZOOM = 20;
+const NATIVE_ZOOM = { base: 18, slope: 16, runout: 16 };
+
 const OPACITY = { slope: 0.3, runout: 0.3 };
 
 // The corridor sits on top of the slope ramp, and the slope underneath it is
@@ -137,6 +144,8 @@ function buildPanels(models, group) {
         <span class="key">${index + 1}</span>
         <span class="panel-label"></span>
         <span class="spacer"></span>
+        <span class="prev-tag" hidden></span>
+        <span class="width-tag"></span>
         <span class="chip"></span>
       </div>
       <div class="panel-map"></div>
@@ -146,11 +155,18 @@ function buildPanels(models, group) {
     const map = L.map(panel.querySelector(".panel-map"), {
       zoomControl: index === 0,
       attributionControl: index === models.length - 1,
+      maxZoom: MAX_ZOOM,
     }).setView([65, 13], 5);
 
-    L.tileLayer(TILES.base, { maxZoom: 18, attribution: "© Kartverket" }).addTo(map);
-    const slope = L.tileLayer(TILES.slope, { maxZoom: 18, opacity: OPACITY.slope });
-    const runout = L.tileLayer(TILES.runout, { maxZoom: 18, opacity: OPACITY.runout });
+    L.tileLayer(TILES.base, {
+      maxZoom: MAX_ZOOM, maxNativeZoom: NATIVE_ZOOM.base, attribution: "© Kartverket",
+    }).addTo(map);
+    const slope = L.tileLayer(TILES.slope, {
+      maxZoom: MAX_ZOOM, maxNativeZoom: NATIVE_ZOOM.slope, opacity: OPACITY.slope,
+    });
+    const runout = L.tileLayer(TILES.runout, {
+      maxZoom: MAX_ZOOM, maxNativeZoom: NATIVE_ZOOM.runout, opacity: OPACITY.runout,
+    });
     if ($("show-slope").checked) slope.addTo(map);
     if ($("show-runout").checked) runout.addTo(map);
 
@@ -324,6 +340,7 @@ function renderTour(tour) {
       chip.textContent = "no route";
       chip.className = "chip";
       foot.innerHTML = `<span class="muted">this model produced nothing for this tour</span>`;
+      noteWidth(entry, null);
       continue;
     }
 
@@ -385,6 +402,7 @@ function renderTour(tour) {
   showVerdict(tour.verdict);
 
   showFix(tour.needs_fix);
+  showMoreTracks(tour.more_tracks);
   markListCurrent();
   drawGroupSwitch();
   applyTracks();
@@ -409,13 +427,26 @@ function drawCorridor(entry, data) {
   entry.corridor.bringToBack();
 }
 
+/* The width this panel is really drawing, in its head - and in amber when it
+ * had to fall back to standard, so a panel can never look like it is showing
+ * the width the switch says while it is not. */
 function noteWidth(entry, data) {
-  const note = entry.node.querySelector(".width-note");
-  if (!note) return;
   const missing = data && data.png && state.width !== STANDARD_WIDTH
     && !(data.pngs && data.pngs[state.width]);
-  note.textContent = missing ? `no ${state.width} band - standard shown` : "";
+  const tag = entry.node.querySelector(".width-tag");
+  if (tag) {
+    tag.hidden = !(data && data.png);
+    tag.textContent = missing
+      ? `${STANDARD_WIDTH} (no ${widthLabel(state.width)})` : widthLabel(state.width);
+    tag.className = `width-tag ${missing ? "fallback" : state.width}`;
+  }
+  const note = entry.node.querySelector(".width-note");
+  if (note) note.textContent = missing ? `no ${widthLabel(state.width)} band - standard shown` : "";
 }
+
+/* "very_narrow" as people read it. The name itself stays as config spells
+ * it - it is what a verdict records and what the corridor URLs carry. */
+const widthLabel = (width) => width.replace(/_/g, " ");
 
 /* The width switch: one button per width, narrowest first, from
  * session.widths - the names are config.CORRIDOR_WIDTHS' business. */
@@ -427,8 +458,8 @@ function buildWidthButtons() {
     button.type = "button";
     button.className = "group-button";
     button.dataset.width = width;
-    button.textContent = width;
-    button.title = `Show every corridor at ${width} width (W cycles)`;
+    button.textContent = widthLabel(width);
+    button.title = `Show every corridor at ${widthLabel(width)} width (W cycles)`;
     button.addEventListener("click", () => setWidth(width));
     host.appendChild(button);
   }
@@ -474,15 +505,32 @@ function cycleWidth() {
  */
 function showVerdict(verdict) {
   drawClassButtons();
+  // An earlier round's pick, if any: marked on its panel and named in the
+  // state line, but never treated as a verdict of this round - see
+  // ReviewServer.tour on why it arrives separately.
+  const previous = state.tour && state.tour.previous;
   for (const entry of state.panels) {
     entry.node.classList.toggle("chosen", !!verdict && verdict.model === entry.model);
+    const wasPicked = !!previous && previous.model === entry.model;
+    entry.node.classList.toggle("previous", wasPicked);
+    const tag = entry.node.querySelector(".prev-tag");
+    if (tag) {
+      tag.hidden = !wasPicked;
+      tag.textContent = wasPicked
+        ? `round ${previous.round || 1}: ${previous.colour}${(previous.width || STANDARD_WIDTH) !== STANDARD_WIDTH ? ` ${previous.width}` : ""}`
+        : "";
+    }
   }
   $("note").value = verdict ? (verdict.note || "") : "";
   const width = verdict && verdict.width && verdict.width !== STANDARD_WIDTH
     ? ` ${verdict.width}` : "";
-  $("verdict-state").textContent = verdict
+  const now = verdict
     ? `picked ${verdict.model}${width} · ${verdict.colour}${verdict.shift ? ` (shifted ${verdict.shift > 0 ? "up" : "down"} from ${verdict.colour_computed})` : ""}`
-    : "not reviewed";
+    : "not reviewed this round";
+  const before = previous
+    ? ` · round ${previous.round || 1}: ${previous.model} ${previous.colour}${previous.note ? ` "${previous.note}"` : ""}`
+    : "";
+  $("verdict-state").textContent = now + before;
 }
 
 /* The GPS tracks, fetched only when the layer is on.
@@ -730,6 +778,32 @@ async function saveFix() {
   }
 }
 
+/* The "try more track reduction" flag - the list the next more_tracks bench
+ * is built for. Same rules as the fix flag: saved on its own, and nothing
+ * to do with the verdict. */
+function showMoreTracks(entry) {
+  $("more-tracks").checked = !!entry;
+  document.querySelector(".more-tracks-group").classList.toggle("on", !!entry);
+}
+
+async function saveMoreTracks() {
+  const tour = state.tour;
+  if (!tour) return;
+  const on = $("more-tracks").checked;
+  document.querySelector(".more-tracks-group").classList.toggle("on", on);
+  try {
+    const result = await api("/api/flag", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fid: tour.fid, on, kind: "more_tracks" }),
+    });
+    if (state.tour) state.tour.more_tracks = result.more_tracks;
+    await refreshList();
+  } catch (problem) {
+    toast(problem.message, "error");
+  }
+}
+
 async function clearVerdict() {
   const tour = state.tour;
   if (!tour) return;
@@ -747,16 +821,17 @@ async function clearVerdict() {
   }
 }
 
-async function refreshProgress(reviewed) {
-  const total = state.session.total;
-  if (reviewed == null) {
-    const session = await api("/api/session");
-    state.session = session;
-    reviewed = session.reviewed;
-  }
-  state.session.reviewed = reviewed;
+/* This round's progress. A pick on a tour an earlier round had reviewed
+ * moves both counts, so after a write this always re-reads the session
+ * rather than trusting the one number the write sent back. */
+async function refreshProgress() {
+  const session = await api("/api/session");
+  state.session = session;
+  const { total, reviewed } = session;
+  const before = session.reviewed_before || 0;
   $("progress-fill").style.width = `${total ? (reviewed / total) * 100 : 0}%`;
-  $("progress-text").textContent = `${reviewed} / ${total} reviewed`;
+  $("progress-text").textContent = `${reviewed} / ${total} reviewed this round`
+    + (before ? ` · ${before} only in an earlier round` : "");
 }
 
 /* The next tour with no verdict AFTER this one, wrapping once.
@@ -798,21 +873,31 @@ function drawList() {
   for (const tour of state.tours) {
     if (scope === "todo" && tour.model) continue;
     if (scope === "done" && !tour.model) continue;
+    if (scope === "earlier" && (tour.model || !tour.previous_model)) continue;
     if (scope === "shifted" && !tour.shift) continue;
     if (scope === "fix" && !tour.needs_fix) continue;
+    if (scope === "more_tracks" && !tour.more_tracks) continue;
     // "group:<name>" - the tours one non-main bench was built for. The way
     // to walk a 27-tour set without hunting for its fids in a list of 817.
     if (scope.startsWith("group:") && !inGroup(tour, scope.slice(6))) continue;
     if (needle && !`${tour.fid} ${tour.name}`.toLowerCase().includes(needle)) continue;
 
+    // Reviewed this round, or only in an earlier one - which stays visible,
+    // dimmed, so a re-review does not make round one's work vanish.
+    const earlier = !tour.model && tour.previous_model;
+    const model = tour.model
+      ? `${tour.model}${tour.shift ? (tour.shift > 0 ? " ↑" : " ↓") : ""}`
+      : (earlier ? `r${tour.previous_round || 1} ${tour.previous_model}` : "");
+    const colour = tour.colour || (earlier ? tour.previous_colour : "") || "";
+    const flags = `${tour.needs_fix ? "⚑" : ""}${tour.more_tracks ? "T" : ""}`;
     const row = document.createElement("li");
     row.dataset.fid = String(tour.fid);
     row.innerHTML = `
-      <span class="dot ${tour.colour || ""}"></span>
+      <span class="dot ${colour}${earlier ? " earlier" : ""}"></span>
       <span class="li-fid">${tour.fid}</span>
       <span class="li-name">${tour.name}</span>
-      <span class="li-model">${tour.model || ""}${tour.shift ? (tour.shift > 0 ? " ↑" : " ↓") : ""}</span>
-      <span class="flag">${tour.needs_fix ? "⚑" : ""}</span>`;
+      <span class="li-model${earlier ? " earlier" : ""}">${model}</span>
+      <span class="flag" title="${tour.needs_fix ? "needs fixing " : ""}${tour.more_tracks ? "more track reduction" : ""}">${flags}</span>`;
     row.addEventListener("click", () => load(tour.fid));
     body.appendChild(row);
   }
@@ -903,6 +988,14 @@ function keyboard() {
         $("needs-fix").checked = !$("needs-fix").checked;
         saveFix();
         break;
+      case "t":
+        $("more-tracks").checked = !$("more-tracks").checked;
+        saveMoreTracks();
+        break;
+      case "a":
+        $("show-tracks").checked = !$("show-tracks").checked;
+        applyTracks();
+        break;
       case "backspace":
         event.preventDefault();
         clearVerdict();
@@ -985,6 +1078,7 @@ async function main() {
     if (event.key === "Enter") event.target.blur();
   });
   $("needs-fix").addEventListener("change", saveFix);
+  $("more-tracks").addEventListener("change", saveMoreTracks);
   // On blur rather than on every keystroke - one write per edit, not per
   // character, and the store rewrites the whole file each time.
   $("fix-note").addEventListener("blur", () => {

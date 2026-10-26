@@ -913,7 +913,7 @@ parameter is an error rather than a silent no-op.
 
 `scale` is the one knob that is **not** in `config.py`. The track
 normalization is a pair of density values computed once nationally into
-`data/grid/track_scale.json`; `TRACK_NORMALIZATION` holds the percentiles it
+`data/area-data/grid/track_scale.json`; `TRACK_NORMALIZATION` holds the percentiles it
 was derived *from*, not the answer, and re-deriving it is a full pass over the
 national track raster. So this takes the two numbers directly. Omit it, or set
 it to `null`, for the national pair.
@@ -1031,8 +1031,25 @@ python -m skimap.corridor_review export
 Keyboard: `1`..`9` pick that panel, `left`/`right` step, `Enter`
 jumps to the next unreviewed tour, `u`/`d` step the class up and down the
 ladder and `s` puts it back to the computed one, `f` flags the tour as
-needing fixing, `Backspace` drops a verdict, `l` opens the tour list, `g`
-switches model set.
+needing fixing, `t` flags it for a stronger track reduction (`status
+--more-tracks` lists them), `Backspace` drops a verdict, `l` opens the tour
+list, `g` switches model set.
+
+`very_narrow` (5% slack, cap 75) is a review-only width
+(config.REVIEW_CORRIDOR_WIDTHS): routing does not write it, so the app does
+not pay for it. It is cut from the standard band, which holds the gap
+exactly - re-run this after re-routing a model, or its very narrow band goes
+stale:
+
+```bash
+python -m skimap.corridor_bands derive data/test/track_variants/<model> --width very_narrow
+python -m skimap.corridor_bands check  data/test/track_variants/<model> --width narrow  # proves the cut
+```
+
+Progress, Enter and the list's "unreviewed" all count the current round
+only. A tour picked in an earlier round keeps that verdict until it is picked
+again - its panel is dashed and the list shows it dimmed - and Backspace on a
+re-pick puts the earlier round's verdict back.
 
 ### More than one bench of models
 
@@ -1210,3 +1227,49 @@ that makes this repo need a package manager.
 `data/review/review.json` is the one file here that the pipeline cannot
 reproduce. It is re-included in `.gitignore` on purpose - `cache/` and
 `export/` are rebuildable, and hours of somebody looking at maps are not.
+
+## Final corridors
+
+When the review is done, `skimap.corridors_final` turns each tour's pick into
+the finished set under `data/corridors_final/`:
+
+```powershell
+& $py -m skimap.corridors_final plan                 # decide and print, write nothing
+& $py -m skimap.corridors_final build                # refuses while the review is open
+& $py -m skimap.corridors_final build --draft --out <dir>   # try it before then
+& $py -m skimap.corridors_final colored              # data/colored_corridors from it
+```
+
+`colored` repaints the four class rasters in `data/colored_corridors` from the
+built set: one corridor per final id, merged pieces in their merged colour.
+It replaces `corridor_review colored-corridors` (one corridor per old tour)
+as the source for the app's tiles and `corridor_track_coverage`, so re-run
+those after it. Close the rasters in ArcGIS first; otherwise the new ones are
+left beside the locked files as `*.tmp.tif`.
+
+Corridors get new ids, 1..N, with no names. They are numbered region by region
+in NVE's forecast-region order (omrID 3001-3046, north to south), then north to
+south by summit within a region. A corridor belongs to the region that holds
+most of its route. B regions count as regions too. `other` only catches a
+corridor outside every polygon. `id_map` (in the gpkg, and as `id_map.csv`)
+ties every new id back to its old tour fid(s), name and picked corridor file.
+It also lists each tour that did not make it in, and why.
+
+Tours that were digitized in pieces (one ends where the next starts, within
+`gap_m`, 10 m) are merged into one corridor. The merged raster is the cell-wise
+max of the pieces, and the colour is the most severe piece's. Plain chains
+merge automatically. A group that branches is never guessed: decide it in
+`data/corridors_final/merges.json` (`merge` lists corridors to build, and one
+tour may be in several; `keep_apart` keeps tours on their own). `plan` also
+lists near misses up to 300 m, for a split digitized with a gap. A near miss
+that was looked at and is two tours goes in `not_splits` to stop it being
+reported.
+
+Every corridor is its own `.tif`, all in one folder, `corridors/`. Each is
+cropped to its band and carries its id, region and old fids in its metadata.
+`corridors_all.tif` is all of them in one raster (overlaps take the max), so
+the whole country can be viewed at once. `corridors_final.gpkg` is the index:
+footprints with every attribute and `location` (the `.tif`, relative to the
+folder), plus routes, id_map and regions. ArcGIS Pro opens it directly. A
+mosaic dataset would be ArcGIS' own index of the tifs, but it needs a Standard
+licence and this machine has Basic.

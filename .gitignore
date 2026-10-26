@@ -124,6 +124,12 @@ skimap/data/review/*
 !skimap/data/review/config.json
 !skimap/data/review/review.json
 
+# The final corridor set rebuilds from review.json - all but merges.json,
+# the hand-made calls on which split tours become one corridor.
+!skimap/data/corridors_final/
+skimap/data/corridors_final/*
+!skimap/data/corridors_final/merges.json
+
 # The ArcGIS styles the app colours corridors with. Hand-made, a few KB each,
 # and the deployed backend is built from a checkout, so it needs them in git.
 !skimap/data/styles_arcgis/

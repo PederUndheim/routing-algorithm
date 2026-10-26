@@ -180,6 +180,7 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 .fix-group input[type="text"] { width: 190px; }
 .fix-group.on .check { color: var(--amber); font-weight: 600; }
 .fix-group input[type="text"]:disabled { opacity: 0.4; }
+.more-tracks-group.on .check { color: var(--amber); font-weight: 600; }
 
 .flag { color: var(--amber); font-weight: 700; }
 
@@ -229,7 +230,36 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
 
 .panel:hover { border-color: var(--edge-bright); }
 .panel.chosen { border-color: var(--accent); }
+/* An earlier round's pick: there to compare against, not a verdict in this
+   one - so dashed and muted, never the accent a pick made now gets. */
+.panel.previous { border-color: var(--edge-bright); border-style: dashed; }
+.panel.chosen.previous { border-color: var(--accent); border-style: solid; }
 .panel.missing { opacity: 0.5; cursor: default; }
+
+.prev-tag {
+  font-size: 10px;
+  color: var(--muted);
+  border: 1px dashed var(--edge-bright);
+  border-radius: 4px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+
+/* The width every corridor on screen is drawn at, on every panel - the one
+   thing that changes all of them at once, so it must be readable from any. */
+.width-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text);
+  border: 1px solid var(--edge-bright);
+  border-radius: 4px;
+  padding: 0 5px;
+  white-space: nowrap;
+}
+.width-tag.very_narrow, .width-tag.narrow, .width-tag.wide { border-color: var(--accent); color: var(--accent); }
+.width-tag.fallback { color: var(--amber); border-color: var(--amber); }
 
 .panel-head {
   display: flex;
@@ -351,6 +381,10 @@ button.on { background: var(--accent); border-color: var(--accent); color: #0612
   white-space: nowrap;
 }
 #list-body .flag { flex: none; min-width: 10px; }
+/* Reviewed in an earlier round, not yet in this one: still marked, so the
+   list keeps showing what was done, but plainly not this round's. */
+#list-body .li-model.earlier { font-style: italic; opacity: 0.7; }
+.dot.earlier { opacity: 0.4; }
 
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--edge-bright); flex: none; }
 .dot.green { background: var(--green); }

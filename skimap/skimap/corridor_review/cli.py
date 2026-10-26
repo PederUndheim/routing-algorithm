@@ -35,7 +35,9 @@ Everything lands under data/review/:
 A round is a pass over the tours. `round` bumps the number; verdicts already
 recorded stay, and each carries the round it was made in, so a second pass
 that only revisits the doubtful ones leaves the rest standing as the current
-answer. `status --shifted` lists where the reviewer disagreed with the
+answer. `round --carry-over` goes one further and counts those as done in
+the new round, reopening only the tours flagged more_tracks or needs_fix.
+`status --shifted` lists where the reviewer disagreed with the
 exposure classes, which is the feedback config.EXPOSURE_CLASSES never gets
 any other way.
 """
@@ -44,12 +46,12 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from skimap import paths, routing, tours as tours_module
 from skimap.corridor_review import models as models_module
 from skimap.corridor_review import render, server, sources, stats as stats_module
-from skimap.corridor_review.store import LADDER, Store, verdict_width
+from skimap.corridor_review.store import LADDER, Store, made_in, verdict_width
 
 EXPORT = paths.DATA / "review" / "export"
 
@@ -67,6 +69,7 @@ REVIEW_FIELDS = (
     ("review_geom", "OFTString"),       # "route" or "tour", see export()
     ("needs_fix", "OFTInteger"),        # 1 where tours.gpkg needs editing
     ("fix_note", "OFTString"),          # what is wrong with it
+    ("more_tracks", "OFTInteger"),      # 1 where a stronger track reduction should be tried
     ("exp_score", "OFTReal"),           # of the chosen corridor's route
     ("length_m", "OFTReal"),
     ("cost_opt", "OFTReal"),
@@ -113,7 +116,8 @@ def prepare(*, render_all: bool = False) -> None:
         print(f"    rendered {done}/{len(corridors)}")
 
 
-def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
+def status(*, shifted_only: bool = False, fix_only: bool = False,
+           more_tracks_only: bool = False) -> None:
     config = models_module.load()
     store = Store()
     # Every count below is over the tours in tours.gpkg now. Verdicts and
@@ -121,11 +125,15 @@ def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
     names = {t["fid"]: t["name"] for t in sources.tour_order()}
     total = len(names)
     reviewed = len(store.current(names))
+    this_round = len(store.reviewed_this_round(names))
 
     print(f"round {store.round}"
           f"{f' - {config.note}' if config.note else ''}")
-    print(f"  {reviewed} / {total} tours reviewed"
-          f"  ({(reviewed / total * 100) if total else 0:.0f}%)")
+    print(f"  {this_round} / {total} tours reviewed this round"
+          f"  ({(this_round / total * 100) if total else 0:.0f}%)")
+    if reviewed > this_round:
+        print(f"  {reviewed - this_round} more stand from an earlier round "
+              f"({reviewed} / {total} with a verdict - what the counts below read)")
     orphaned = len(store.verdicts) - reviewed
     if orphaned:
         print(f"  ({orphaned} verdicts on tours no longer in tours.gpkg, "
@@ -134,6 +142,13 @@ def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
     if fix_only:
         rows = store.fix_list(names)
         print(f"\n{len(rows)} tours flagged as needing work in tours.gpkg:")
+        for fid, entry in rows:
+            print(f"  {fid:6d}  {names.get(fid, ''):28s} {entry.get('note', '')}")
+        return
+
+    if more_tracks_only:
+        rows = store.more_tracks_list(names)
+        print(f"\n{len(rows)} tours flagged for a stronger track reduction:")
         for fid, entry in rows:
             print(f"  {fid:6d}  {names.get(fid, ''):28s} {entry.get('note', '')}")
         return
@@ -175,14 +190,32 @@ def status(*, shifted_only: bool = False, fix_only: bool = False) -> None:
     if fixes:
         print(f"{len(fixes)} tours need work in tours.gpkg - "
               f"see `status --needs-fix`")
+    more = store.more_tracks_list(names)
+    if more:
+        print(f"{len(more)} tours want a stronger track reduction tried - "
+              f"see `status --more-tracks`")
 
 
-def new_round(number: Optional[int] = None) -> int:
+def new_round(number: Optional[int] = None, *, carry_over: bool = False,
+              reopen: Sequence[int] = ()) -> int:
+    """`carry_over` keeps every existing tour's verdict as done in the new
+    round, except the tours flagged more_tracks or needs_fix and those in
+    `reopen` - a round over just the tours that asked for another look."""
     store = Store()
     was = store.round
-    now = store.start_round(number)
+    carry = None
+    if carry_over:
+        live = {tour["fid"] for tour in sources.tour_order()}
+        reopened = (set(store.more_tracks) | set(store.needs_fix)
+                    | {int(f) for f in reopen}) & live
+        carry = live - reopened
+    now = store.start_round(number, carry=carry)
     print(f"round {was} -> {now}. Verdicts from earlier rounds stand until "
           f"a tour is reviewed again.")
+    if carry is not None:
+        done = len(store.reviewed_this_round(live))
+        print(f"  {done} carried over as done, {len(live) - done} to review "
+              f"({len(reopened)} reopened, the rest have no verdict)")
     return now
 
 
@@ -239,6 +272,7 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
         feature.SetField("needs_fix", 1 if fix else 0)
         if fix:
             feature.SetField("fix_note", fix.get("note", ""))
+        feature.SetField("more_tracks", 1 if store.more_tracks_flag(tour.fid) else 0)
 
         geometry = None
         if verdict:
@@ -258,7 +292,7 @@ def export(out_dir: Optional[Path] = None, *, merge: bool = True) -> Path:
             feature.SetField("review_colour", verdict["colour"])
             feature.SetField("review_computed", verdict["colour_computed"])
             feature.SetField("review_shift", int(verdict["shift"]))
-            feature.SetField("review_round", int(verdict.get("round", 1)))
+            feature.SetField("review_round", made_in(verdict))
             feature.SetField("review_note", verdict.get("note", ""))
             feature.SetField("review_at", verdict.get("at", ""))
 
@@ -423,9 +457,16 @@ def main(argv: Optional[list[str]] = None) -> int:
                    help="list only the tours whose class the reviewer moved")
     p.add_argument("--needs-fix", action="store_true", dest="needs_fix",
                    help="list only the tours flagged as needing work in tours.gpkg")
+    p.add_argument("--more-tracks", action="store_true", dest="more_tracks",
+                   help="list only the tours flagged for a stronger track reduction")
 
     p = sub.add_parser("round", help="start a new review round")
     p.add_argument("number", nargs="?", type=int)
+    p.add_argument("--carry-over", action="store_true", dest="carry_over",
+                   help="keep verdicts as done, except tours flagged "
+                        "more_tracks / needs_fix and --reopen ones")
+    p.add_argument("--reopen", type=int, action="append", default=[],
+                   metavar="FID", help="with --carry-over: also review this tour again")
 
     p = sub.add_parser("export", help="the reviewed tours and merged corridors")
     p.add_argument("--out", type=Path)
@@ -454,9 +495,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     elif args.stage == "serve":
         server.serve(args.host, args.port, review_path=args.review)
     elif args.stage == "status":
-        status(shifted_only=args.shifted, fix_only=args.needs_fix)
+        status(shifted_only=args.shifted, fix_only=args.needs_fix,
+               more_tracks_only=args.more_tracks)
     elif args.stage == "round":
-        new_round(args.number)
+        new_round(args.number, carry_over=args.carry_over, reopen=args.reopen)
     elif args.stage == "export":
         export(args.out, merge=not args.no_merge)
     elif args.stage == "cache":

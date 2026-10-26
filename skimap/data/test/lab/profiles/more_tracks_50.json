@@ -1,0 +1,16 @@
+{
+  "name": "more_tracks_50",
+  "note": "Round 3: the more_tracks ladder one step further - ceiling 50.0 in and out of forest, presence_floor 0.5, no steep edge. Differs from more_tracks_25 only in the ceiling.",
+  "extends": "flagged_round3",
+  "config": {
+    "TRACKS": {
+      "max_reduction": 50.0,
+      "max_reduction_forest": 50.0,
+      "presence_floor": 0.5
+    },
+    "STEEP_EDGE": {
+      "corners": false,
+      "buffer": 0.0
+    }
+  }
+}

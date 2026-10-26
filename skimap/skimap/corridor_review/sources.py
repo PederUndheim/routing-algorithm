@@ -161,7 +161,9 @@ def corridor_paths(model: Model, width: str = STANDARD) -> dict[int, Path]:
 
 
 def widths() -> list[str]:
-    """Every width the review can show, narrowest first."""
+    """Every width the review can show, narrowest first: routing's, and the
+    review-only ones skimap.corridor_bands cuts from the standard band."""
     slack = {STANDARD: config.CORRIDOR["slack"],
-             **{w: p["slack"] for w, p in config.CORRIDOR_WIDTHS.items()}}
+             **{w: p["slack"] for w, p in config.CORRIDOR_WIDTHS.items()},
+             **{w: p["slack"] for w, p in config.REVIEW_CORRIDOR_WIDTHS.items()}}
     return sorted(slack, key=slack.get)

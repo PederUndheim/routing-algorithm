@@ -1,7 +1,7 @@
 """Where everything lives on disk.
 
 data/input/national/  is provided by you (see its README.md).
-data/input/derived, data/grid, data/cost_surface  are generated.
+data/input/derived, data/area-data/grid, data/cost_surface  are generated.
 data/test/  holds the throwaway output of comparison runs.
 
 The data root sits beside the package, not inside it, so ROOT climbs out of
@@ -34,7 +34,7 @@ DERIVED = INPUT / "derived"       # national layers computed from them
 # a national layer. They are not wired into SOURCES yet; point SOURCES
 # ["runout"] here to route on ALARM instead of the Flow-Py runout.
 RUNOUT_ALARM = INPUT / "runout_ALARM"
-GRID_DIR = DATA / "grid"
+GRID_DIR = DATA / "area-data" / "grid"
 
 # Where a study area's ridge build lands, so a threshold can be judged on
 # ground you know before it is committed to the national layer. Scratch you
@@ -78,6 +78,17 @@ ROUTES = DATA / "routing_output"
 # routes that produced them, so re-routing without re-scoring leaves the two
 # disagreeing. That is the trade for keeping it to four files.
 COLORED_CORRIDORS = DATA / "colored_corridors"
+
+# The finished corridor set, built from the review by skimap.corridors_final:
+# one corridor per tour or per chain of split tours, renumbered in region
+# order. Everything in it is rebuilt by `build` except merges.json, which is
+# hand-made - the merge decisions the links alone cannot settle.
+CORRIDORS_FINAL = DATA / "corridors_final"
+CORRIDOR_MERGES = CORRIDORS_FINAL / "merges.json"
+
+# NVE's avalanche forecast regions (varslingsregioner), as delivered.
+FORECAST_REGIONS = (DATA / "area-data" / "Skred_Sno_Varslingsomr 1"
+                    / "Skred_Sno_Varslingsomr.shp")
 
 # Hand-divided corridors, one directory per area you draw over, named after
 # the outline that defines it. Holds both what you draw into and what comes

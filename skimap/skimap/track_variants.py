@@ -57,6 +57,12 @@ Add your own:
 
     python -m skimap.track_variants init softer --max 0.5 --forest 1.5
 
+A profile may also route over a surface it did not build: `"surface":
+"<path under data/>"` (production's, or an archived one) or `"surface_from":
+"<variant>"` (another variant's, e.g. to try r.walk via ROUTING.engine on the
+same ground). Such a variant has no tiles, and `surface` refuses to build any.
+Long routing batches belong in their own GRASS mapset: `route --mapset x`.
+
 ## Why the numbers reach the tile workers through a file
 
 config.py applies the overlay at import, from SKIMAP_PROFILE in the
@@ -285,6 +291,9 @@ def build_surface(v: Variant, *, jobs: int = 1, force: bool = False,
     from skimap.cost_surface.surface import build_all
 
     _live(v)
+    if borrowed_surface(v) is not None:
+        raise SystemExit(f"{v.name} routes over a surface it does not own "
+                         f"({borrowed_surface(v)}) - there is nothing to build.")
     want = numbers(v)
     if v.built.exists() and not force:
         was = json.loads(v.built.read_text(encoding="utf-8"))
@@ -323,8 +332,31 @@ def build_mosaic(v: Variant, *, cog: bool = True) -> Path:
     return mosaic.to_cog(vrt, v.cog)
 
 
+def borrowed_surface(v: Variant) -> Optional[Path]:
+    """The surface a routing-only variant reads instead of building its own.
+
+    A profile may name one with `surface` (a path under data/, for a surface
+    no variant built - production's, or an archived one) or `surface_from`
+    (another variant, whose surface it routes over with different routing
+    settings - r.walk on the same ground as r.cost). Either way the variant
+    has no tiles of its own, and `surface` refuses to build them.
+    """
+    body = json.loads(v.profile.read_text(encoding="utf-8-sig"))
+    if body.get("surface"):
+        path = paths.DATA / body["surface"]
+        if not path.exists():
+            raise FileNotFoundError(f"{v.name} routes over {path}, which does not exist")
+        return path
+    if body.get("surface_from"):
+        return national_surface(Variant(body["surface_from"]))
+    return None
+
+
 def national_surface(v: Variant) -> Path:
     """This variant's surface: the COG if it has been built, else the VRT."""
+    borrowed = borrowed_surface(v)
+    if borrowed is not None:
+        return borrowed
     for candidate in (v.cog, v.vrt):
         if candidate.exists():
             return candidate
@@ -336,8 +368,12 @@ def national_surface(v: Variant) -> Path:
 
 
 def route(v: Variant, *, buffer_m: Optional[float] = None, force: bool = False,
-          merge: bool = True, limit: int = 0, fids: Optional[list[int]] = None):
-    """Route the tours through this variant's surface."""
+          merge: bool = True, limit: int = 0, fids: Optional[list[int]] = None,
+          mapset: str = "PERMANENT"):
+    """Route the tours through this variant's surface.
+
+    `mapset` - see routing.start_session. A long batch run while anything
+    else may route belongs in its own."""
     from skimap import routing, tours as tours_mod
 
     _live(v)
@@ -365,7 +401,7 @@ def route(v: Variant, *, buffer_m: Optional[float] = None, force: bool = False,
         # with --fid or --limit: to pruning, every tour left out of a subset
         # looks deleted.
         prune=not (fids or limit),
-        surface=surface, cost_raster=v.cost_raster,
+        surface=surface, cost_raster=v.cost_raster, mapset=mapset,
     )
     compare(v)
     return results
@@ -557,6 +593,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--fid", action="append", type=int)
     p.add_argument("--force", action="store_true", help="re-route everything")
     p.add_argument("--no-merge", action="store_true")
+    p.add_argument("--mapset", default="PERMANENT",
+                   help="GRASS mapset to route in - its own for a long batch")
 
     p = sub.add_parser("compare", help="recompute the comparison without re-routing")
     p.add_argument("name")
@@ -594,7 +632,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.stage == "route":
         results = route(v, buffer_m=args.buffer, force=args.force,
-                        merge=not args.no_merge, limit=args.limit, fids=args.fid)
+                        merge=not args.no_merge, limit=args.limit, fids=args.fid,
+                        mapset=args.mapset)
         return 1 if any(not r.ok for r in results) else 0
 
     if args.stage == "compare":

@@ -41,6 +41,29 @@ It is kept apart from the verdicts because it answers a different question.
 from is wrong" can both be true, either can be true alone, and a new round
 that re-picks every corridor should not quietly drop a list of tours somebody
 found broken.
+
+`more_tracks` is a third map of the same shape: tours where even the most
+track-reducing model on screen did not follow the tracks far enough, and a
+stronger reduction should be tried. It feeds the next `more_tracks` bench
+the way needs_fix feeds the next edit of tours.gpkg.
+
+## Rounds
+
+A verdict from an earlier round stays the tour's current answer until the
+tour is picked again - export and colored-corridors read it like any other.
+But it is not progress on THIS round: `reviewed_this_round` counts only
+verdicts made in it, and `previous` names what an earlier round said, so a
+re-review can show it beside the panels without counting it as done.
+Clearing a verdict made this round puts the earlier round's back, rather
+than leaving the tour with nothing - Backspace undoes a pick, it does not
+erase round one.
+
+A round need not re-open every tour. `start_round(carry=...)` moves the
+named tours' verdicts into the new round as done, marked `carried_from` with
+the round that actually made them, so only the rest - flagged tours, new
+ones - show as unreviewed. A carried verdict is this round's for progress,
+but it was not picked in it: Backspace leaves it alone, and a new pick files
+it to history under the round it came from.
 """
 
 from __future__ import annotations
@@ -88,6 +111,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def made_in(verdict: dict[str, Any]) -> int:
+    """The round that actually picked this verdict - a carried one's `round`
+    is the round it was carried into."""
+    return int(verdict.get("carried_from", verdict.get("round", 1)))
+
+
+def _uncarried(verdict: dict[str, Any]) -> dict[str, Any]:
+    """A carried verdict as the round that made it filed it, marked so that
+    clear() can carry it again."""
+    if "carried_from" not in verdict:
+        return verdict
+    body = {k: v for k, v in verdict.items() if k != "carried_from"}
+    body["round"] = verdict["carried_from"]
+    body["was_carried"] = True
+    return body
+
+
 class Store:
     """Verdicts keyed by tour fid, with the ones they replaced kept beside."""
 
@@ -95,6 +135,7 @@ class Store:
         self.path = Path(path) if path else REVIEW
         self.verdicts: dict[int, dict[str, Any]] = {}
         self.needs_fix: dict[int, dict[str, Any]] = {}
+        self.more_tracks: dict[int, dict[str, Any]] = {}
         self.history: list[dict[str, Any]] = []
         self.round = 1
         self._load()
@@ -110,6 +151,7 @@ class Store:
         # JSON object keys are strings; fids are ints everywhere else.
         self.verdicts = {int(k): v for k, v in (body.get("verdicts") or {}).items()}
         self.needs_fix = {int(k): v for k, v in (body.get("needs_fix") or {}).items()}
+        self.more_tracks = {int(k): v for k, v in (body.get("more_tracks") or {}).items()}
 
     def save(self) -> None:
         """Write via a temporary file, so an interrupted write cannot truncate
@@ -120,6 +162,7 @@ class Store:
             "updated": _now(),
             "verdicts": {str(k): v for k, v in sorted(self.verdicts.items())},
             "needs_fix": {str(k): v for k, v in sorted(self.needs_fix.items())},
+            "more_tracks": {str(k): v for k, v in sorted(self.more_tracks.items())},
             "history": self.history,
         }
         text = json.dumps(body, indent=2, ensure_ascii=False)
@@ -150,7 +193,13 @@ class Store:
         # natural order, now that picking does not advance - would file a
         # superseded verdict identical to the current one on every keystroke
         # pause, and bury the real changes among them.
+        #
+        # Only within a round: re-picking round one's model in round two is a
+        # new judgement that happens to agree, and round one's goes to history
+        # like any other - it is what clear() restores and previous() shows.
         amended = (previous is not None
+                   and self._this_round(previous)
+                   and "carried_from" not in previous
                    and previous.get("model") == model
                    and verdict_width(previous) == width
                    and int(previous.get("shift", 0)) == shift)
@@ -161,7 +210,8 @@ class Store:
             # a superseded entry could only be tied back to its tour by
             # chaining `replaced_at` against the next one's `at`. That works
             # right up until you actually need it.
-            self.history.append({**previous, "fid": fid, "replaced_at": _now()})
+            self.history.append({**_uncarried(previous), "fid": fid,
+                                 "replaced_at": _now()})
 
         verdict = {
             "model": model,
@@ -180,16 +230,59 @@ class Store:
         return verdict
 
     def clear(self, fid: int) -> bool:
+        """Drop this round's verdict on `fid`, restoring an earlier round's.
+
+        Only this round's: a verdict from an earlier round is the answer the
+        re-review has not reached yet, and Backspace on a tour you have not
+        picked in this round must not erase it."""
         fid = int(fid)
-        previous = self.verdicts.pop(fid, None)
-        if previous is None:
+        current = self.verdicts.get(fid)
+        if (current is None or not self._this_round(current)
+                or "carried_from" in current):
             return False
-        self.history.append({**previous, "fid": fid, "cleared_at": _now()})
+        del self.verdicts[fid]
+        self.history.append({**current, "fid": fid, "cleared_at": _now()})
+        earlier = self._earlier(fid)
+        if earlier is not None:
+            # Undoing a pick over a carried verdict carries it again, or the
+            # tour would drop back to unreviewed.
+            if earlier.pop("was_carried", False):
+                earlier = {**earlier, "carried_from": earlier["round"],
+                           "round": self.round}
+            self.verdicts[fid] = earlier
         self.save()
         return True
 
     def get(self, fid: int) -> Optional[dict[str, Any]]:
         return self.verdicts.get(int(fid))
+
+    def this_round(self, fid: int) -> Optional[dict[str, Any]]:
+        """The verdict on `fid` if it was made in the current round."""
+        verdict = self.get(fid)
+        return verdict if verdict is not None and self._this_round(verdict) else None
+
+    def previous(self, fid: int) -> Optional[dict[str, Any]]:
+        """What the latest earlier round said about `fid`, or None.
+
+        The current verdict when it is from an earlier round; otherwise the
+        last one this round's replaced."""
+        verdict = self.get(fid)
+        if verdict is not None and not self._this_round(verdict):
+            return verdict
+        return self._earlier(fid)
+
+    def _this_round(self, verdict: dict[str, Any]) -> bool:
+        return int(verdict.get("round", 1)) >= self.round
+
+    def _earlier(self, fid: int) -> Optional[dict[str, Any]]:
+        """The last verdict from before this round that a pick in this round
+        replaced - from history, which is where record() filed it."""
+        for entry in reversed(self.history):
+            if (entry.get("fid") == fid and "replaced_at" in entry
+                    and int(entry.get("round", 1)) < self.round):
+                return {k: v for k, v in entry.items()
+                        if k not in ("fid", "replaced_at")}
+        return None
 
     # --- tours that need re-digitizing -----------------------------------
 
@@ -203,15 +296,7 @@ class Store:
         flagging one does not commit you to the other, and the fix list
         survives a new round that re-picks every corridor.
         """
-        fid = int(fid)
-        if not on:
-            self.needs_fix.pop(fid, None)
-            self.save()
-            return None
-        entry = {"note": note, "round": self.round, "at": _now()}
-        self.needs_fix[fid] = entry
-        self.save()
-        return entry
+        return self._set_flag(self.needs_fix, fid, on, note)
 
     def fix(self, fid: int) -> Optional[dict[str, Any]]:
         return self.needs_fix.get(int(fid))
@@ -220,10 +305,45 @@ class Store:
                  ) -> list[tuple[int, dict[str, Any]]]:
         return sorted(_among(self.needs_fix, among).items())
 
-    def start_round(self, number: Optional[int] = None) -> int:
+    # --- tours that want a stronger track reduction tried ----------------
+
+    def set_more_tracks(self, fid: int, on: bool, note: str = ""
+                        ) -> Optional[dict[str, Any]]:
+        """Flag or unflag this tour for the next more_tracks bench. Apart
+        from the verdict for the same reason needs_fix is."""
+        return self._set_flag(self.more_tracks, fid, on, note)
+
+    def more_tracks_flag(self, fid: int) -> Optional[dict[str, Any]]:
+        return self.more_tracks.get(int(fid))
+
+    def more_tracks_list(self, among: Optional[Container[int]] = None
+                         ) -> list[tuple[int, dict[str, Any]]]:
+        return sorted(_among(self.more_tracks, among).items())
+
+    def _set_flag(self, table: dict[int, dict[str, Any]], fid: int, on: bool,
+                  note: str) -> Optional[dict[str, Any]]:
+        fid = int(fid)
+        if not on:
+            table.pop(fid, None)
+            self.save()
+            return None
+        entry = {"note": note, "round": self.round, "at": _now()}
+        table[fid] = entry
+        self.save()
+        return entry
+
+    def start_round(self, number: Optional[int] = None, *,
+                    carry: Optional[Container[int]] = None) -> int:
         """Begin a new round. Verdicts stay; they carry their own round, so
-        the ones not revisited remain the current answer for their tour."""
+        the ones not revisited remain the current answer for their tour.
+
+        `carry` names tours whose verdict counts as done in the new round
+        too - see the module docstring."""
         self.round = int(number) if number else self.round + 1
+        for fid, verdict in self.verdicts.items():
+            if carry is not None and fid in carry and not self._this_round(verdict):
+                verdict["carried_from"] = made_in(verdict)
+                verdict["round"] = self.round
         self.save()
         return self.round
 
@@ -239,6 +359,12 @@ class Store:
                 ) -> dict[int, dict[str, Any]]:
         """The verdicts, optionally only for fids in `among`."""
         return _among(self.verdicts, among)
+
+    def reviewed_this_round(self, among: Optional[Container[int]] = None
+                            ) -> dict[int, dict[str, Any]]:
+        """The verdicts made in the current round - a round's progress."""
+        return {fid: v for fid, v in self.current(among).items()
+                if self._this_round(v)}
 
     def counts_by_model(self, among: Optional[Container[int]] = None) -> dict[str, int]:
         counts: dict[str, int] = {}

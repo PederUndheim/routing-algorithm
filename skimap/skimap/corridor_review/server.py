@@ -15,7 +15,9 @@ this one cannot be built on every machine that needs to review corridors.
     GET  /api/tour/<fid>          one tour: a panel per model, plus geometry
     POST /api/verdict             record a pick, get the next fid back
     POST /api/clear               drop a verdict
-    POST /api/flag                mark a tour as needing work in tours.gpkg
+    POST /api/flag                flag a tour: needs work in tours.gpkg, or
+                                  ("kind": "more_tracks") a stronger track
+                                  reduction should be tried
     GET  /corridor/<model>/<fid>.png   one corridor overlay, rendered on demand
     GET  /corridor/<model>/<width>/<fid>.png   the same at a narrower or wider width
     GET  /tracks/<fid>.json       where this tour's GPS tracks go, or none
@@ -54,7 +56,7 @@ MAX_BODY_BYTES = 16 * 1024
 # Anchored and character-classed, so nothing reaching the filesystem can hold
 # a separator or a "..". The whole path is matched, not searched.
 CORRIDOR_PATH = re.compile(r"/corridor/(?P<model>[A-Za-z0-9_.-]{1,64})/"
-                           r"(?:(?P<width>[a-z]{1,16})/)?(?P<fid>\d{1,9})\.png")
+                           r"(?:(?P<width>[a-z_]{1,16})/)?(?P<fid>\d{1,9})\.png")
 TOUR_PATH = re.compile(r"/api/tour/(?P<fid>\d{1,9})")
 STATIC_PATH = re.compile(r"/static/(?P<name>[A-Za-z0-9_.-]{1,64})")
 
@@ -126,15 +128,22 @@ class Review:
                     for width, found in self.width_corridors[model.name].items())
                 print(f"  {model.name:16s} {len(self.rows[model.name]):4d} routes, "
                       f"{len(self.corridors[model.name]):4d} corridors{by_width}")
-        print(f"  {len(self.tours)} tours, {self._reviewed()} already reviewed")
-        orphaned = len(self.store.verdicts) - self._reviewed()
+        print(f"  {len(self.tours)} tours, {self._reviewed()} reviewed this round, "
+              f"{self._reviewed_before()} more only in an earlier one")
+        orphaned = len(self.store.verdicts) - len(self.store.current(self.index))
         if orphaned:
             print(f"  ({orphaned} verdicts on tours no longer in tours.gpkg, "
                   f"kept in review.json but not counted)")
 
     def _reviewed(self) -> int:
-        """Verdicts on tours that still exist. See Store.current."""
-        return len(self.store.current(self.index))
+        """Verdicts made THIS round, on tours that still exist. A round is a
+        pass over the tours, so an earlier round's verdict is not progress on
+        it - see Store.reviewed_this_round."""
+        return len(self.store.reviewed_this_round(self.index))
+
+    def _reviewed_before(self) -> int:
+        """Tours whose only verdict is from an earlier round."""
+        return len(self.store.current(self.index)) - self._reviewed()
 
     # --- payloads --------------------------------------------------------
 
@@ -157,7 +166,9 @@ class Review:
             "widths": self.widths,
             "total": len(self.tours),
             "reviewed": self._reviewed(),
+            "reviewed_before": self._reviewed_before(),
             "needs_fix": len(self.store.fix_list(self.index)),
+            "more_tracks": len(self.store.more_tracks_list(self.index)),
             "by_model": self.store.counts_by_model(self.index),
             "by_colour": self.store.counts_by_colour(self.index),
             "by_width": self.store.counts_by_width(self.index),
@@ -166,14 +177,22 @@ class Review:
     def tour_list(self) -> list[dict[str, Any]]:
         out = []
         for tour in self.tours:
-            verdict = self.store.get(tour["fid"])
+            # model/colour/shift are THIS round's pick, so "unreviewed" in the
+            # list and Enter mean "not yet in this round". An earlier round's
+            # rides along as previous_*, which the list shows dimmed.
+            verdict = self.store.this_round(tour["fid"])
+            previous = self.store.previous(tour["fid"])
             out.append({
                 "fid": tour["fid"],
                 "name": tour["name"],
                 "model": verdict["model"] if verdict else None,
                 "colour": verdict["colour"] if verdict else None,
                 "shift": verdict["shift"] if verdict else 0,
+                "previous_model": previous["model"] if previous else None,
+                "previous_colour": previous["colour"] if previous else None,
+                "previous_round": int(previous.get("round", 1)) if previous else None,
                 "needs_fix": self.store.fix(tour["fid"]) is not None,
+                "more_tracks": self.store.more_tracks_flag(tour["fid"]) is not None,
                 # The non-main groups with something to show for this tour.
                 # Drives both the greyed switch and the list's own filter.
                 "groups": sorted(g for g, fids in self.group_fids.items()
@@ -213,7 +232,6 @@ class Review:
                             if k != "colour"},
             })
 
-        verdict = self.store.get(fid)
         return {
             "fid": fid,
             "name": name,
@@ -224,19 +242,26 @@ class Review:
                      if position + 1 < len(self.tours) else None),
             "panels": panels,
             "groups": sorted({panel["group"] for panel in panels}),
-            "verdict": verdict,
+            # This round's pick only. Everything the page does with a verdict
+            # - re-saving it when the width, class or note changes, opening at
+            # its width - must not happen to an earlier round's, or merely
+            # looking at a tour would re-record round one's pick as round
+            # two's. That one comes as `previous`, to show and nothing more.
+            "verdict": self.store.this_round(fid),
+            "previous": self.store.previous(fid),
             "needs_fix": self.store.fix(fid),
+            "more_tracks": self.store.more_tracks_flag(fid),
         }
 
     def next_unreviewed(self, after: int) -> Optional[int]:
-        """The next tour with no verdict, wrapping once, or None if done."""
+        """The next tour with no verdict this round, wrapping once, or None."""
         if after not in self.index:
             return None
         start = self.index[after]
         order = list(range(start + 1, len(self.tours))) + list(range(0, start + 1))
         for position in order:
             fid = self.tours[position]["fid"]
-            if self.store.get(fid) is None:
+            if self.store.this_round(fid) is None:
                 return fid
         return None
 
@@ -278,10 +303,20 @@ class Review:
         fid = int(body["fid"])
         if fid not in self.index:
             raise KeyError(f"no tour with fid {fid}")
+        on, note = bool(body.get("on", True)), str(body.get("note", ""))
+        # `kind` picks the list: needs_fix (the default, and all there was
+        # before) or more_tracks.
+        kind = str(body.get("kind") or "needs_fix")
         with self.lock:
-            entry = self.store.set_fix(fid, bool(body.get("on", True)),
-                                       str(body.get("note", "")))
-        return {"needs_fix": entry, "count": len(self.store.fix_list(self.index))}
+            if kind == "needs_fix":
+                entry = self.store.set_fix(fid, on, note)
+                count = len(self.store.fix_list(self.index))
+            elif kind == "more_tracks":
+                entry = self.store.set_more_tracks(fid, on, note)
+                count = len(self.store.more_tracks_list(self.index))
+            else:
+                raise ValueError(f"{kind!r} is not a flag")
+        return {kind: entry, "count": count}
 
     def clear(self, body: dict[str, Any]) -> dict[str, Any]:
         fid = int(body["fid"])

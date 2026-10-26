@@ -1,16 +1,17 @@
 {
-  "round": 1,
-  "note": "round 1: how much should a GPS track take off, and does it differ in forest? Panels run from least track influence to most. The 'more track reduction' bench answers the follow-up the round-1 notes kept asking, on the 27 tours that asked it.",
+  "round": 3,
+  "note": "round 3: only the tours round 2 flagged (more track reduction, needs fix) and the new ones; every other round-2 pick carried over as done. 2026-10-26: fixed tours added (1385-1391), deleted ones pruned everywhere, and every new tour (1392-1417) plus the newly flagged 1384/1391 put through the more track reduction ladder; more_tracks_1400 for 1111 only. The 'more track reduction' page has the 5-50 ladder (no steep edge), r.walk at 10 and 25, and 1400 for 1111. Round 2's pick is the dashed panel.",
   "group_labels": {
-    "main": "round 1",
+    "main": "round 2",
+    "prod": "more models",
     "more_tracks": "more track reduction"
   },
   "models": [
     {
       "name": "no_tracks",
       "label": "No track data",
-      "routes": "test/track_reduction_test/routes.gpkg",
-      "corridors": "test/track_reduction_test/corridors"
+      "routes": "test/track_variants/no_tracks/routes.gpkg",
+      "corridors": "test/track_variants/no_tracks/corridors"
     },
     {
       "name": "forest_1_2",
@@ -19,28 +20,44 @@
       "corridors": "test/track_variants/forest_1_2/corridors"
     },
     {
+      "name": "forest_1_2_walk",
+      "label": "1.0 / 2.0, r.walk",
+      "routes": "test/track_variants/forest_1_2_walk/routes.gpkg",
+      "corridors": "test/track_variants/forest_1_2_walk/corridors"
+    },
+    {
+      "name": "forest_1_2_edge_walk",
+      "label": "1.0 / 2.0 + steep edge, r.walk",
+      "routes": "test/track_variants/forest_1_2_edge_walk/routes.gpkg",
+      "corridors": "test/track_variants/forest_1_2_edge_walk/corridors"
+    },
+    {
       "name": "max2",
       "label": "2.0 / 2.0",
       "routes": "test/track_variants/max2/routes.gpkg",
-      "corridors": "test/track_variants/max2/corridors"
+      "corridors": "test/track_variants/max2/corridors",
+      "group": "prod"
+    },
+    {
+      "name": "forest_1_2_edge",
+      "label": "1.0 / 2.0 + steep edge",
+      "routes": "test/track_variants/forest_1_2_edge/routes.gpkg",
+      "corridors": "test/track_variants/forest_1_2_edge/corridors",
+      "group": "prod"
     },
     {
       "name": "baseline",
-      "label": "Production 3.0 / 3.0",
-      "routes": "review/frozen/baseline_20260918/routes.gpkg",
-      "corridors": "review/frozen/baseline_20260918/corridors"
+      "label": "Prod 3.0 / 3.0, no steep edge (old)",
+      "group": "prod",
+      "routes": "test/track_variants/baseline_no_edge/routes.gpkg",
+      "corridors": "test/track_variants/baseline_no_edge/corridors"
     },
     {
       "name": "edge_buffer2",
-      "label": "Corners + buffer 2 (production)",
+      "label": "Prod now: 3.0 / 3.0 + steep edge",
+      "group": "prod",
       "routes": "test/track_variants/edge_buffer2/routes.gpkg",
       "corridors": "test/track_variants/edge_buffer2/corridors"
-    },
-    {
-      "name": "edge_buffer5",
-      "label": "Corners + buffer 5",
-      "routes": "test/track_variants/edge_buffer5/routes.gpkg",
-      "corridors": "test/track_variants/edge_buffer5/corridors"
     },
     {
       "name": "more_tracks_5",
@@ -57,6 +74,13 @@
       "corridors": "test/lab/more_tracks_10/corridors"
     },
     {
+      "name": "more_tracks_10_walk",
+      "label": "10.0, every track ≥ 3, r.walk",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_10_walk/routes.gpkg",
+      "corridors": "test/lab/more_tracks_10_walk/corridors"
+    },
+    {
       "name": "more_tracks_15",
       "label": "15.0, every track ≥ 3",
       "group": "more_tracks",
@@ -69,6 +93,27 @@
       "group": "more_tracks",
       "routes": "test/lab/more_tracks_25/routes.gpkg",
       "corridors": "test/lab/more_tracks_25/corridors"
+    },
+    {
+      "name": "more_tracks_25_walk",
+      "label": "25.0, every track ≥ 3, r.walk",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_25_walk/routes.gpkg",
+      "corridors": "test/lab/more_tracks_25_walk/corridors"
+    },
+    {
+      "name": "more_tracks_50",
+      "label": "50.0, every track ≥ 3",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_50/routes.gpkg",
+      "corridors": "test/lab/more_tracks_50/corridors"
+    },
+    {
+      "name": "more_tracks_1400",
+      "label": "1400.0, every track ≥ 3 (1111 only)",
+      "group": "more_tracks",
+      "routes": "test/lab/more_tracks_1400/routes.gpkg",
+      "corridors": "test/lab/more_tracks_1400/corridors"
     }
   ]
 }

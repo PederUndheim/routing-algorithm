@@ -1,0 +1,18 @@
+{
+  "name": "more_tracks_1400",
+  "note": "Round 3, 2026-10-26: tour 1111 only, from its needs_fix note '1400 track red' - its round-3 pick was more_tracks_25 and still not enough. Ceiling 1400.0 in and out of forest, presence_floor 0.5, no steep edge: the more_tracks ladder with only the ceiling changed. At 1400 the reduction is no longer a nudge: terrain tops out at BASE_MAX_COST 100, so every pixel with 3+ passes drops to MIN_COST, and the steep-slope barrier (up to MAX_COST 5000) is bought off wherever a track crosses it. Only ocean still holds.",
+  "tours": [
+    1111
+  ],
+  "config": {
+    "TRACKS": {
+      "max_reduction": 1400.0,
+      "max_reduction_forest": 1400.0,
+      "presence_floor": 0.5
+    },
+    "STEEP_EDGE": {
+      "corners": false,
+      "buffer": 0.0
+    }
+  }
+}
