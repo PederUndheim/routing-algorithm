@@ -16,6 +16,8 @@ Files, all under data/review/stats/:
     model_usage.csv       how often each model won, count and share
     colour_usage.csv      how often each exposure class was the final call
     model_colour.csv      cross-tab: which colours each model's wins carry
+    width_usage.csv       how often each corridor width was picked
+    model_width.csv       cross-tab: at which widths each model won
     colour_shift.csv      cross-tab: classify()'s colour against the
                            reviewer's, so the diagonal is agreement and
                            everything off it is a class the reviewer moved
@@ -32,7 +34,7 @@ from typing import Any, Optional
 
 from skimap import config, paths
 from skimap.corridor_review import models as models_module, sources
-from skimap.corridor_review.store import LADDER, Store
+from skimap.corridor_review.store import LADDER, Store, verdict_width
 
 STATS = paths.DATA / "review" / "stats"
 
@@ -90,6 +92,30 @@ def model_colour_crosstab(verdicts: dict[int, dict[str, Any]]
             row[colour] += 1
     order = sorted(grid, key=lambda m: -sum(grid[m].values()))
     return order, grid
+
+
+def width_usage(verdicts: dict[int, dict[str, Any]]) -> list[tuple[str, int, float]]:
+    """(width, count, % of reviewed tours), narrowest first."""
+    counts = {width: 0 for width in sources.widths()}
+    for verdict in verdicts.values():
+        width = verdict_width(verdict)
+        counts[width] = counts.get(width, 0) + 1
+    total = len(verdicts)
+    return [(width, n, (n / total * 100) if total else 0.0) for width, n in counts.items()]
+
+
+def model_width_crosstab(verdicts: dict[int, dict[str, Any]]
+                         ) -> tuple[list[str], list[str], dict[str, dict[str, int]]]:
+    """At which widths each model won: (models by win count, widths
+    narrowest first, model -> width -> count)."""
+    widths = sources.widths()
+    grid: dict[str, dict[str, int]] = {}
+    for verdict in verdicts.values():
+        row = grid.setdefault(verdict["model"], {w: 0 for w in widths})
+        width = verdict_width(verdict)
+        row[width] = row.get(width, 0) + 1
+    order = sorted(grid, key=lambda m: -sum(grid[m].values()))
+    return order, widths, grid
 
 
 def colour_shift_matrix(verdicts: dict[int, dict[str, Any]]
@@ -245,6 +271,26 @@ def run(*, out_dir: Optional[Path] = None) -> Path:
                                             for c, p in zip(LADDER, pcts)))
         rows.append((model,) + tuple(row[c] for c in LADDER) + pcts + (total,))
     _write_csv(out_dir / "model_colour.csv", header, rows)
+
+    print("\nwidth usage:")
+    by_width = width_usage(verdicts)
+    for width, n, pct in by_width:
+        print(f"  {width:12s} {n:4d}  {pct:5.1f}%")
+    _write_csv(out_dir / "width_usage.csv", ("width", "count", "pct"), by_width)
+
+    print("\nmodel x width (share of that model's own wins):")
+    order, widths, grid = model_width_crosstab(verdicts)
+    header = (("model",) + tuple(f"{w}_n" for w in widths)
+              + tuple(f"{w}_pct" for w in widths) + ("total",))
+    rows = []
+    for model in order:
+        row = grid[model]
+        total = sum(row.values())
+        pcts = tuple((row[w] / total * 100) if total else 0.0 for w in widths)
+        print(f"  {model:20s} " + "  ".join(f"{w}:{row[w]:3d} ({p:4.1f}%)"
+                                            for w, p in zip(widths, pcts)))
+        rows.append((model,) + tuple(row[w] for w in widths) + pcts + (total,))
+    _write_csv(out_dir / "model_width.csv", header, rows)
 
     print("\ncomputed -> reviewed colour (diagonal = classify() agreed):")
     shift = colour_shift_matrix(verdicts)

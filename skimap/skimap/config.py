@@ -125,11 +125,14 @@ WEIGHTS = {
 }
 
 # The edge of steep ground (slope >= threshold_deg), made harder to slip
-# past. Two independent steps; production has both since 2026-10-13, corners
-# plus a buffer of 2, picked from the lab runs in
-# data/test/lab/profiles/steep_edge_*.json (96 tours: 85 moved off the edge,
-# none onto it, steep metres and exposure flat). Buffer 5 is built beside it
-# as data/test/track_variants/edge_buffer5 for the corridor review.
+# past. Two independent steps, both OFF in production since 2026-10-27.
+# Production had both from 2026-10-13 (corners plus a buffer of 2, picked
+# from the lab runs in data/test/lab/profiles/steep_edge_*.json: 96 tours, 85
+# moved off the edge), but the corridor review picked that surface for 9 of
+# 1049 tours (edge_buffer2) against 588 for forest_1_2, which has no edge,
+# and production became forest_1_2's surface. The edge surface is in
+# data/cost_surface/archive/edge_buffer2_20261013/. To turn it back on:
+# corners True, buffer 2.0.
 #
 # `corners` closes the diagonal gaps: r.cost charges a diagonal step on its
 # two end cells only, so where two steep cells meet at a corner with gentle
@@ -149,8 +152,8 @@ WEIGHTS = {
 # reduction.
 STEEP_EDGE = {
     "threshold_deg": 30.0,
-    "corners": True,
-    "buffer": 2.0,
+    "corners": False,
+    "buffer": 0.0,
 }
 
 # Applied after road/trail reductions, so a road cannot reduce a cliff back
@@ -184,12 +187,14 @@ REDUCTION_GATE = {
 # The forest split: in the open you can walk anywhere, so the line somebody
 # else took is only weak evidence about the ground. Under trees that line is
 # also the gap through them, which is worth more than the terrain says.
-# Equal values mean no forest bonus, and that is what production is set to -
-# the split exists so skimap.track_variants can try it without editing this
-# file. Change these two only to move production itself.
+# Production is 1.0 / 2.0 since 2026-10-27: the forest_1_2 track variant,
+# which the corridor review picked for 56% of tours. data/cost_surface IS
+# that variant's surface (data/test/track_variants/forest_1_2, built
+# 2026-09-09), copied in unchanged. Until then production was 3.0 / 3.0,
+# no forest bonus. Change these two only to move production itself.
 TRACKS = {
-    "max_reduction": 3.0,           # outside forest
-    "max_reduction_forest": 3.0,    # inside it, read as forest > 0
+    "max_reduction": 1.0,           # outside forest
+    "max_reduction_forest": 2.0,    # inside it, read as forest > 0
     "power": 2.0,
     "curve": "tile_bands",
     "presence_floor": 0.0,

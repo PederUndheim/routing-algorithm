@@ -805,17 +805,21 @@ so re-routing does not rebuild 1334 tiles. Two ship:
 
 | variant | outside forest | in forest |
 | --- | --- | --- |
-| production (`config.TRACKS`) | 3.0 | 3.0 |
+| production until 2026-10-27 | 3.0 | 3.0 |
 | `max2` | 2.0 | 2.0 |
-| `forest_1_2` | 1.0 | 2.0 |
+| `forest_1_2` = production now (`config.TRACKS`) | 1.0 | 2.0 |
 
 Add your own with `init softer --max 0.5 --forest 1.5`. Everything lands in
 `data/test/track_variants/<name>/`, about 2.9 GB and the better part of a day
 each, of which the 841 tours is the long pole.
 
-Both shipped variants take strictly less off than production does, so their
-ground can only be dearer: a variant route must cost at least what the
-production route for that tour cost. `compare` checks that and says so if it
+Both shipped variants take strictly less off than the old 3.0 / 3.0
+production did, so their ground can only be dearer: a variant route must cost
+at least what the production route for that tour cost. Since 2026-10-27
+production *is* `forest_1_2`: the corridor review picked it for 56% of tours,
+and `data/cost_surface/` is its 2026-09-09 surface, copied in unchanged, with
+steep edge off. The steep-edge surface that was production from 2026-10-13 is
+in `data/cost_surface/archive/edge_buffer2_20261013/`. `compare` checks that and says so if it
 fails, because a negative `cost_diff` means the two surfaces differ by
 something other than these numbers.
 
@@ -828,7 +832,7 @@ build showing no change looks exactly like a change that did nothing.
 ### The forest split
 
 `config.TRACKS` has `max_reduction` and `max_reduction_forest`. Production
-sets both to 3.0, which is no split at all; the two keys exist so a variant
+used to set both to 3.0, which is no split at all, and is 1.0 / 2.0 now; the two keys exist so a variant
 can try one without editing `config.py`. "In forest" is `forest > 0`, the same
 reading `data_preprocessing.derived` gives the layer when it builds
 `tractorroad_trail_forest`, so trails-in-forest and this agree on where the
