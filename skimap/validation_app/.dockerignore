@@ -1,0 +1,4 @@
+frontend
+backend/tracks
+**/__pycache__
+**/*.pyc

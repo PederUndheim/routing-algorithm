@@ -1,0 +1,4 @@
+# Only the image needs these; locally the server runs on the file store with
+# nothing installed.
+azure-data-tables>=12.5,<13
+azure-storage-blob>=12.19,<13

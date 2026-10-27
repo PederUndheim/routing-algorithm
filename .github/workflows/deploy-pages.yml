@@ -1,10 +1,15 @@
 name: Deploy skimap frontend to GitHub Pages
 
+# One Pages site, two apps: the skimap app at /routing-algorithm/ and the
+# validation app at /routing-algorithm/validering/. Pages takes one artifact
+# per deploy, so a change to either rebuilds both.
+
 on:
   push:
     branches: ["main"]
     paths:
       - "skimap/app/frontend/**"
+      - "skimap/validation_app/frontend/**"
       - ".github/workflows/deploy-pages.yml"
   workflow_dispatch:
 
@@ -30,7 +35,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: skimap/app/frontend/package-lock.json
+          cache-dependency-path: |
+            skimap/app/frontend/package-lock.json
+            skimap/validation_app/frontend/package-lock.json
 
       - name: Install
         run: npm ci
@@ -43,6 +50,18 @@ jobs:
       # from the root.
       - name: Build
         run: npm run build -- --base=/routing-algorithm/
+
+      # Off until the API exists - see skimap/deploy/validation.sh. Built
+      # into the main app's dist, so it rides along in the one artifact.
+      - name: Validation app
+        if: vars.VALIDATION_API_URL != ''
+        working-directory: skimap/validation_app/frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.VALIDATION_API_URL }}
+        run: |
+          npm ci
+          npm test
+          npm run build -- --base=/routing-algorithm/validering/ --outDir ../../app/frontend/dist/validering --emptyOutDir
 
       - uses: actions/upload-pages-artifact@v3
         with:
