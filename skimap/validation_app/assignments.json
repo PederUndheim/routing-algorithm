@@ -1,6 +1,14 @@
 {
   "havard": "all",
-  "markus": "all",
-  "andreas": "all",
+  "markus": {"regions": [
+    "Vest-Finnmark", "Nord-Troms", "Lyngen", "Tromsø", "Sør-Troms", "Indre Troms",
+    "Lofoten og Vesterålen", "Ofoten", "Salten", "Svartisen", "Helgeland",
+    "Voss", "Hallingdal", "Hardanger", "Vest-Telemark"
+  ]},
+  "andreas": {"regions": [
+    "Nord-Trøndelag", "Sør-Trøndelag", "Trollheimen", "Romsdal", "Sunnmøre",
+    "Nord-Gudbrandsdalen", "Indre Fjordane", "Jotunheimen", "Indre Sogn",
+    "Heiane", "Buskerud sør", "Oppland sør"
+  ]},
   "finn": "all"
 }
