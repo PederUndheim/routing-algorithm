@@ -1,7 +1,7 @@
 # Korridorvalidering
 
 A web app where outside experts judge the final corridors
-(`data/corridors_final`, 1026 of them) one at a time: the best KAST class, whether the
+(`data/corridors_final`, 1027 of them) one at a time: the best KAST class, whether the
 corridor should be bigger or smaller, notes, and two flags. Each expert works
 alone and blind. The app collects their answers, and the disagreements are
 settled afterwards in a meeting, from the spreadsheet `admin export` writes.

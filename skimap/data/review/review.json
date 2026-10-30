@@ -1,6 +1,6 @@
 {
   "round": 3,
-  "updated": "2026-10-26T14:58:50+00:00",
+  "updated": "2026-10-29T14:20:19+00:00",
   "verdicts": {
     "7": {
       "model": "baseline",
@@ -11918,6 +11918,26 @@
       "note": "",
       "round": 3,
       "at": "2026-10-26T14:58:50+00:00"
+    },
+    "1421": {
+      "model": "forest_1_2",
+      "width": "standard",
+      "colour_computed": "green",
+      "shift": 2,
+      "colour": "red",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:52+00:00"
+    },
+    "1422": {
+      "model": "forest_1_2_walk",
+      "width": "narrow",
+      "colour_computed": "red",
+      "shift": 0,
+      "colour": "red",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:20:19+00:00"
     }
   },
   "needs_fix": {
@@ -39774,6 +39794,66 @@
       "at": "2026-10-26T14:58:49+00:00",
       "fid": 1418,
       "replaced_at": "2026-10-26T14:58:50+00:00"
+    },
+    {
+      "model": "forest_1_2",
+      "width": "standard",
+      "colour_computed": "green",
+      "shift": 0,
+      "colour": "green",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:14+00:00",
+      "fid": 1421,
+      "replaced_at": "2026-10-29T14:19:15+00:00"
+    },
+    {
+      "model": "forest_1_2",
+      "width": "narrow",
+      "colour_computed": "green",
+      "shift": 0,
+      "colour": "green",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:15+00:00",
+      "fid": 1421,
+      "replaced_at": "2026-10-29T14:19:20+00:00"
+    },
+    {
+      "model": "forest_1_2",
+      "width": "standard",
+      "colour_computed": "green",
+      "shift": 0,
+      "colour": "green",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:20+00:00",
+      "fid": 1421,
+      "replaced_at": "2026-10-29T14:19:34+00:00"
+    },
+    {
+      "model": "forest_1_2",
+      "width": "narrow",
+      "colour_computed": "green",
+      "shift": 0,
+      "colour": "green",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:34+00:00",
+      "fid": 1421,
+      "replaced_at": "2026-10-29T14:19:36+00:00"
+    },
+    {
+      "model": "forest_1_2",
+      "width": "standard",
+      "colour_computed": "green",
+      "shift": 0,
+      "colour": "green",
+      "note": "",
+      "round": 3,
+      "at": "2026-10-29T14:19:36+00:00",
+      "fid": 1421,
+      "replaced_at": "2026-10-29T14:19:52+00:00"
     }
   ]
 }
