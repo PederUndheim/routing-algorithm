@@ -107,7 +107,13 @@ Re-run this if `corridors_final` is rebuilt. Corridor IDs are the
 `corridor_id`s from that build, so verdicts are tied to them. **Rebuilding
 corridors_final after reviewing has started renumbers corridors under
 existing verdicts**, so don't.
-The IDs have gaps on purpose. Corridors 78, 302 and 489 were duplicates and cameout of the built set on 2026-11-02, after reviewing had started (see`removed_after_build` in `data/corridors_final/build.json`). To remove another,take it out of the built set and re-run this with `--skip-tracks`. Everyone elsekeeps their ID, and any verdict on the removed one stays on the Historikk sheet.
+
+The IDs have gaps on purpose. Corridors 78, 302 and 489 were duplicates and came
+out of the built set on 2026-11-02, after reviewing had started (see
+`removed_after_build` in `data/corridors_final/build.json`). To remove another,
+take it out of the built set and re-run this with `--skip-tracks`. Every other
+corridor keeps its ID, and any verdict on the removed one stays on the Historikk
+sheet.
 
 The track tiles end up in `data/validation/tracks/` and are served by the API
 behind the access code. They are not in git or on Pages, because both are
