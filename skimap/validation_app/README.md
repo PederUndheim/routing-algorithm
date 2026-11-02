@@ -1,7 +1,7 @@
 # Korridorvalidering
 
 A web app where outside experts judge the final corridors
-(`data/corridors_final`, 1027 of them) one at a time: the best KAST class, whether the
+(`data/corridors_final`, 1024 of them) one at a time: the best KAST class, whether the
 corridor should be bigger or smaller, notes, and two flags. Each expert works
 alone and blind. The app collects their answers, and the disagreements are
 settled afterwards in a meeting, from the spreadsheet `admin export` writes.
@@ -107,6 +107,7 @@ Re-run this if `corridors_final` is rebuilt. Corridor IDs are the
 `corridor_id`s from that build, so verdicts are tied to them. **Rebuilding
 corridors_final after reviewing has started renumbers corridors under
 existing verdicts**, so don't.
+The IDs have gaps on purpose. Corridors 78, 302 and 489 were duplicates and cameout of the built set on 2026-11-02, after reviewing had started (see`removed_after_build` in `data/corridors_final/build.json`). To remove another,take it out of the built set and re-run this with `--skip-tracks`. Everyone elsekeeps their ID, and any verdict on the removed one stays on the Historikk sheet.
 
 The track tiles end up in `data/validation/tracks/` and are served by the API
 behind the access code. They are not in git or on Pages, because both are
