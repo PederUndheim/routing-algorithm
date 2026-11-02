@@ -29,7 +29,7 @@ These are the user's choices, so they shouldn't be revisited in passing:
   them.
 - **Blind:** the corridor is drawn the way the corridor review drew it, a
   PNG rendered from its GeoTIFF with the same breaks and fade. Every corridor
-  is drawn in the review's blue whatever its class, so the colour says nothing. There is no route line. The class isn't
+  is drawn in the same violet whatever its class, so the colour says nothing. There is no route line. The class isn't
   in the static files at all (see `prepare.py`).
 - **Map buttons:** picture buttons in this order: Norgeskart, Satellitt,
   Turkart, then Bratthet (on by default), Bratthet m/utløp, Spordata. Shortcuts

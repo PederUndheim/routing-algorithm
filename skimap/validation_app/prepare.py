@@ -20,7 +20,8 @@ Files share, uploaded there with deploy/upload.sh; see the README.
 Drawn exactly as the corridor review drew it (render.to_png): the corridor
 GeoTIFF warped to Web Mercator, its 0..1 score classified at the twenty
 breaks of data/styles_arcgis/blue.lyrx with its alpha ramp, so the band fades
-out towards its edge the way the reviewers are used to seeing it.
+out towards its edge the way the reviewers are used to seeing it. Only the
+hue differs: those classes run from CORRIDOR_LIGHT to CORRIDOR_DARK.
 
 ## Blind by construction
 
@@ -28,9 +29,10 @@ The review is blind: a reviewer sets the KAST class without seeing what the
 project chose. These files are public - Pages serves them to anyone - so
 blind has to hold in the data, not just in what the page happens to draw.
 The review coloured each corridor by its class; here every corridor is drawn
-in the same blue, whatever its class, so the colour says nothing. (Blue was
-the user's choice over a neutral violet.) Nothing in the index carries a
-colour, a model, a width or a tour id either.
+in the same violet, whatever its class, so the colour says nothing. (The
+user's choice, tried against the steepness map; violet is no KAST class, and
+blue, used at first, is one.) Nothing in the index carries a colour, a model,
+a width or a tour id either.
 
 ## Track tiles only near corridors
 
@@ -75,7 +77,9 @@ HERE = Path(__file__).resolve().parent
 OUT = HERE / "frontend" / "public"
 TRACKS_OUT = paths.DATA / "validation" / "tracks"
 
-CORRIDOR_STYLE = "blue"   # one style for every corridor - see "Blind by construction"
+CORRIDOR_BREAKS = "blue"  # the .lyrx whose breaks and alpha every corridor is drawn with
+CORRIDOR_LIGHT = (0xc9, 0xa8, 0xff)   # the band's edge - see "Blind by construction"
+CORRIDOR_DARK = (0x4b, 0x0f, 0x9e)    # its middle
 MAX_PIXELS = 2048   # one corridor on screen, not three: the app's limit, not the review's
 
 TRACK_BUFFER_M = 3000
@@ -84,6 +88,15 @@ TRACK_MIN_ZOOM = 9
 TRACK_ALPHA_MIN = 0.32
 TRACK_ALPHA_MAX = 0.92
 TRACK_FULL_PASSES = 75
+
+
+def _corridor_style() -> tuple[np.ndarray, np.ndarray]:
+    """CORRIDOR_BREAKS' bounds and alpha, its colours replaced by the violet ramp."""
+    bounds, colours = render._style(CORRIDOR_BREAKS)
+    along = np.linspace(0.0, 1.0, len(colours))[:, None]
+    colours = colours.copy()
+    colours[:, :3] = np.rint(np.array(CORRIDOR_LIGHT) * (1.0 - along) + np.array(CORRIDOR_DARK) * along)
+    return bounds, colours
 
 
 def _corridor_png(tif: Path, png: Path, style: tuple[np.ndarray, np.ndarray]) -> dict:
@@ -114,7 +127,7 @@ def _corridor_png(tif: Path, png: Path, style: tuple[np.ndarray, np.ndarray]) ->
 
 def build_corridors(out_dir: Path) -> list[dict]:
     corridors = gpd.read_file(GPKG, layer="corridors").sort_values("corridor_id")
-    style = render._style(CORRIDOR_STYLE)
+    style = _corridor_style()
 
     target = out_dir / "corridors"
     if target.exists():
