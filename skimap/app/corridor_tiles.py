@@ -1,4 +1,4 @@
-r"""data/colored_corridors as map tiles, for the app's overlay of the same name.
+r"""data/colored_corridors as map tiles, for the app's two corridor overlays.
 
 The four class rasters (green, blue, red, black) cover the whole country at
 10 m - 82 000 x 130 000 cells, a third of a percent of them corridor. One
@@ -9,9 +9,10 @@ tiles instead and the map fetches only the ones on screen.
     & "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m app.corridor_tiles
 
 Writes app/frontend/public/colored_corridors/{z}/{x}/{y}.png and an
-index.json listing every tile that exists. The frontend reads the index and
-asks for nothing else: most of the country is empty, and a request per empty
-tile is a 404 per tile.
+index.json listing every tile that exists, then the same again in
+hazard_zone_corridors/; `--palette` builds just the one. The frontend reads the
+index and asks for nothing else: most of the country is empty, and a request
+per empty tile is a 404 per tile.
 
 `MAX_ZOOM` tiles are warped from the rasters themselves, coloured with the
 same data/styles_arcgis files the review draws them in, and stacked green
@@ -21,6 +22,11 @@ four tiles under it. Those keep the *strongest* alpha of the four children
 rather than the mean: averaged, a band a few cells wide fades out within two
 zoom levels, and the point of the low zooms is to show where there are
 corridors at all.
+
+hazard_zone_corridors is the same rasters and the same breaks and alpha on
+another palette, see HAZARD_ZONE_CORES. Those colours are deep because the
+overlay is drawn at 60% opacity on a light map: anything paler washes out, and
+orange goes into the beige of the terrain.
 
 Re-run after `python -m skimap.corridor_review colored-corridors`; the tiles
 describe the rasters as they were when this ran.
@@ -53,7 +59,37 @@ MIN_ZOOM = 5   # the map's own minZoom
 TILE = 256
 ORIGIN = 20037508.342789244   # half the Web Mercator world, in metres
 
-OUT = Path(__file__).resolve().parent / "frontend" / "public" / "colored_corridors"
+PUBLIC = Path(__file__).resolve().parent / "frontend" / "public"
+OUT = PUBLIC / "colored_corridors"
+HAZARD_ZONE_OUT = PUBLIC / "hazard_zone_corridors"
+
+HAZARD_ZONE_BREAKS = "red"   # the .lyrx whose breaks and alpha this palette is drawn with
+HAZARD_ZONE_CORES = {        # the colour at a band's middle; black has none of its own
+    "green": (0xf2, 0xc2, 0x00),
+    "blue": (0xd9, 0x50, 0x00),
+    "red": (0xa0, 0x00, 0x00),
+    "black": (0xa0, 0x00, 0x00),
+}
+# How far towards white a band's edge is, about what the .lyrx ramps do.
+HAZARD_ZONE_EDGE_TINT = 0.7
+
+
+def _hazard_zone_style(colour: str) -> tuple[np.ndarray, np.ndarray]:
+    """HAZARD_ZONE_BREAKS' bounds and alpha, its colours replaced by a ramp up to the core."""
+    bounds, colours = render._style(HAZARD_ZONE_BREAKS)
+    core = np.array(HAZARD_ZONE_CORES[colour], dtype=np.float64)
+    edge = core + (255.0 - core) * HAZARD_ZONE_EDGE_TINT
+    along = np.linspace(0.0, 1.0, len(colours))[:, None]
+    colours = colours.copy()
+    colours[:, :3] = np.rint(edge * (1.0 - along) + core * along)
+    return bounds, colours
+
+
+# Name -> how each class is coloured, and where its tiles go.
+PALETTES = {
+    "colored": (render._style, OUT),
+    "hazard_zone": (_hazard_zone_style, HAZARD_ZONE_OUT),
+}
 
 
 def _tile_size(z: int) -> float:
@@ -107,7 +143,8 @@ def _over(bottom: np.ndarray, top: np.ndarray) -> np.ndarray:
     return top + bottom * (1.0 - top[..., 3:4])
 
 
-def _render_tile(datasets: dict[str, gdal.Dataset], x: int, y: int) -> np.ndarray | None:
+def _render_tile(datasets: dict[str, gdal.Dataset], x: int, y: int,
+                 style=render._style) -> np.ndarray | None:
     """One MAX_ZOOM tile as uint8 RGBA, or None if nothing in it is drawn."""
     west, south, east, north = _tile_bounds(MAX_ZOOM, x, y)
     stack = np.zeros((TILE, TILE, 4), dtype=np.float64)
@@ -122,7 +159,7 @@ def _render_tile(datasets: dict[str, gdal.Dataset], x: int, y: int) -> np.ndarra
         inside = np.isfinite(scores) & (scores > 0.0)
         if not inside.any():
             continue
-        rgba = render._colorize(np.clip(scores, 0.0, 1.0), inside, colour) / 255.0
+        rgba = render._colorize(np.clip(scores, 0.0, 1.0), inside, colour, style) / 255.0
         rgba[..., :3] *= rgba[..., 3:4]
         stack = _over(stack, rgba)
     return _to_uint8(stack)
@@ -176,7 +213,8 @@ def _read_png(path: Path) -> np.ndarray | None:
     return np.dstack([image.GetRasterBand(b + 1).ReadAsArray() for b in range(4)])
 
 
-def build(source_dir: Path = paths.COLORED_CORRIDORS, out_dir: Path = OUT) -> dict:
+def build(source_dir: Path = paths.COLORED_CORRIDORS, out_dir: Path = OUT,
+          style=render._style) -> dict:
     datasets = {}
     for colour in CLASSES:
         tif = source_dir / f"corridors_{colour}.tif"
@@ -197,7 +235,7 @@ def build(source_dir: Path = paths.COLORED_CORRIDORS, out_dir: Path = OUT) -> di
 
     present: dict[int, set[tuple[int, int]]] = {MAX_ZOOM: set()}
     for done, (x, y) in enumerate(candidates, 1):
-        rgba = _render_tile(datasets, x, y)
+        rgba = _render_tile(datasets, x, y, style)
         if rgba is not None:
             _write_png(out_dir / str(MAX_ZOOM) / str(x) / f"{y}.png", rgba)
             present[MAX_ZOOM].add((x, y))
@@ -238,9 +276,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", type=Path, default=paths.COLORED_CORRIDORS,
                         help="directory holding corridors_<colour>.tif "
                              "(default data/colored_corridors)")
-    parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--palette", choices=PALETTES,
+                        help="build only this one (default both)")
+    parser.add_argument("--out", type=Path,
+                        help="where the tiles go; needs --palette "
+                             "(default app/frontend/public/<overlay>)")
     args = parser.parse_args(argv)
-    build(args.source, args.out)
+    if args.out and not args.palette:
+        parser.error("--out needs --palette")
+    for name in [args.palette] if args.palette else PALETTES:
+        style, out_dir = PALETTES[name]
+        build(args.source, args.out or out_dir, style)
     return 0
 
 

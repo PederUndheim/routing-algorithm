@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import Box from "@mui/material/Box";
+import Divider from "@mui/material/Divider";
 import Fab from "@mui/material/Fab";
 import Popover from "@mui/material/Popover";
 import Slider from "@mui/material/Slider";
@@ -26,9 +27,11 @@ type LayerControlProps = {
   onOverlayOpacityChange: (id: OverlayId, opacity: number) => void;
 };
 
-/** The map-settings popover: which basemap, and which NVE overlay on top of
- *  it. Each layer is a circular thumbnail - the picture says more than the
- *  name does, and it keeps the whole control to one screenful. */
+/** The map-settings popover: which basemap, and which overlays on top of it,
+ *  one at most from each group. Each layer is a circular thumbnail - the
+ *  picture says more than the name does, and it keeps the whole control to one
+ *  screenful. Not draggable: a click that moves a pixel would drag the image,
+ *  which the browser reports as a file, and up comes the map's drop overlay. */
 const LayerControl = ({
   basemap,
   onBasemapChange,
@@ -155,6 +158,7 @@ const LayerControl = ({
                     component="img"
                     src={b.thumbUrl}
                     alt={b.label}
+                    draggable={false}
                     sx={{
                       width: "100%",
                       height: "100%",
@@ -182,94 +186,100 @@ const LayerControl = ({
         <Typography sx={heading}>Overlays</Typography>
 
         <Box sx={{ display: "flex", flexDirection: "column", px: { xs: 1, sm: 3 } }}>
-          {OVERLAYS.map((o) => {
+          {OVERLAYS.map((o, i) => {
             const enabled = overlays[o.id];
             const opacity = overlayOpacity[o.id] ?? o.opacityDefault;
 
             return (
-              <Box
-                key={o.id}
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: { xs: 1.25, sm: 2 },
-                  mb: 1.5,
-                }}
-              >
+              <Fragment key={o.id}>
+                {/* Only one layer of a group is on at once; this shows where they part. */}
+                {i > 0 && OVERLAYS[i - 1].group !== o.group && (
+                  <Divider sx={{ mb: 1.5, borderColor: "rgba(255,255,255,0.15)" }} />
+                )}
                 <Box
-                  onClick={() => onToggleOverlay(o.id)}
                   sx={{
-                    width: thumbSize,
-                    height: thumbSize,
-                    flexShrink: 0,
-                    cursor: "pointer",
-                    borderRadius: "50%",
-                    overflow: "hidden",
-                    border: "4px solid " + (enabled ? COLORS.teal : "transparent"),
-                    boxShadow: SHADOW,
-                    transition: "transform 0.15s ease, border-color 0.15s ease",
-                    "&:hover": { transform: "scale(1.05)" },
+                    display: "flex",
+                    alignItems: "center",
+                    gap: { xs: 1.25, sm: 2 },
+                    mb: 1.5,
                   }}
                 >
                   <Box
-                    component="img"
-                    src={o.thumbUrl}
-                    alt={o.label}
+                    onClick={() => onToggleOverlay(o.id)}
                     sx={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      display: "block",
+                      width: thumbSize,
+                      height: thumbSize,
+                      flexShrink: 0,
+                      cursor: "pointer",
+                      borderRadius: "50%",
+                      overflow: "hidden",
+                      border: "4px solid " + (enabled ? COLORS.teal : "transparent"),
+                      boxShadow: SHADOW,
+                      transition: "transform 0.15s ease, border-color 0.15s ease",
+                      "&:hover": { transform: "scale(1.05)" },
                     }}
-                  />
-                </Box>
+                  >
+                    <Box
+                      component="img"
+                      src={o.thumbUrl}
+                      alt={o.label}
+                      draggable={false}
+                      sx={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                  </Box>
 
-                <Typography
-                  sx={{
-                    fontSize: { xs: 12, sm: 14 },
-                    fontWeight: 500,
-                    color: "white",
-                    width: labelWidth,
-                  }}
-                >
-                  {o.label}
-                </Typography>
-
-                {/* Kept in the layout but dimmed when the layer is off, so the
-                    row does not change height as you toggle it. */}
-                <Box
-                  sx={{
-                    width: sliderWidth,
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    opacity: enabled ? 1 : 0.5,
-                    pointerEvents: enabled ? "auto" : "none",
-                    transition: "opacity 0.15s ease",
-                  }}
-                >
-                  <Slider
-                    value={opacity}
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    disabled={!enabled}
-                    onChange={(_, v) => onOverlayOpacityChange(o.id, v as number)}
-                    valueLabelDisplay="auto"
-                    valueLabelFormat={(v) => Math.round(v * 100) + "%"}
+                  <Typography
                     sx={{
-                      color: COLORS.teal,
-                      "& .MuiSlider-thumb": {
-                        width: isMobile ? 12 : 14,
-                        height: isMobile ? 12 : 14,
-                      },
+                      fontSize: { xs: 12, sm: 14 },
+                      fontWeight: 500,
+                      color: "white",
+                      width: labelWidth,
                     }}
-                  />
-                  <Typography sx={{ fontSize: 12, fontWeight: 500, color: "white" }}>
-                    Opacity [%]
+                  >
+                    {o.label}
                   </Typography>
+
+                  {/* Kept in the layout but dimmed when the layer is off, so the
+                      row does not change height as you toggle it. */}
+                  <Box
+                    sx={{
+                      width: sliderWidth,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      opacity: enabled ? 1 : 0.5,
+                      pointerEvents: enabled ? "auto" : "none",
+                      transition: "opacity 0.15s ease",
+                    }}
+                  >
+                    <Slider
+                      value={opacity}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!enabled}
+                      onChange={(_, v) => onOverlayOpacityChange(o.id, v as number)}
+                      valueLabelDisplay="auto"
+                      valueLabelFormat={(v) => Math.round(v * 100) + "%"}
+                      sx={{
+                        color: COLORS.teal,
+                        "& .MuiSlider-thumb": {
+                          width: isMobile ? 12 : 14,
+                          height: isMobile ? 12 : 14,
+                        },
+                      }}
+                    />
+                    <Typography sx={{ fontSize: 12, fontWeight: 500, color: "white" }}>
+                      Opacity [%]
+                    </Typography>
+                  </Box>
                 </Box>
-              </Box>
+              </Fragment>
             );
           })}
         </Box>

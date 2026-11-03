@@ -14,7 +14,7 @@ import { defaultsAt, problemOf } from "./crux/assessment";
 import { cruxTitle } from "./dangerClasses";
 import { DEFAULT_BASEMAP } from "./layers/basemaps";
 import type { BasemapId } from "./layers/basemaps";
-import { DEFAULT_OPACITY, DEFAULT_OVERLAYS } from "./layers/overlays";
+import { DEFAULT_OPACITY, DEFAULT_OVERLAYS, toggleOverlay } from "./layers/overlays";
 import type { OverlayId } from "./layers/overlays";
 import MapView from "./map/MapView";
 import { createRouteList, excludedStretches, geodesicLength, isEdited } from "./routes/routeList";
@@ -551,7 +551,7 @@ const App = () => {
         basemap={basemap}
         onBasemapChange={setBasemap}
         overlays={overlays}
-        onToggleOverlay={(id) => setOverlays((prev) => ({ ...prev, [id]: !prev[id] }))}
+        onToggleOverlay={(id) => setOverlays((prev) => toggleOverlay(prev, id))}
         overlayOpacity={overlayOpacity}
         onOverlayOpacityChange={(id, opacity) =>
           setOverlayOpacity((prev) => ({ ...prev, [id]: opacity }))

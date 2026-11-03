@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import numpy as np
 from osgeo import gdal, osr
@@ -194,8 +194,9 @@ def to_png(corridor_tif: Path, png_path: Path, *, colour: str = "blue") -> dict:
     return _bounds_wgs84(warped)
 
 
-def _colorize(scores: np.ndarray, inside: np.ndarray, colour: str) -> np.ndarray:
-    bounds, colours = _style(colour)
+def _colorize(scores: np.ndarray, inside: np.ndarray, colour: str,
+              style: Callable[[str], tuple[np.ndarray, np.ndarray]] = _style) -> np.ndarray:
+    bounds, colours = style(colour)
     classes = np.searchsorted(bounds, scores, side="left")
     np.clip(classes, 0, len(bounds) - 1, out=classes)
     rgba = colours[classes]

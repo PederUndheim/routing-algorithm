@@ -284,8 +284,16 @@ exposure class. It is national at 10 m and almost all empty, so it ships as
 static PNG tiles in `frontend/public/colored_corridors/` - z12 warped from
 the four class rasters and coloured with `green/blue/red/black.lyrx`, the
 zooms above built from the tiles under them - with an `index.json` of the
-tiles that exist, so the map asks for nothing else. Rebuild after
-`python -m skimap.corridor_review colored-corridors`:
+tiles that exist, so the map asks for nothing else. **Hazard zone corridors**,
+listed under it, is the same corridors from the same rasters, in
+`frontend/public/hazard_zone_corridors/`: the `.lyrx` breaks and alpha, but
+green ending on `#f2c200`, blue on `#d95000`, and red and black both on
+`#a00000`, deep enough to read as yellow, orange and red at its default 60%
+over the map. Only one of the two is on at a time, and likewise for NVE's two
+slope layers; a thin line in the panel separates the two groups.
+Rebuild after `python -m skimap.corridor_review colored-corridors`;
+this writes both, and `--palette colored` or `--palette hazard_zone` writes just
+the one:
 
 ```powershell
 & "C:\Program Files\QGIS 4.2.0\bin\python-qgis.bat" -m app.corridor_tiles
