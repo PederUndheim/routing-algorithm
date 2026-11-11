@@ -275,13 +275,15 @@ kbd {
   border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
 }
 .error { color: var(--bad); margin: 0; }
-.user-grid { display: grid; grid-template-columns: repeat(2, minmax(200px, 1fr)); gap: 12px; }
+/* Three per row; a short last row is centred. Test always gets a row of its own. */
+.user-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; width: min(684px, 100%); }
 .user-btn {
+  flex: 0 1 220px;
   height: 84px; display: flex; align-items: center; gap: 14px; padding: 0 18px; text-align: left; border: 1px solid var(--line); border-radius: 14px; background: var(--surface);
   font-size: 20px; font-weight: 600; box-shadow: var(--shadow); transition: transform 0.12s, box-shadow 0.12s;
 }
 .user-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(17, 24, 39, 0.1); }
-.user-btn.test { grid-column: 1 / -1; justify-content: center; height: 48px; font-size: 14px; font-weight: 500; color: var(--muted); box-shadow: none; border-style: dashed; }
+.user-btn.test { flex-basis: 100%; justify-content: center; height: 48px; font-size: 14px; font-weight: 500; color: var(--muted); box-shadow: none; border-style: dashed; }
 
 /* --- Leaflet ----------------------------------------------------------------- */
 

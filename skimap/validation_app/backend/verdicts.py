@@ -2,10 +2,12 @@
 
 ## The users
 
-Fixed, not registered: four experts and a test user. `id` is what storage
+Fixed, not registered: five experts and a test user. `id` is what storage
 keys on - ASCII, so it is a valid Table Storage partition key - and `name`
 is what the page shows. Renaming someone is a change to `name` only; changing
-an `id` orphans everything that user has done.
+an `id` orphans everything that user has done. The list order is the order
+on the login screen (three per row) and of the export's columns; reordering
+touches no stored data.
 
 The test user is for trying the app. It sees every corridor, is left out of
 every export, and is the only user whose answers can be reset.
@@ -34,9 +36,10 @@ from typing import Any
 
 USERS = [
     {"id": "havard", "name": "Håvard"},
+    {"id": "finn", "name": "Finn"},
+    {"id": "halvor", "name": "Halvor"},
     {"id": "markus", "name": "Markus"},
     {"id": "andreas", "name": "Andreas"},
-    {"id": "finn", "name": "Finn"},
     {"id": "test", "name": "Test"},
 ]
 USER_IDS = {u["id"] for u in USERS}

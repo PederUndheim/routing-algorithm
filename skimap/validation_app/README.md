@@ -21,9 +21,12 @@ validation_app/
 
 These are the user's choices, so they shouldn't be revisited in passing:
 
-- **Users:** Håvard, Markus, Andreas and Finn, plus Test. They are fixed in
-  `backend/verdicts.py`. One shared access code for everyone, then you pick
-  your name.
+- **Users:** Håvard, Finn, Halvor, Markus and Andreas, plus Test. They are
+  fixed in `backend/verdicts.py`, whose order is the login screen's (three per
+  row) and the export's. One shared access code for everyone, then you pick
+  your name. Halvor was added on 2026-11-11, after reviewing had started. A
+  new user needs only an entry there and a photo in `Avatar.tsx`. There is no
+  user table in Azure; their rows appear on their first change.
 - **Assignment:** set in `assignments.json`. Each user sees *only* their own
   corridors. A user who isn't in the file, or is set to `"all"`, sees all of
   them.

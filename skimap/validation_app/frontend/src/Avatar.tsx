@@ -2,11 +2,12 @@ import havard from "./assets/users/havard.jpg";
 import markus from "./assets/users/markus.jpg";
 import andreas from "./assets/users/andreas.jpg";
 import finn from "./assets/users/finn.jpg";
+import halvor from "./assets/users/halvor.jpg";
 import type { User } from "./types";
 
 /** Profile pictures by user id (backend/verdicts.py). A user without one -
  *  the test user - gets their initial. */
-const PHOTOS: Record<string, string> = { havard, markus, andreas, finn };
+const PHOTOS: Record<string, string> = { havard, markus, andreas, finn, halvor };
 
 export function Avatar({ user, size }: { user: User; size: number }) {
   const photo = PHOTOS[user.id];
