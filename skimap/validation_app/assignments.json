@@ -1,6 +1,10 @@
 {
   "havard": "all",
-  "halvor": "all",
+  "halvor": {"regions": [
+    "Vest-Finnmark", "Nord-Troms", "Lyngen", "Tromsø", "Sør-Troms", "Indre Troms",
+    "Lofoten og Vesterålen", "Ofoten", "Salten", "Svartisen", "Helgeland",
+    "Voss", "Hallingdal", "Hardanger", "Vest-Telemark"
+  ]},
   "markus": {"regions": [
     "Vest-Finnmark", "Nord-Troms", "Lyngen", "Tromsø", "Sør-Troms", "Indre Troms",
     "Lofoten og Vesterålen", "Ofoten", "Salten", "Svartisen", "Helgeland",
