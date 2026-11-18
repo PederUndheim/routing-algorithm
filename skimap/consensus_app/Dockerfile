@@ -7,6 +7,9 @@
 #   docker build -t skimap-consensus-api skimap/consensus_app
 FROM python:3.12-slim
 
+# Links the GHCR package to the repository, so the workflow token may push to it.
+LABEL org.opencontainers.image.source=https://github.com/PederUndheim/routing-algorithm
+
 WORKDIR /app
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt
