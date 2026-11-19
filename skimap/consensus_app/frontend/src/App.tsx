@@ -7,7 +7,10 @@ import { SaveQueue, type SaveStatus } from "./saveQueue";
 import type { CorridorInfo, Meeting } from "./types";
 
 const CODE_KEY = "konsensus.code";
+/** The meeting open, as its id - or "review:<id>" for its review of the
+ *  auto-classification. */
 const MEETING_KEY = "konsensus.meeting";
+const REVIEW = "review:";
 
 const read = (key: string) => {
   try {
@@ -91,7 +94,8 @@ export function App() {
   if (!meetings || !index) {
     return <div className="center-screen">{error ?? "Laster …"}</div>;
   }
-  const meeting = meetings.find((m) => m.id === meetingId);
+  const review = !!meetingId?.startsWith(REVIEW);
+  const meeting = meetings.find((m) => m.id === (review ? meetingId?.slice(REVIEW.length) : meetingId));
   if (!meeting) {
     return (
       <div className="center-screen">
@@ -112,14 +116,24 @@ export function App() {
             </button>
           ))}
         </div>
+        <h2 className="start-section">Gjennomgang av auto-klassifisering</h2>
+        <p className="lead small">De auto-klassifiserte korridorene, mest tvilsomme først – ta dem tilbake til diskusjon ved behov.</p>
+        <div className="meeting-grid">
+          {meetings.map((m) => (
+            <button key={m.id} className={`review-btn ${m.test ? "test" : ""}`} onClick={() => pickMeeting(REVIEW + m.id)}>
+              <span className="meeting-date">{m.label}</span>
+              {!m.test && <span className="meeting-count">{m.experts.map((e) => e.name).join(", ")}</span>}
+            </button>
+          ))}
+        </div>
         <button className="link" onClick={() => { write(CODE_KEY, null); setCode(null); setMeetings(null); }}>
           Logg ut
         </button>
       </div>
     );
   }
-  return <MeetingView key={meeting.id} code={code} meeting={meeting} index={index} queue={queue} status={status}
-                      onLeave={() => pickMeeting(null)} />;
+  return <MeetingView key={`${review ? REVIEW : ""}${meeting.id}`} code={code} meeting={meeting} index={index}
+                      queue={queue} status={status} review={review} onLeave={() => pickMeeting(null)} />;
 }
 
 function Login({ error, onCode, retry }: { error: string | null; onCode: (c: string) => void; retry?: () => void }) {

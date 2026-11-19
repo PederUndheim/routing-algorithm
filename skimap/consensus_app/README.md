@@ -2,8 +2,8 @@
 
 The app for the two consensus meetings after the corridor validation. The
 experts and the chair go through each corridor together and settle on one
-KAST class (the same twelve steps as the validation), the corridor size, whether it is problematic to publish
-(and what should change), and a common comment.
+KAST class (the same twelve steps as the validation), the corridor size, what
+to do with it later, and a common comment.
 
 It is a separate app from `validation_app`, with its own API, storage and
 access code. It reads the experts' verdicts live from the validation data and
@@ -37,40 +37,68 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   size, Usikker and Problematisk, and the note. *Full*: the validation app's
   own panel as the expert left it (twelve KAST steps, Usikker,
   Korridorbredde, note, Problematisk), scaled down so all three fit without
-  scrolling. A green *Enige* shows when they agree; there is no list of why
-  they don't (tried and dropped). The right column is the validation
+  scrolling. A green *Auto-klassifisert* shows when the rule below settles
+  it; there is no list of why not (tried and dropped). The right column is the validation
   sidebar with the consensus in place of the verdict.
 - **Consensus fields:** KAST class on the validation app's twelve-step
-  control (four classes, each − 0 +), corridor size, *Problematisk for
-  publisering* with *Hva bør endres*, and a common comment. No *Usikker*.
-- **Videre arbeid** (between size and comments): three toggles for what to
-  do with the corridor later - *Legg til nytt mellompunkt* and *Endre
+  control (four classes, each − 0 +), corridor size, *Videre arbeid* and a
+  common comment (*Kommentar*). No *Usikker*, and since 2026-11-19 no
+  *Problematisk for publisering* (the fields `problematic`/`change` are kept
+  in storage but no longer set).
+- **Videre arbeid** (between size and comment): what to do with the
+  corridor later. Three toggles - *Legg til nytt mellompunkt* and *Endre
   sluttpunkt*, each with a box for where, and *Til to turer*, with where
-  each tour goes and its class (twelve-step). Shown as tags in the list and
-  as columns in the export.
-- **Agreed from the start:** a corridor counts as agreed when all three
-  experts have:
-  - set a class, and the same main class
-  - left the size at OK
-  - not ticked *Problematisk* or *Usikker*
+  each tour goes and its class (twelve-step) - and below them *Annet* (with
+  a box for what) and *Slett*. Shown as tags in the list and as columns in
+  the export.
+- **Auto-klassifisert:** a corridor is settled before the meeting when all
+  three experts have set a class and
+  - the classes are *majority + neighbour*: all the same main class, or two
+    in one and the third in the class next to it (any step)
+  - nobody ticked *Problematisk*
+  - nobody ticked *Usikker* - unless all gave the same main class
 
-  Notes and the −/0/+ step don't count. An agreed corridor is shown as done
-  with that class and the middle of the experts' three steps (hatched,
-  *Enige fra start*). Changing anything on it stores the class
-  with the change. ← → skip agreed corridors (unless the list is filtered to
-  *Enige fra start*); they stay in the list and open on a click. The progress
-  bar shows three parts: *enige fra start*,
-  *avklart i møtet* and *gjenstår*.
+  Size and notes don't count. The auto class is the median of the three
+  twelve-step verdicts (blå 0, blå +, rød − gives blå +); it always falls in
+  the majority's class. The rule is "majority" + "split" in
+  `corridor_validation/consensus_rules.py`. The corridor is shown as done
+  with that class (hatched, *Auto-klassifisert*). Changing anything on it
+  stores the class with the change. ← → skip these (unless the list is
+  filtered to *Auto-klassifisert*); they stay in the list and open on a
+  click. The progress bar shows *auto*, *avklart* and *gjenstår*, with the
+  *auto-overstyring* ones (below) counted in *gjenstår* and shown in orange.
+- **The experts' width on auto corridors:** when an auto-classified
+  corridor has an expert who asked for *Mindre* or *Større*, that width
+  stands in for the consensus's: hatched in Korridorbredde with "… fra
+  <name> – ikke avklart i konsensus", tagged "(ekspert)" in the list, and in
+  the export as the size with *Størrelse fra* = "ekspert (…), ikke avklart
+  i konsensus". Experts pulling both ways give *Mindre/Større*. Once the
+  meeting picks a width (even OK) it is the consensus's (`sizeSet`).
+- **Gjennomgang av auto-klassifisering:** its own section on the start
+  page, one entry per meeting. The same layout, but only the auto-classified
+  corridors, most doubtful first:
+  1. split class (two in one class, the third next to it) before one class
+  2. then a width asked for
+  3. then a wider spread of the twelve steps
+  4. then Usikker, then a note
+
+  The right column shows the auto class as a label and one big button,
+  *Ta tilbake til diskusjon* - or the A key (again to undo; Space still
+  shows the tracks). A corridor taken back (`reopened`) comes
+  up in the meeting as *Auto-overstyring*: ← → stop at it, the class starts
+  empty (a line says what the auto class was), and it counts in *gjenstår*
+  (orange) until the meeting sets a class - then it counts as *avklart*,
+  keeping an *Auto-overstyring* tag. The list's *Gjenstår* filter includes
+  them. The export has an *Auto-overstyring* column.
 - **No class colouring:** corridors are violet as in the validation, and the
   routing model's class is not shown anywhere.
-- **Order:** plain corridor order. The list filters by status, region and
-  Problematisk.
+- **Order:** plain corridor order. The list filters by status and region.
 
 ## Keyboard
 
 | | |
 |---|---|
-| ← → | previous / next (follows the list filter, skips corridors the experts agreed on) |
+| ← → | previous / next (follows the list filter, skips auto-classified corridors) |
 | 1 2 3 | green − / 0 / + |
 | Q W E | blue − / 0 / + |
 | A S D | red − / 0 / + |

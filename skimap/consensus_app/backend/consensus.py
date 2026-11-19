@@ -16,14 +16,20 @@ the meeting has started writing.
     kast         green | blue | red | black, or None while not settled
     sub          -1, 0, +1: the -/0/+ within the class, as in the validation
     size         -1, 0, +1: corridor should be smaller / is OK / bigger
-    problematic  "problematisk for publisering"
-    change       what should be changed before it can be published
+    sizeSet      the meeting chose the size; until then, on an
+                 auto-classified corridor, the experts' size stands in
+    reopened     the review of the auto-classification took it back to
+                 discussion
+    problematic  "problematisk for publisering" - no longer set from the page
+    change       what should be changed before publishing - went with it
     note         the meeting's common comment
 
 What to do with the corridor later, each a flag with its own text:
 
     midpoint, midpointWhere   add a new waypoint - and where
     endpoint, endpointWhere   move the end point - and where to
+    other, otherWhat          anything else - and what
+    remove                    the corridor should be deleted
     split                     split it into two tours, each with
     split1Where, split1Kast, split1Sub    where tour 1 goes and its class
     split2Where, split2Kast, split2Sub    the same for tour 2
@@ -63,17 +69,18 @@ KAST_CLASSES = ("green", "blue", "red", "black")
 TEXT_MAX = 4000
 
 DEFAULT: dict[str, Any] = {
-    "kast": None, "sub": 0, "size": 0, "problematic": False, "change": "", "note": "",
+    "kast": None, "sub": 0, "size": 0, "sizeSet": False, "reopened": False, "problematic": False, "change": "", "note": "",
     "midpoint": False, "midpointWhere": "",
     "endpoint": False, "endpointWhere": "",
+    "other": False, "otherWhat": "", "remove": False,
     "split": False,
     "split1Where": "", "split1Kast": None, "split1Sub": 0,
     "split2Where": "", "split2Kast": None, "split2Sub": 0,
 }
 CLASS_FIELDS = ("kast", "split1Kast", "split2Kast")
 STEP_FIELDS = ("sub", "size", "split1Sub", "split2Sub")
-TEXT_FIELDS = ("change", "note", "midpointWhere", "endpointWhere", "split1Where", "split2Where")
-FLAG_FIELDS = ("problematic", "midpoint", "endpoint", "split")
+TEXT_FIELDS = ("change", "note", "midpointWhere", "endpointWhere", "otherWhat", "split1Where", "split2Where")
+FLAG_FIELDS = ("problematic", "sizeSet", "reopened", "midpoint", "endpoint", "other", "remove", "split")
 
 
 def meetings() -> list[dict[str, Any]]:

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { NO_FILTERS, isFiltered, type Filters, type Status, type View } from "./agreement";
+import { NO_FILTERS, hintLabel, isFiltered, type Filters, type SizeHint, type Status, type View } from "./agreement";
 import { KAST_COLOUR, KAST_LABEL, SUB_MARK, type CorridorInfo } from "./types";
 
 type Props = {
@@ -11,13 +11,21 @@ type Props = {
   filters: Filters;
   onFilters: (f: Filters) => void;
   onPick: (id: number) => void;
+  /** The experts' width on an auto corridor the meeting has not sized. */
+  hintOf: (id: number) => SizeHint | null;
+  /** The review's list: its own status choices, and every row is auto. */
+  review?: boolean;
 };
 
 const STATUS: [Filters["status"], string][] = [
-  ["all", "Alle"], ["todo", "Gjenstår"], ["settled", "Avklart i møtet"], ["agreed", "Enige fra start"],
+  ["all", "Alle"], ["todo", "Gjenstår"], ["reopened", "Auto-overstyring"], ["settled", "Avklart i møtet"],
+  ["agreed", "Auto-klassifisert"],
+];
+const REVIEW_STATUS: [Filters["status"], string][] = [
+  ["all", "Alle"], ["agreed", "Ikke overstyrt"], ["reopened", "Auto-overstyring"],
 ];
 
-export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters, onFilters, onPick }: Props) {
+export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters, onFilters, onPick, hintOf, review = false }: Props) {
   const regions = [...new Set(all.map((c) => c.region))];
   const set = (patch: Partial<Filters>) => onFilters({ ...filters, ...patch });
   const current = useRef<HTMLButtonElement>(null);
@@ -34,15 +42,11 @@ export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters,
           {regions.map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
         <div className="seg">
-          {STATUS.map(([v, label]) => (
+          {(review ? REVIEW_STATUS : STATUS).map(([v, label]) => (
             <button key={v} className={filters.status === v ? "on" : ""} onClick={() => set({ status: v })}>
               {label}
             </button>
           ))}
-        </div>
-        <div className="seg">
-          <button className={filters.problematic ? "on" : ""}
-                  onClick={() => set({ problematic: !filters.problematic })}>Problematisk</button>
         </div>
         <div className="list-count">
           <span>Viser {shown.length} av {all.length}</span>
@@ -53,7 +57,8 @@ export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters,
         {shown.map((c) => {
           const { consensus: v } = viewOf(c.id);
           const status = statusOf(c.id);
-          const note = [v.change.trim(), v.note.trim()].filter(Boolean).join(" · ");
+          const note = v.note.trim();
+          const hint = hintOf(c.id);
           return (
             <button key={c.id} ref={c.id === currentId ? current : undefined}
                     className={`row ${c.id === currentId ? "current" : ""} ${status}`} onClick={() => onPick(c.id)}>
@@ -65,14 +70,17 @@ export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters,
                     ? <span className="pill" style={{ ["--kast" as string]: KAST_COLOUR[v.kast] }}>{KAST_LABEL[v.kast]}{SUB_MARK[v.sub]}</span>
                     : <span className="pill todo">Gjenstår</span>}
                 </span>
-                {(status === "agreed" || v.problematic || v.size !== 0 || v.midpoint || v.endpoint || v.split || note) && (
+                {((status === "agreed" && !review) || v.reopened || hint || v.size !== 0 || v.midpoint || v.endpoint || v.split || v.other || v.remove || note) && (
                   <span className="row-tags">
-                    {status === "agreed" && <span className="tag agreed">Enige fra start</span>}
-                    {v.problematic && <span className="tag problem">Problematisk</span>}
+                    {status === "agreed" && !review && <span className="tag agreed">Auto-klassifisert</span>}
+                    {v.reopened && <span className="tag reopened">Auto-overstyring</span>}
+                    {hint && <span className="tag hint">{hintLabel(hint)} korridor (ekspert)</span>}
+                    {v.remove && <span className="tag problem">Slett</span>}
                     {v.size !== 0 && <span className="tag">{v.size < 0 ? "Mindre korridor" : "Større korridor"}</span>}
                     {v.midpoint && <span className="tag todo">Nytt mellompunkt</span>}
                     {v.endpoint && <span className="tag todo">Endre sluttpunkt</span>}
                     {v.split && <span className="tag todo">To turer</span>}
+                    {v.other && <span className="tag todo">Annet</span>}
                     {note && <span className="row-note">{note}</span>}
                   </span>
                 )}

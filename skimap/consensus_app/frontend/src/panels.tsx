@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import {
-  CheckIcon, CloseIcon, EndpointIcon, FlagIcon, MidpointIcon, MinusIcon, PlusIcon, SplitIcon,
+  CheckIcon, CloseIcon, EndpointIcon, MidpointIcon, MinusIcon, OtherIcon, PlusIcon, SplitIcon, TrashIcon,
 } from "./icons";
+import { hintLabel, hintSize, type Agreed, type SizeHint } from "./agreement";
 import { KAST_MODELS, type KastModel } from "./kastModels";
 import { BASEMAPS, STEEPNESS, TRACKS_THUMB, type BasemapId, type SteepnessId } from "./layers";
 import {
-  KAST_CLASSES, KAST_COLOUR, KAST_LABEL, type Consensus, type ConsensusPatch, type KastClass, type Step,
+  KAST_CLASSES, KAST_COLOUR, KAST_LABEL, SUB_MARK, type Consensus, type ConsensusPatch, type KastClass, type Step,
 } from "./types";
 
 export const Section = ({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) => (
@@ -79,11 +80,13 @@ type KastProps = {
   onPick: (k: KastClass, s: Step) => void;
   onClear: () => void;
   onShowModel: (model: KastModel) => void;
+  /** The auto class, when the review took the corridor back to discussion. */
+  reopenedFrom?: Agreed | null;
 };
 
 /** As the validation app's KAST panel: four classes, each − 0 +. A pick
  *  shown from the experts' agreement is hatched until the meeting sets one. */
-export function KastPanel({ consensus, auto, onPick, onClear, onShowModel }: KastProps) {
+export function KastPanel({ consensus, auto, onPick, onClear, onShowModel, reopenedFrom }: KastProps) {
   const aside = (
     <span className="section-links">
       <button className="mini-btn" onClick={onClear} disabled={!consensus.kast || auto}
@@ -111,24 +114,46 @@ export function KastPanel({ consensus, auto, onPick, onClear, onShowModel }: Kas
       </div>
       <div className="kast-extras">
         {auto
-          ? <span className="auto-note"><CheckIcon size={14} /> Enige fra start</span>
-          : <span />}
+          ? <span className="auto-note"><CheckIcon size={14} /> Auto-klassifisert</span>
+          : reopenedFrom
+            ? <span className="auto-note reopened">Auto-overstyring</span>
+            : <span />}
         <span className="model-links">
           {KAST_MODELS.map((m) => (
             <button key={m.id} className="mini-btn" onClick={() => onShowModel(m)}>{m.label}</button>
           ))}
         </span>
       </div>
+      {reopenedFrom && (
+        <p className="size-hint">
+          Auto-klassifiseringen var {KAST_LABEL[reopenedFrom.kast].toLowerCase()}{SUB_MARK[reopenedFrom.sub] || " 0"}, overstyrt i gjennomgangen
+        </p>
+      )}
     </Section>
   );
 }
 
 // --- corridor size ---------------------------------------------------------
 
-export function SizePanel({ size, onSize }: { size: Step; onSize: (s: Step) => void }) {
-  const option = (s: Step, label: ReactNode) => (
-    <button className={size === s ? "picked" : ""} onClick={() => onSize(s)}>{label}</button>
-  );
+type SizeProps = {
+  size: Step;
+  onSize: (s: Step) => void;
+  /** On an auto-classified corridor the meeting has not sized: the width
+   *  the experts asked for, shown hatched and carried into the result as
+   *  theirs, not the consensus's. */
+  hint?: SizeHint | null;
+};
+
+export function SizePanel({ size, onSize, hint }: SizeProps) {
+  const hinted = (s: Step) => !!hint && (hintSize(hint) === s || (hintSize(hint) === null && s !== 0));
+  const option = (s: Step, label: ReactNode) => {
+    const picked = hint ? hinted(s) : size === s;
+    return (
+      <button className={`${picked ? "picked" : ""} ${picked && hint ? "auto" : ""}`} onClick={() => onSize(s)}>
+        {label}
+      </button>
+    );
+  };
   return (
     <Section title="Korridorbredde">
       <div className="segmented">
@@ -136,7 +161,45 @@ export function SizePanel({ size, onSize }: { size: Step; onSize: (s: Step) => v
         {option(0, "OK")}
         {option(1, <><PlusIcon /> Større</>)}
       </div>
+      {hint && <SizeHintNote hint={hint} />}
     </Section>
+  );
+}
+
+const SizeHintNote = ({ hint }: { hint: SizeHint }) => (
+  <p className="size-hint">
+    {hintLabel(hint)} fra {[...hint.smaller, ...hint.bigger].join(", ")} – ikke avklart i konsensus
+  </p>
+);
+
+// --- the review of the auto-classification ----------------------------------
+
+type ReviewProps = {
+  agreed: Agreed;
+  hint: SizeHint | null;
+  reopened: boolean;
+  onReopen: (on: boolean) => void;
+};
+
+/** The auto class as a label, and the one thing to decide here: back to
+ *  the meeting or not (also the A key). */
+export function ReviewPanel({ agreed, hint, reopened, onReopen }: ReviewProps) {
+  return (
+    <>
+      <Section title="Auto-klassifisering">
+        <div className="review-class">
+          <span className="pill review-pill" style={{ ["--kast" as string]: KAST_COLOUR[agreed.kast] }}>
+            {KAST_LABEL[agreed.kast]}{SUB_MARK[agreed.sub]}
+          </span>
+        </div>
+        {hint && <SizeHintNote hint={hint} />}
+      </Section>
+      <button className={`reopen-btn ${reopened ? "on" : ""}`} aria-pressed={reopened} onClick={() => onReopen(!reopened)}>
+        {reopened
+          ? <><span className="reopen-main"><CheckIcon size={20} /> Tatt tilbake til diskusjon</span><span className="reopen-sub">Klikk eller A for å angre</span></>
+          : <><span className="reopen-main">Ta tilbake til diskusjon</span><span className="reopen-sub">A · korridoren kommer da opp i møtet som auto-overstyring</span></>}
+      </button>
+    </>
   );
 }
 
@@ -151,19 +214,21 @@ type FollowUpProps = {
   onTextDone: () => void;
 };
 
-/** Three things to remember for later, side by side; each opens its own
- *  fields. As with Problematisk, the fields stay while they hold anything,
- *  so switching a button off never hides what was written. */
+/** What to remember for later: three buttons, then Annet and Slett below;
+ *  each but Slett opens its own fields. The fields stay while they hold
+ *  anything, so switching a button off never hides what was written. */
 export function FollowUpPanel({ consensus: c, onSet, onText, onTextDone }: FollowUpProps) {
   const showMid = c.midpoint || c.midpointWhere.trim() !== "";
   const showEnd = c.endpoint || c.endpointWhere.trim() !== "";
+  const showOther = c.other || c.otherWhat.trim() !== "";
   const showSplit = c.split || [c.split1Where, c.split2Where].some((t) => t.trim()) || !!c.split1Kast || !!c.split2Kast;
-  const toggle = (key: "midpoint" | "endpoint" | "split", on: boolean, icon: ReactNode, label: string) => (
-    <button className={`todo-btn ${on ? "on" : ""}`} aria-pressed={on} onClick={() => onSet({ [key]: !on })}>
+  type Toggle = "midpoint" | "endpoint" | "split" | "other" | "remove";
+  const toggle = (key: Toggle, on: boolean, icon: ReactNode, label: string) => (
+    <button className={`todo-btn ${key} ${on ? "on" : ""}`} aria-pressed={on} onClick={() => onSet({ [key]: !on })}>
       {icon}<span>{label}</span>
     </button>
   );
-  const where = (key: "midpointWhere" | "endpointWhere", placeholder: string) => (
+  const where = (key: "midpointWhere" | "endpointWhere" | "otherWhat", placeholder: string) => (
     <textarea className="todo-text" value={c[key]} rows={2} maxLength={4000} placeholder={placeholder}
               onChange={(e) => onText({ [key]: e.target.value })} onBlur={onTextDone} />
   );
@@ -206,35 +271,26 @@ export function FollowUpPanel({ consensus: c, onSet, onText, onTextDone }: Follo
       {showMid && where("midpointWhere", "Hvor skal det nye mellompunktet være?")}
       {showEnd && where("endpointWhere", "Hvor skal sluttpunktet være?")}
       {showSplit && <div className="tours">{tour(1)}{tour(2)}</div>}
+      <div className="todo-btns two">
+        {toggle("other", c.other, <OtherIcon />, "Annet")}
+        {toggle("remove", c.remove, <TrashIcon />, "Slett")}
+      </div>
+      {showOther && where("otherWhat", "Hva annet skal gjøres?")}
     </Section>
   );
 }
 
-// --- publishing and the common comment ---------------------------------------------
+// --- the common comment ------------------------------------------------------
 
 type NotesProps = {
   consensus: Consensus;
-  onProblematic: (on: boolean) => void;
-  onChange: (text: string) => void;
   onNote: (text: string) => void;
   onTextDone: () => void;
 };
 
-export function NotesPanel({ consensus, onProblematic, onChange, onNote, onTextDone }: NotesProps) {
-  // The "what to change" box belongs to the flag, so it shows with it - and
-  // stays while it holds text, so un-ticking the flag never hides words.
-  const showChange = consensus.problematic || consensus.change.trim() !== "";
+export function NotesPanel({ consensus, onNote, onTextDone }: NotesProps) {
   return (
-    <Section title="Publisering og kommentar">
-      <button className={`flag problem ${consensus.problematic ? "on" : ""}`} aria-pressed={consensus.problematic}
-              onClick={() => onProblematic(!consensus.problematic)}>
-        <FlagIcon /> Problematisk for publisering
-      </button>
-      {showChange && (
-        <textarea className="change" value={consensus.change} rows={2} maxLength={4000}
-                  placeholder="Hva bør endres før publisering?"
-                  onChange={(e) => onChange(e.target.value)} onBlur={onTextDone} />
-      )}
+    <Section title="Kommentar">
       <textarea className="common" value={consensus.note} rows={3} maxLength={4000}
                 placeholder="Felles kommentar …"
                 onChange={(e) => onNote(e.target.value)} onBlur={onTextDone} />
@@ -245,7 +301,7 @@ export function NotesPanel({ consensus, onProblematic, onChange, onNote, onTextD
 // --- shortcuts -------------------------------------------------------------
 
 const SHORTCUTS: [string, string][] = [
-  ["← →", "Forrige / neste korridor (hopper over de enige)"],
+  ["← →", "Forrige / neste korridor (hopper over de auto-klassifiserte)"],
   ["1 2 3", "Grønn − / 0 / +"],
   ["Q W E", "Blå − / 0 / +"],
   ["A S D", "Rød − / 0 / +"],
@@ -253,13 +309,19 @@ const SHORTCUTS: [string, string][] = [
   ["Space", "Vis / skjul spordata"],
 ];
 
-export function ShortcutHelp({ onClose }: { onClose: () => void }) {
+const REVIEW_SHORTCUTS: [string, string][] = [
+  ["← →", "Forrige / neste (mest tvilsomme først)"],
+  ["A", "Ta tilbake til diskusjon / angre"],
+  ["Space", "Vis / skjul spordata"],
+];
+
+export function ShortcutHelp({ onClose, review = false }: { onClose: () => void; review?: boolean }) {
   return (
     <div className="modal-back" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <h2>Hurtigtaster</h2>
         <dl className="shortcuts">
-          {SHORTCUTS.map(([k, what]) => (
+          {(review ? REVIEW_SHORTCUTS : SHORTCUTS).map(([k, what]) => (
             <div key={k}>
               <dt>{k.split(" ").map((part) => <kbd key={part}>{part}</kbd>)}</dt>
               <dd>{what}</dd>

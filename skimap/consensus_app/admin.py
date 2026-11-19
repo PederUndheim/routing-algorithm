@@ -10,15 +10,21 @@ Each talks to the API: --api (default: CONSENSUS_API, else localhost) with
 ## The export
 
 One sheet per meeting, one row per corridor, in corridor order: its status
-(enige fra start / avklart i møtet / gjenstår), the consensus as the meeting
-sees it - for a corridor the experts agreed on and the meeting never
-touched, that is their class - and what to do with it later (new waypoint,
-new end point, two tours), then each expert's verdict and why they differ. The test meeting is never in it. A last sheet holds every write ever
+(auto-klassifisert / avklart i møtet / gjenstår), the consensus as the
+meeting sees it - for an auto-classified corridor the meeting never touched,
+the auto class - and what to do with it later (new waypoint, new end point,
+two tours, other, delete), then each expert's verdict and why it went to
+the meeting. The test meeting is never in it. A last sheet holds every write ever
 made, oldest first.
 
-The agreement rule is the page's (frontend/src/agreement.ts): the same main
-class from every expert, size OK, nobody problematic or usikker. An agreed
-corridor's step is the middle of the experts' steps.
+The auto-classification rule is the page's (frontend/src/agreement.ts):
+every expert has set a class; the classes are majority + neighbour (all one
+class, or two in one and the third in the class next to it); nobody ticked
+Problematisk; and nobody ticked Usikker unless all gave the same class. Size
+and notes do not count. The auto class is the median of the twelve steps.
+An auto corridor the meeting never sized gets the experts' size, with
+"Størrelse fra" saying so; one the review took back to discussion is
+"auto-overstyring" until the meeting sets a class.
 """
 
 from __future__ import annotations
@@ -42,7 +48,8 @@ OUT = HERE.parent / "data" / "consensus"
 CLASS_NO = {"green": "grønn", "blue": "blå", "red": "rød", "black": "svart"}
 SUB_MARK = {-1: "−", 0: "", 1: "+"}
 SIZE_NO = {-1: "mindre", 0: "", 1: "større"}
-STATUS_NO = {"agreed": "enige fra start", "settled": "avklart i møtet", "todo": "gjenstår"}
+STATUS_NO = {"agreed": "auto-klassifisert", "reopened": "auto-overstyring", "settled": "avklart i møtet",
+             "todo": "gjenstår"}
 
 
 def _call(args: argparse.Namespace, path: str) -> Any:
@@ -58,35 +65,63 @@ def _class(kast: str | None, sub: int) -> str:
     return CLASS_NO[kast] + SUB_MARK[sub] if kast else ""
 
 
-def agreed_step(experts: list[str], verdicts: dict[str, dict[str, dict]],
-                cid: int) -> tuple[str, int] | None:
-    """(class, step) the experts agree on, or None. The step is the middle
-    of theirs, as on the page."""
-    given = [verdicts.get(e, {}).get(str(cid)) for e in experts]
-    if any(not v or not v.get("kast") for v in given):
-        return None
-    if len({v["kast"] for v in given}) > 1:
-        return None
-    if any(v.get("size") or v.get("problematic") or v.get("doubt") for v in given):
-        return None
-    subs = sorted(v.get("sub", 0) for v in given)
-    return given[0]["kast"], subs[(len(subs) - 1) // 2]
+CLASS_ORDER = ("green", "blue", "red", "black")
+
+
+def majority_neighbour(classes: list[str]) -> bool:
+    """All one class, or all but one in one class and that one next to it."""
+    if len(set(classes)) <= 1:
+        return True
+    if len(classes) < 3:
+        return False
+    idx = [CLASS_ORDER.index(k) for k in classes]
+    for c in set(idx):
+        others = [i for i in idx if i != c]
+        if len(others) == 1 and abs(others[0] - c) == 1:
+            return True
+    return False
 
 
 def reasons(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: int) -> str:
+    """Why the corridor goes to the meeting; empty when it is auto-classified."""
     given = {e: verdicts.get(e, {}).get(str(cid)) or {} for e in experts}
+    rated = {e: v for e, v in given.items() if v.get("kast")}
     out = []
-    missing = [EXPERT_NAMES[e] for e, v in given.items() if not v.get("kast")]
+    missing = [EXPERT_NAMES[e] for e in given if e not in rated]
     if missing:
         out.append("ikke vurdert av " + " og ".join(missing))
-    classes = {v["kast"] for v in given.values() if v.get("kast")}
-    if len(classes) > 1:
-        out.append("ulik klasse")
-    for field, label in (("size", "størrelse"), ("problematic", "problematisk"), ("doubt", "usikker")):
-        who = [EXPERT_NAMES[e] for e, v in given.items() if v.get(field)]
-        if who:
-            out.append(f"{label}: {', '.join(who)}")
+    classes = [v["kast"] for v in rated.values()]
+    if not majority_neighbour(classes):
+        out.append("for ulike klasser")
+    who = [EXPERT_NAMES[e] for e, v in rated.items() if v.get("problematic")]
+    if who:
+        out.append(f"problematisk: {', '.join(who)}")
+    who = [EXPERT_NAMES[e] for e, v in rated.items() if v.get("doubt")]
+    if who and len(set(classes)) > 1:
+        out.append(f"usikker og ulik klasse: {', '.join(who)}")
     return "; ".join(out)
+
+
+def size_hint(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: int) -> tuple[str, str]:
+    """The experts' size on an auto corridor: ("mindre" | "større" |
+    "mindre/større" | "", who), as on the page."""
+    given = {e: verdicts.get(e, {}).get(str(cid)) or {} for e in experts}
+    smaller = [EXPERT_NAMES[e] for e, v in given.items() if v.get("kast") and v.get("size") == -1]
+    bigger = [EXPERT_NAMES[e] for e, v in given.items() if v.get("kast") and v.get("size") == 1]
+    label = "mindre/større" if smaller and bigger else "mindre" if smaller else "større" if bigger else ""
+    return label, ", ".join(smaller + bigger)
+
+
+def agreed_step(experts: list[str], verdicts: dict[str, dict[str, dict]],
+                cid: int) -> tuple[str, int] | None:
+    """The auto (class, step), or None: the median of the experts' twelve
+    steps, as on the page."""
+    if not experts or reasons(experts, verdicts, cid):
+        return None
+    steps = sorted(CLASS_ORDER.index(v["kast"]) * 3 + v.get("sub", 0) + 1
+                   for v in (verdicts[e][str(cid)] for e in experts))
+    mid = steps[(len(steps) - 1) // 2]
+    return CLASS_ORDER[mid // 3], mid % 3 - 1
 
 
 def export(args: argparse.Namespace) -> None:
@@ -106,31 +141,42 @@ def export(args: argparse.Namespace) -> None:
         experts = [e["id"] for e in m["experts"]]
         verdicts = _call(args, f"/api/admin/experts?meeting={m['id']}")["verdicts"]
         sheet = book.create_sheet(m["label"])
-        header = ["ID", "Region", "Lengde (m)", "Status", "Konsensus KAST", "Størrelse",
-                  "Problematisk", "Hva bør endres", "Felles kommentar",
+        header = ["ID", "Region", "Lengde (m)", "Status", "Konsensus KAST", "Størrelse", "Størrelse fra",
+                  "Auto-overstyring", "Felles kommentar",
                   "Nytt mellompunkt", "Mellompunkt hvor", "Endre sluttpunkt", "Sluttpunkt hvor",
-                  "To turer", "Tur 1 hvor", "Tur 1 KAST", "Tur 2 hvor", "Tur 2 KAST"]
+                  "To turer", "Tur 1 hvor", "Tur 1 KAST", "Tur 2 hvor", "Tur 2 KAST",
+                  "Annet", "Annet hva", "Slett"]
         for e in experts:
             n = EXPERT_NAMES[e]
             header += [f"{n} KAST", f"{n} størrelse", f"{n} usikker", f"{n} problematisk", f"{n} notat"]
-        header += ["Hvorfor ikke enige"]
+        header += ["Hvorfor til møtet"]
         sheet.append(header)
         for cid in m["corridors"]:
             c = index.get(cid, {"region": "", "lengthM": ""})
             row = current.get((m["id"], cid), {})
             agreed = agreed_step(experts, verdicts, cid)
-            status = "agreed" if agreed else "settled" if row.get("kast") else "todo"
-            kast, sub = (row["kast"], row.get("sub", 0)) if row.get("kast") else agreed or (None, 0)
+            reopened = bool(row.get("reopened"))
+            status = ("agreed" if agreed and not reopened else "settled" if row.get("kast")
+                      else "reopened" if agreed else "todo")
+            kast, sub = ((row["kast"], row.get("sub", 0)) if row.get("kast")
+                         else agreed if agreed and not reopened else (None, 0))
+            # The size: the meeting's once it chose one; on an auto corridor it
+            # never sized, the experts' - marked as theirs.
+            size, size_from = SIZE_NO[row.get("size", 0)], "konsensus" if row.get("sizeSet") or row.get("size") else ""
+            if status == "agreed" and not size_from:
+                hint, who = size_hint(experts, verdicts, cid)
+                if hint:
+                    size, size_from = hint, f"ekspert ({who}), ikke avklart i konsensus"
             line: list[Any] = [
                 cid, c["region"], c["lengthM"], STATUS_NO[status],
                 CLASS_NO[kast] + SUB_MARK[sub] if kast else "",
-                SIZE_NO[row.get("size", 0)], "ja" if row.get("problematic") else "",
-                row.get("change", ""), row.get("note", ""),
+                size, size_from, "ja" if reopened else "", row.get("note", ""),
                 "ja" if row.get("midpoint") else "", row.get("midpointWhere", ""),
                 "ja" if row.get("endpoint") else "", row.get("endpointWhere", ""),
                 "ja" if row.get("split") else "",
                 row.get("split1Where", ""), _class(row.get("split1Kast"), row.get("split1Sub", 0)),
                 row.get("split2Where", ""), _class(row.get("split2Kast"), row.get("split2Sub", 0)),
+                "ja" if row.get("other") else "", row.get("otherWhat", ""), "ja" if row.get("remove") else "",
             ]
             for e in experts:
                 v = verdicts.get(e, {}).get(str(cid)) or {}
@@ -144,7 +190,7 @@ def export(args: argparse.Namespace) -> None:
         sheet.freeze_panes = "E2"
         sheet.auto_filter.ref = sheet.dimensions
         for i, title in enumerate(header, 1):
-            wide = title.endswith(("notat", "kommentar", "endres", "enige", "hvor"))
+            wide = title.endswith(("notat", "kommentar", "møtet", "hvor", "hva", "fra"))
             sheet.column_dimensions[get_column_letter(i)].width = 40 if wide else max(8, min(len(title) + 2, 18))
 
     log = book.create_sheet("Historikk")

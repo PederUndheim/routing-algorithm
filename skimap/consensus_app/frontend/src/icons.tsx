@@ -33,4 +33,12 @@ export const EndpointIcon = () => (
   <Svg size={18}><path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z" /><circle cx="12" cy="10" r="2" /></Svg>
 );
 /** One route forking into two. */
+/** Three dots: something else. */
+export const OtherIcon = () => (
+  <Svg size={18}><circle cx="5" cy="12" r="1.4" fill="currentColor" /><circle cx="12" cy="12" r="1.4" fill="currentColor" /><circle cx="19" cy="12" r="1.4" fill="currentColor" /></Svg>
+);
+/** A bin: delete the corridor. */
+export const TrashIcon = () => (
+  <Svg size={18}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></Svg>
+);
 export const SplitIcon = () => <Svg size={18}><path d="M12 21v-8M12 13L6 4M12 13l6-9" /></Svg>;

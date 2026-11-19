@@ -11,8 +11,9 @@ type Props = {
   experts: Expert[];
   verdicts: ExpertVerdicts;
   corridorId: number | null;
-  /** The experts agree (see agreement.ts). */
-  agreed: boolean;
+  /** Auto-classified from the experts' verdicts (see agreement.ts), or
+   *  that and then taken back to discussion. */
+  badge: "auto" | "reopened" | null;
   /** The experts' verdicts have not arrived yet. */
   loading: boolean;
 };
@@ -33,7 +34,7 @@ const readMode = (): Mode => {
  *  here. Two ways to show it, switched at the top and remembered per
  *  browser: compact (a label and the extras) or full (the validation app's
  *  own panel, scaled down so three fit). */
-export function ExpertsColumn({ experts, verdicts, corridorId, agreed, loading }: Props) {
+export function ExpertsColumn({ experts, verdicts, corridorId, badge, loading }: Props) {
   const [mode, setMode] = useState<Mode>(readMode);
   const pick = (m: Mode) => {
     setMode(m);
@@ -53,7 +54,8 @@ export function ExpertsColumn({ experts, verdicts, corridorId, agreed, loading }
             <button className={mode === "full" ? "on" : ""} onClick={() => pick("full")}>Full</button>
           </div>
         </div>
-        {!loading && corridorId !== null && agreed && <div className="agree"><CheckIcon size={15} /> Enige</div>}
+        {!loading && corridorId !== null && badge === "auto" && <div className="agree"><CheckIcon size={15} /> Auto-klassifisert</div>}
+        {!loading && corridorId !== null && badge === "reopened" && <div className="agree reopened">Auto-overstyring</div>}
       </div>
       <div className="expert-cards">
         {experts.map((e) => {

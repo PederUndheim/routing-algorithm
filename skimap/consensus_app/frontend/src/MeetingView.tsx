@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchExperts, fetchState, resetTestMeeting } from "./api";
 import {
-  NO_FILTERS, agreedStep, disagreements, statusOf, stepFrom, viewOf,
-  type ExpertVerdicts, type Filters,
+  NO_FILTERS, agreedStep, byDoubt, doubtOf, sizeHint, statusOf, stepFrom, viewOf,
+  type ExpertVerdicts, type Filters, type Status, type View,
 } from "./agreement";
 import { CorridorList } from "./CorridorList";
 import { prefetchCorridor } from "./data";
@@ -11,7 +11,9 @@ import { ChevronLeft, ChevronRight, CloseIcon, KeyboardIcon, ListIcon } from "./
 import type { KastModel } from "./kastModels";
 import type { BasemapId, SteepnessId } from "./layers";
 import { MapView } from "./MapView";
-import { FollowUpPanel, KastPanel, LayerPanel, ModelImage, NotesPanel, ShortcutHelp, SizePanel } from "./panels";
+import {
+  FollowUpPanel, KastPanel, LayerPanel, ModelImage, NotesPanel, ReviewPanel, ShortcutHelp, SizePanel,
+} from "./panels";
 import type { SaveQueue, SaveStatus } from "./saveQueue";
 import {
   EMPTY_CONSENSUS, type Consensus, type ConsensusPatch, type CorridorInfo,
@@ -25,6 +27,10 @@ type Props = {
   queue: SaveQueue;
   status: SaveStatus;
   onLeave: () => void;
+  /** The review of the auto-classification: only the auto-classified
+   *  corridors, most doubtful first, and one thing to decide - whether to
+   *  take each back to discussion. */
+  review?: boolean;
 };
 
 type MapSettings = { basemap: BasemapId; steepness: SteepnessId | null; tracks: boolean; opacity: number };
@@ -65,7 +71,7 @@ const KAST_KEYS: Record<string, [KastClass, Step]> = Object.fromEntries(
 
 const minus = (ts: string, ms: number) => new Date(Date.parse(ts) - ms).toISOString().replace("Z", "+00:00");
 
-export function MeetingView({ code, meeting, index, queue, status, onLeave }: Props) {
+export function MeetingView({ code, meeting, index, queue, status, onLeave, review = false }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [syncError, setSyncError] = useState(false);
@@ -78,7 +84,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
   const [model, setModel] = useState<KastModel | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [mapSettings, setMapSettings] = useState<MapSettings>(() => remembered(MAP_KEY, DEFAULT_MAP));
-  const lastKey = `konsensus.last.${meeting.id}`;
+  const lastKey = `konsensus.${review ? "review" : "last"}.${meeting.id}`;
   const since = useRef<string | null>(null);
 
   // --- load, and keep up with the others ---------------------------------------
@@ -150,48 +156,79 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
 
   // --- derived --------------------------------------------------------------
 
-  const mine = useMemo(() => {
-    const ids = new Set(meeting.corridors);
-    return index.filter((c) => ids.has(c.id));
-  }, [index, meeting.corridors]);
-
   const verdicts = experts ?? {};
   const agreed = useCallback((id: number) => (experts ? agreedStep(meeting.experts, experts, id) : null),
     [experts, meeting.experts]);
-  const view = useCallback((id: number) => viewOf(stored[id], agreed(id)), [stored, agreed]);
-  const statusFor = useCallback((id: number) => statusOf(stored[id], agreed(id)), [stored, agreed]);
+
+  /** The meeting: its corridors in id order. The review: only the
+   *  auto-classified ones, most doubtful first. */
+  const mine = useMemo(() => {
+    const ids = new Set(meeting.corridors);
+    const all = index.filter((c) => ids.has(c.id));
+    if (!review) return all;
+    if (!experts) return [];
+    return all.filter((c) => agreed(c.id) !== null)
+      .map((c) => ({ c, d: doubtOf(meeting.experts, experts, c.id) }))
+      .sort((a, b) => byDoubt(a.d, b.d) || a.c.id - b.c.id)
+      .map(({ c }) => c);
+  }, [index, meeting.corridors, meeting.experts, review, experts, agreed]);
+
+  /** The review shows every corridor with its auto class, and sorts them
+   *  into taken back or not. */
+  const view = useCallback((id: number): View => {
+    if (!review) return viewOf(stored[id], agreed(id));
+    return { consensus: { ...(stored[id] ?? EMPTY_CONSENSUS), ...(agreed(id) ?? {}) }, auto: true };
+  }, [review, stored, agreed]);
+  const statusFor = useCallback((id: number): Status => {
+    if (!review) return statusOf(stored[id], agreed(id));
+    return stored[id]?.reopened ? "reopened" : "agreed";
+  }, [review, stored, agreed]);
+  /** The experts' width, standing in for the meeting's on an auto corridor. */
+  const hintFor = useCallback((id: number) => (
+    experts && !stored[id]?.sizeSet && (review || statusFor(id) === "agreed")
+      ? sizeHint(meeting.experts, experts, id) : null
+  ), [experts, stored, review, statusFor, meeting.experts]);
 
   const shown = useMemo(() => mine.filter((c) => {
     if (filters.region !== null && c.region !== filters.region) return false;
-    if (filters.status !== "all" && statusFor(c.id) !== filters.status) return false;
-    if (filters.problematic && !view(c.id).consensus.problematic) return false;
+    // Gjenstår holds the overridden too: they are still to be discussed.
+    const s = statusFor(c.id);
+    if (filters.status === "todo" && !review ? s !== "todo" && s !== "reopened"
+      : filters.status !== "all" && s !== filters.status) return false;
     return true;
-  }), [mine, filters, statusFor, view]);
+  }), [mine, filters, statusFor, review]);
 
-  /** What ← → walk through: the list, less the corridors the experts agreed
-   *  on - nothing to discuss there. They stay in the list and open on a
-   *  click; filtering to "Enige fra start" walks only them. */
-  const walk = useMemo(() => (filters.status === "agreed"
-    ? shown : shown.filter((c) => statusFor(c.id) !== "agreed")), [shown, filters.status, statusFor]);
+  /** What ← → walk through: the list, less the auto-classified corridors -
+   *  nothing to discuss there. They stay in the list and open on a click;
+   *  filtering to "Auto-klassifisert" walks only them. */
+  const walk = useMemo(() => (review || filters.status === "agreed"
+    ? shown : shown.filter((c) => statusFor(c.id) !== "agreed")), [review, shown, filters.status, statusFor]);
 
   const counts = useMemo(() => {
-    const n = { agreed: 0, settled: 0, todo: 0 };
+    const n = { agreed: 0, reopened: 0, settled: 0, todo: 0 };
     for (const c of mine) n[statusFor(c.id)] += 1;
     return n;
   }, [mine, statusFor]);
 
-  // Where to start: where this meeting left off on this machine, else the
-  // first corridor still to be settled.
+  // Where to start: where this meeting (or review) left off on this
+  // machine, else the first corridor still to be settled (the review: the
+  // most doubtful).
   useEffect(() => {
     if (currentId !== null || !mine.length || !loaded || !experts) return;
     const last = remembered<{ id: number | null }>(lastKey, { id: null }).id;
-    const start = mine.find((c) => c.id === last) ?? mine.find((c) => statusFor(c.id) === "todo") ?? mine[0];
+    const start = mine.find((c) => c.id === last)
+      ?? (review ? undefined : mine.find((c) => ["todo", "reopened"].includes(statusFor(c.id)))) ?? mine[0];
     setCurrentId(start.id);
-  }, [mine, loaded, experts, currentId, lastKey, statusFor]);
+  }, [mine, loaded, experts, currentId, lastKey, statusFor, review]);
 
   const current = mine.find((c) => c.id === currentId) ?? null;
   const { consensus, auto } = view(currentId ?? -1);
-  const expertsAgree = currentId !== null && !!experts && !disagreements(meeting.experts, experts, currentId).length;
+  const currentAgreed = currentId === null ? null : agreed(currentId);
+  const currentStatus = currentId === null ? null : statusFor(currentId);
+  const reopened = currentId !== null && !!currentAgreed && !!stored[currentId]?.reopened;
+  const badge = !currentAgreed ? null : reopened ? "reopened" as const
+    : review || currentStatus === "agreed" ? "auto" as const : null;
+  const position = currentId === null ? 0 : mine.findIndex((c) => c.id === currentId) + 1;
 
   useEffect(() => {
     if (currentId === null) return;
@@ -226,15 +263,24 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
     go(next);
   }, [walk, currentId, go]);
 
-  /** A change to the current corridor. On one shown from the experts'
-   *  agreement, the class goes along, so the stored row keeps it. */
+  /** A change to the current corridor, as it is. */
+  const write = useCallback((patch: ConsensusPatch, delayMs = 0) => {
+    if (currentId === null) return;
+    setStored((prev) => ({ ...prev, [currentId]: { ...(prev[currentId] ?? EMPTY_CONSENSUS), ...patch } }));
+    queue.push(meeting.id, currentId, patch, delayMs);
+  }, [currentId, queue, meeting.id]);
+
+  /** A change made in the meeting. On an auto-classified corridor the class
+   *  goes along, so the stored row keeps it. */
   const update = useCallback((patch: ConsensusPatch, delayMs = 0) => {
     if (currentId === null) return;
     const { consensus: now, auto: isAuto } = view(currentId);
-    const full = isAuto && !("kast" in patch) ? { kast: now.kast, sub: now.sub, ...patch } : patch;
-    setStored((prev) => ({ ...prev, [currentId]: { ...(prev[currentId] ?? EMPTY_CONSENSUS), ...full } }));
-    queue.push(meeting.id, currentId, full, delayMs);
-  }, [currentId, view, queue, meeting.id]);
+    write(isAuto && !("kast" in patch) ? { kast: now.kast, sub: now.sub, ...patch } : patch, delayMs);
+  }, [currentId, view, write]);
+
+  /** The review's one decision. Taken back, the corridor starts empty in
+   *  the meeting; undone, it is auto-classified again. */
+  const setReopened = (on: boolean) => write(on ? { reopened: true, kast: null, sub: 0 } : { reopened: false });
 
   const setMap = (patch: Partial<MapSettings>) => setMapSettings((m) => ({ ...m, ...patch }));
 
@@ -284,7 +330,9 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
       ArrowLeft: () => step(-1),
       " ": () => setMap({ tracks: !mapSettings.tracks }),
     };
-    if (kast) actions[key] = () => update({ kast: kast[0], sub: kast[1] });
+    if (kast && !review) actions[key] = () => update({ kast: kast[0], sub: kast[1] });
+    // The review's one decision (A is red − in the meeting).
+    if (review && key === "a") actions.a = () => currentAgreed && setReopened(!reopened);
     const action = actions[key];
     if (action) {
       e.preventDefault();
@@ -317,7 +365,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
       <MapView code={code} basemap={mapSettings.basemap} steepness={mapSettings.steepness} tracks={mapSettings.tracks}
                opacity={mapSettings.opacity} corridorId={current?.id ?? null} bbox={current?.bbox ?? null} />
       <ExpertsColumn experts={meeting.experts} verdicts={verdicts} corridorId={current?.id ?? null}
-                     agreed={expertsAgree} loading={!experts} />
+                     badge={badge} loading={!experts} />
       <aside className="sidebar">
         <header className="head">
           <div className="head-nav">
@@ -331,27 +379,54 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
             <button className={`tool-btn ${listOpen ? "on" : ""}`} title="Korridorliste og filter"
                     onClick={() => setListOpen((o) => !o)}>{listOpen ? <CloseIcon /> : <ListIcon />}</button>
           </div>
-          <div className="meeting-progress">
-            <div className="progress-bar three" aria-hidden="true">
-              <div className="agreed" style={{ width: pct(counts.agreed) }} />
-              <div className="settled" style={{ width: pct(counts.settled) }} />
+          {review ? (
+            <div className="meeting-progress">
+              <div className="progress-bar three" aria-hidden="true">
+                <div className="position" style={{ width: pct(position) }} />
+              </div>
+              <div className="progress-legend">
+                <span>Nr. <b>{position || "–"}</b> av {mine.length}, mest tvilsomme først</span>
+                <span><i className="reopened" />Auto-overstyring <b>{counts.reopened}</b></span>
+              </div>
             </div>
-            <div className="progress-legend">
-              <span><i className="agreed" />Enige fra start <b>{counts.agreed}</b></span>
-              <span><i className="settled" />Avklart i møtet <b>{counts.settled}</b></span>
-              <span><i />Gjenstår <b>{counts.todo}</b></span>
+          ) : (
+            <div className="meeting-progress">
+              <div className="progress-bar three" aria-hidden="true">
+                <div className="agreed" style={{ width: pct(counts.agreed) }} />
+                <div className="settled" style={{ width: pct(counts.settled) }} />
+                <div className="reopened" style={{ width: pct(counts.reopened) }} />
+              </div>
+              <div className="progress-legend wrap">
+                <span><i className="agreed" />Auto <b>{counts.agreed}</b></span>
+                <span><i className="settled" />Avklart <b>{counts.settled}</b></span>
+                <span><i />Gjenstår <b>{counts.todo + counts.reopened}</b></span>
+                <span><i className="reopened" />herav auto-overstyring <b>{counts.reopened}</b></span>
+              </div>
             </div>
-          </div>
+          )}
         </header>
 
         {listOpen ? (
           <CorridorList all={mine} shown={shown} viewOf={view} statusOf={statusFor} currentId={currentId}
-                        filters={filters} onFilters={setFilters}
+                        filters={filters} onFilters={setFilters} hintOf={hintFor} review={review}
                         onPick={(id) => { go(id); setListOpen(false); }} />
         ) : !loaded || !experts ? (
           <div className="empty">Henter …</div>
         ) : !mine.length ? (
-          <div className="empty">Møtet har ingen korridorer.</div>
+          <div className="empty">{review ? "Ingen auto-klassifiserte korridorer." : "Møtet har ingen korridorer."}</div>
+        ) : review ? (
+          <div className="panels">
+            <LayerPanel basemap={mapSettings.basemap} steepness={mapSettings.steepness}
+                        tracks={mapSettings.tracks} opacity={mapSettings.opacity}
+                        onBasemap={(basemap) => setMap({ basemap })}
+                        onSteepness={(steepness) => setMap({ steepness })}
+                        onTracks={(tracks) => setMap({ tracks })}
+                        onOpacity={(opacity) => setMap({ opacity })} />
+            {currentAgreed
+              ? <ReviewPanel agreed={currentAgreed} hint={hintFor(currentId ?? -1)} reopened={reopened}
+                             onReopen={setReopened} />
+              : <div className="empty">Ikke lenger auto-klassifisert – en ekspert har endret vurderingen.</div>}
+          </div>
         ) : (
           <div className="panels">
             <LayerPanel basemap={mapSettings.basemap} steepness={mapSettings.steepness}
@@ -361,13 +436,13 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
                         onTracks={(tracks) => setMap({ tracks })}
                         onOpacity={(opacity) => setMap({ opacity })} />
             <KastPanel consensus={consensus} auto={auto} onPick={(kast, sub) => update({ kast, sub })}
-                       onClear={() => update({ kast: null, sub: 0 })} onShowModel={setModel} />
-            <SizePanel size={consensus.size} onSize={(size) => update({ size })} />
+                       onClear={() => update({ kast: null, sub: 0 })} onShowModel={setModel}
+                       reopenedFrom={reopened ? currentAgreed : null} />
+            <SizePanel size={consensus.size} hint={hintFor(currentId ?? -1)}
+                       onSize={(size) => update({ size, sizeSet: true })} />
             <FollowUpPanel consensus={consensus} onSet={(patch) => update(patch)}
                            onText={(patch) => update(patch, TEXT_DELAY_MS)} onTextDone={() => queue.flush()} />
             <NotesPanel consensus={consensus}
-                        onProblematic={(problematic) => update({ problematic })}
-                        onChange={(change) => update({ change }, TEXT_DELAY_MS)}
                         onNote={(note) => update({ note }, TEXT_DELAY_MS)}
                         onTextDone={() => queue.flush()} />
           </div>
@@ -375,7 +450,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
 
         <footer className="footer">
           <span className="who">
-            <span className="meeting-name">{meeting.label}</span>
+            <span className="meeting-name">{meeting.label}{review && " · gjennomgang"}</span>
             <button className="link" onClick={onLeave}>Bytt møte</button>
             {meeting.test && <button className="link" onClick={resetTest}>Nullstill</button>}
           </span>
@@ -384,7 +459,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
             : <SaveBadge status={status} />}
         </footer>
       </aside>
-      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
+      {helpOpen && <ShortcutHelp review={review} onClose={() => setHelpOpen(false)} />}
       {model && <ModelImage model={model} onClose={() => setModel(null)} />}
       {toast && <div className="toast">{toast}</div>}
     </div>

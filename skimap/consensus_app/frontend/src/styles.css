@@ -16,6 +16,7 @@
   --experts-w: 330px;
   --agreed: #86c29a;          /* enige fra start */
   --settled: #16a34a;         /* avklart i møtet */
+  --reopened: #f59e0b;        /* auto-overstyring */
   --tile-w: 92px;             /* map buttons and size buttons */
   --shadow: 0 1px 2px rgba(17, 24, 39, 0.06), 0 1px 3px rgba(17, 24, 39, 0.08);
   font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -326,8 +327,7 @@ kbd {
   background: repeating-linear-gradient(135deg, var(--kast) 0 6px, color-mix(in srgb, var(--kast) 80%, #fff) 6px 12px);
 }
 .auto-note { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: #166534; }
-textarea.change { margin-top: 8px; border-color: #fca5a5; }
-textarea.common { margin-top: 10px; }
+textarea.common { margin-top: 0; }
 
 /* --- videre arbeid: three buttons, each opening its own fields ------------------ */
 
@@ -342,6 +342,11 @@ textarea.common { margin-top: 10px; }
 .todo-btn:hover { background: var(--soft); }
 .todo-btn.on { background: #eff6ff; border-color: var(--accent); color: #1e3a8a; }
 .todo-btn.on svg { color: var(--accent); }
+/* Annet and Slett: a second, lower row under the three. */
+.todo-btns.two { grid-template-columns: repeat(2, 1fr); margin-top: 6px; }
+.todo-btns.two .todo-btn { flex-direction: row; min-height: 40px; gap: 7px; }
+.todo-btn.remove.on { background: #fef2f2; border-color: #ef4444; color: #991b1b; }
+.todo-btn.remove.on svg { color: #dc2626; }
 textarea.todo-text { margin-top: 8px; padding: 8px 11px; font-size: 13.5px; border-color: #93c5fd; }
 .tours { display: grid; gap: 8px; margin-top: 8px; }
 .tour { padding: 8px 10px 10px; border: 1px solid #bfdbfe; border-radius: 10px; background: #f8fbff; }
@@ -358,17 +363,24 @@ textarea.todo-text { margin-top: 8px; padding: 8px 11px; font-size: 13.5px; bord
 .progress-bar.three div { border-radius: 0; }
 .progress-bar.three .agreed { background: var(--agreed); }
 .progress-bar.three .settled { background: var(--settled); }
+.progress-bar.three .reopened { background: var(--reopened); }
+.progress-bar.three .position { background: var(--ink-2); }
 .progress-legend { display: flex; justify-content: space-between; gap: 6px; margin-top: 6px; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .progress-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .progress-legend b { color: var(--ink); font-weight: 600; }
+.progress-legend.wrap { flex-wrap: wrap; justify-content: flex-start; column-gap: 14px; row-gap: 3px; }
 .progress-legend i { width: 8px; height: 8px; border-radius: 2px; background: var(--soft); box-shadow: inset 0 0 0 1px var(--line); }
 .progress-legend i.agreed { background: var(--agreed); box-shadow: none; }
 .progress-legend i.settled { background: var(--settled); box-shadow: none; }
+.progress-legend i.reopened { background: var(--reopened); box-shadow: none; }
 
 /* --- list ----------------------------------------------------------------- */
 
 .tag.agreed { background: #dcfce7; color: #166534; }
 .tag.todo { background: #dbeafe; color: #1e3a8a; }
+.tag.reopened { background: #fef3c7; color: #92400e; }
+/* The experts' width on an auto corridor: theirs, not the meeting's. */
+.tag.hint { background: transparent; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
 .row.agreed .row-id { color: var(--muted); }
 
 /* --- footer, start page -------------------------------------------------------- */
@@ -441,3 +453,42 @@ textarea.todo-text { margin-top: 8px; padding: 8px 11px; font-size: 13.5px; bord
 .expert-full .kast-seg:hover:not(.picked) { background: transparent; }
 .expert-full .segmented button:hover:not(.picked) { background: transparent; }
 .expert-full.unjudged .section { opacity: 0.45; }
+
+/* --- the review of the auto-classification ------------------------------------ */
+
+.start-section { margin: 26px 0 0; font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+.lead.small { margin: -10px 0 0; font-size: 13.5px; text-align: center; max-width: 520px; }
+.review-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 260px; padding: 14px 18px;
+  border: 1px dashed #d1d5db; border-radius: 14px; background: var(--surface);
+  transition: transform 0.12s, box-shadow 0.12s, border-color 0.12s;
+}
+.review-btn:hover { transform: translateY(-2px); border-color: var(--reopened); box-shadow: 0 6px 16px rgba(17, 24, 39, 0.08); }
+.review-btn .meeting-date { font-size: 17px; }
+.review-btn.test .meeting-date { font-size: 14px; font-weight: 500; letter-spacing: 0; }
+
+/* The auto class as a label: the experts' pill, bigger, where the scale is. */
+.review-class { display: flex; justify-content: center; padding: 6px 0 2px; }
+.pill.review-pill { padding: 10px 30px; font-size: 22px; border-radius: 14px; letter-spacing: -0.01em; }
+
+.reopen-btn {
+  width: 100%; margin: 14px 0 6px; padding: 18px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  border: 2px solid var(--reopened); border-radius: 14px; background: #fffbeb; color: #92400e;
+  transition: background 0.12s, color 0.12s, transform 0.08s;
+}
+.reopen-btn:hover { background: #fef3c7; }
+.reopen-btn:active { transform: scale(0.99); }
+.reopen-btn.on { background: var(--reopened); color: #fff; }
+.reopen-btn.on:hover { background: #d97706; }
+.reopen-main { display: inline-flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 700; }
+.reopen-sub { font-size: 12.5px; opacity: 0.85; }
+
+.auto-note.reopened { color: #92400e; }
+.agree.reopened { background: #fef3c7; color: #92400e; }
+
+/* The experts' width, standing in on an auto corridor: hatched as the class. */
+.segmented button.picked.auto {
+  background: repeating-linear-gradient(135deg, var(--surface) 0 6px, var(--soft) 6px 12px);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.size-hint { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }

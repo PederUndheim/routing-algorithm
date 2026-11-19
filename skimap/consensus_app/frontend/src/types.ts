@@ -18,8 +18,14 @@ export type Consensus = {
   /** The −/0/+ within the class, as in the validation. */
   sub: Step;
   size: Step;
+  /** The meeting chose the width - so the experts' width on an auto
+   *  corridor no longer stands in for it, even when it chose OK. */
+  sizeSet: boolean;
+  /** The review of the auto-classification took it back to discussion. */
+  reopened: boolean;
+  /** No longer set in the meeting (the button was removed 2026-11-19). */
   problematic: boolean;
-  /** What should be changed before it can be published. */
+  /** What should be changed before publishing - went with the flag. */
   change: string;
   /** The meeting's common comment. */
   note: string;
@@ -29,6 +35,11 @@ export type Consensus = {
   /** Move the end point, and where to. */
   endpoint: boolean;
   endpointWhere: string;
+  /** Anything else to do, and what. */
+  other: boolean;
+  otherWhat: string;
+  /** The corridor should be deleted. */
+  remove: boolean;
   /** Split it into two tours: where each goes and its class. */
   split: boolean;
   split1Where: string;
@@ -43,8 +54,9 @@ export type Consensus = {
 export type ConsensusPatch = Partial<Omit<Consensus, "updatedAt">>;
 
 export const EMPTY_CONSENSUS: Consensus = {
-  kast: null, sub: 0, size: 0, problematic: false, change: "", note: "",
+  kast: null, sub: 0, size: 0, sizeSet: false, problematic: false, change: "", note: "",
   midpoint: false, midpointWhere: "", endpoint: false, endpointWhere: "",
+  other: false, otherWhat: "", remove: false, reopened: false,
   split: false, split1Where: "", split1Kast: null, split1Sub: 0, split2Where: "", split2Kast: null, split2Sub: 0,
 };
 
