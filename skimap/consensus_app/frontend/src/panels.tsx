@@ -1,8 +1,12 @@
 import type { ReactNode } from "react";
-import { CheckIcon, CloseIcon, FlagIcon, MinusIcon, PlusIcon } from "./icons";
+import {
+  CheckIcon, CloseIcon, EndpointIcon, FlagIcon, MidpointIcon, MinusIcon, PlusIcon, SplitIcon,
+} from "./icons";
 import { KAST_MODELS, type KastModel } from "./kastModels";
 import { BASEMAPS, STEEPNESS, TRACKS_THUMB, type BasemapId, type SteepnessId } from "./layers";
-import { KAST_CLASSES, KAST_COLOUR, KAST_LABEL, type Consensus, type KastClass, type Step } from "./types";
+import {
+  KAST_CLASSES, KAST_COLOUR, KAST_LABEL, type Consensus, type ConsensusPatch, type KastClass, type Step,
+} from "./types";
 
 export const Section = ({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) => (
   <section className="section">
@@ -65,16 +69,20 @@ export function LayerPanel(p: LayerProps) {
   );
 }
 
-// --- consensus class: main classes only ------------------------------------------
+// --- consensus class: the validation app's twelve steps ----------------------------
+
+const SUB_LABEL: Record<Step, string> = { [-1]: "−", 0: "0", 1: "+" };
 
 type KastProps = {
   consensus: Consensus;
   auto: boolean;
-  onPick: (k: KastClass) => void;
+  onPick: (k: KastClass, s: Step) => void;
   onClear: () => void;
   onShowModel: (model: KastModel) => void;
 };
 
+/** As the validation app's KAST panel: four classes, each − 0 +. A pick
+ *  shown from the experts' agreement is hatched until the meeting sets one. */
 export function KastPanel({ consensus, auto, onPick, onClear, onShowModel }: KastProps) {
   const aside = (
     <span className="section-links">
@@ -85,12 +93,20 @@ export function KastPanel({ consensus, auto, onPick, onClear, onShowModel }: Kas
   return (
     <Section title="Konsensus KAST-klasse" aside={aside}>
       <div className="kast-row">
-        {KAST_CLASSES.map((k, i) => (
-          <button key={k} className={`kast-main ${consensus.kast === k ? "picked" : ""} ${auto ? "auto" : ""}`}
-                  style={{ ["--kast" as string]: KAST_COLOUR[k] }} title={`${KAST_LABEL[k]} (${i + 1})`}
-                  aria-pressed={consensus.kast === k} onClick={() => onPick(k)}>
-            {KAST_LABEL[k]}
-          </button>
+        {KAST_CLASSES.map((k) => (
+          <div key={k} className={`kast ${consensus.kast === k ? "chosen" : ""}`}
+               style={{ ["--kast" as string]: KAST_COLOUR[k] }}>
+            {([-1, 0, 1] as Step[]).map((s) => {
+              const picked = consensus.kast === k && consensus.sub === s;
+              return (
+                <button key={s} className={`kast-seg ${picked ? "picked" : ""} ${picked && auto ? "auto" : ""}`}
+                        title={`${KAST_LABEL[k]} ${SUB_LABEL[s]}`} aria-label={`${KAST_LABEL[k]} ${SUB_LABEL[s]}`}
+                        aria-pressed={picked} onClick={() => onPick(k, s)}>
+                  {SUB_LABEL[s]}
+                </button>
+              );
+            })}
+          </div>
         ))}
       </div>
       <div className="kast-extras">
@@ -120,6 +136,76 @@ export function SizePanel({ size, onSize }: { size: Step; onSize: (s: Step) => v
         {option(0, "OK")}
         {option(1, <><PlusIcon /> Større</>)}
       </div>
+    </Section>
+  );
+}
+
+// --- what to do with the corridor later ------------------------------------
+
+type FollowUpProps = {
+  consensus: Consensus;
+  /** A flag or a class: saved at once. */
+  onSet: (patch: ConsensusPatch) => void;
+  /** Text as it is typed: saved after a pause. */
+  onText: (patch: ConsensusPatch) => void;
+  onTextDone: () => void;
+};
+
+/** Three things to remember for later, side by side; each opens its own
+ *  fields. As with Problematisk, the fields stay while they hold anything,
+ *  so switching a button off never hides what was written. */
+export function FollowUpPanel({ consensus: c, onSet, onText, onTextDone }: FollowUpProps) {
+  const showMid = c.midpoint || c.midpointWhere.trim() !== "";
+  const showEnd = c.endpoint || c.endpointWhere.trim() !== "";
+  const showSplit = c.split || [c.split1Where, c.split2Where].some((t) => t.trim()) || !!c.split1Kast || !!c.split2Kast;
+  const toggle = (key: "midpoint" | "endpoint" | "split", on: boolean, icon: ReactNode, label: string) => (
+    <button className={`todo-btn ${on ? "on" : ""}`} aria-pressed={on} onClick={() => onSet({ [key]: !on })}>
+      {icon}<span>{label}</span>
+    </button>
+  );
+  const where = (key: "midpointWhere" | "endpointWhere", placeholder: string) => (
+    <textarea className="todo-text" value={c[key]} rows={2} maxLength={4000} placeholder={placeholder}
+              onChange={(e) => onText({ [key]: e.target.value })} onBlur={onTextDone} />
+  );
+  const tour = (n: 1 | 2) => {
+    const whereKey = n === 1 ? "split1Where" : "split2Where";
+    const kastKey = n === 1 ? "split1Kast" : "split2Kast";
+    const subKey = n === 1 ? "split1Sub" : "split2Sub";
+    return (
+      <div className="tour">
+        <div className="tour-head">Tur {n}</div>
+        <textarea className="todo-text" value={c[whereKey]} rows={1} maxLength={4000}
+                  placeholder={`Hvor går tur ${n}?`}
+                  onChange={(e) => onText({ [whereKey]: e.target.value })} onBlur={onTextDone} />
+        <div className="kast-row small">
+          {KAST_CLASSES.map((k) => (
+            <div key={k} className={`kast ${c[kastKey] === k ? "chosen" : ""}`} style={{ ["--kast" as string]: KAST_COLOUR[k] }}>
+              {([-1, 0, 1] as Step[]).map((s) => {
+                const picked = c[kastKey] === k && c[subKey] === s;
+                return (
+                  <button key={s} className={`kast-seg ${picked ? "picked" : ""}`} aria-pressed={picked}
+                          title={`Tur ${n}: ${KAST_LABEL[k]} ${SUB_LABEL[s]}`}
+                          onClick={() => onSet(picked ? { [kastKey]: null, [subKey]: 0 } : { [kastKey]: k, [subKey]: s })}>
+                    {SUB_LABEL[s]}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <Section title="Videre arbeid">
+      <div className="todo-btns">
+        {toggle("midpoint", c.midpoint, <MidpointIcon />, "Legg til nytt mellompunkt")}
+        {toggle("endpoint", c.endpoint, <EndpointIcon />, "Endre sluttpunkt")}
+        {toggle("split", c.split, <SplitIcon />, "Til to turer")}
+      </div>
+      {showMid && where("midpointWhere", "Hvor skal det nye mellompunktet være?")}
+      {showEnd && where("endpointWhere", "Hvor skal sluttpunktet være?")}
+      {showSplit && <div className="tours">{tour(1)}{tour(2)}</div>}
     </Section>
   );
 }
@@ -159,8 +245,11 @@ export function NotesPanel({ consensus, onProblematic, onChange, onNote, onTextD
 // --- shortcuts -------------------------------------------------------------
 
 const SHORTCUTS: [string, string][] = [
-  ["← →", "Forrige / neste korridor"],
-  ["1 2 3 4", "Grønn / blå / rød / svart"],
+  ["← →", "Forrige / neste korridor (hopper over de enige)"],
+  ["1 2 3", "Grønn − / 0 / +"],
+  ["Q W E", "Blå − / 0 / +"],
+  ["A S D", "Rød − / 0 / +"],
+  ["Z X C", "Svart − / 0 / +"],
   ["Space", "Vis / skjul spordata"],
 ];
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchExperts, fetchState, resetTestMeeting } from "./api";
 import {
-  NO_FILTERS, agreedClass, disagreements, statusOf, stepFrom, viewOf,
+  NO_FILTERS, agreedStep, disagreements, statusOf, stepFrom, viewOf,
   type ExpertVerdicts, type Filters,
 } from "./agreement";
 import { CorridorList } from "./CorridorList";
@@ -11,11 +11,11 @@ import { ChevronLeft, ChevronRight, CloseIcon, KeyboardIcon, ListIcon } from "./
 import type { KastModel } from "./kastModels";
 import type { BasemapId, SteepnessId } from "./layers";
 import { MapView } from "./MapView";
-import { KastPanel, LayerPanel, ModelImage, NotesPanel, ShortcutHelp, SizePanel } from "./panels";
+import { FollowUpPanel, KastPanel, LayerPanel, ModelImage, NotesPanel, ShortcutHelp, SizePanel } from "./panels";
 import type { SaveQueue, SaveStatus } from "./saveQueue";
 import {
   EMPTY_CONSENSUS, type Consensus, type ConsensusPatch, type CorridorInfo,
-  type KastClass, type Meeting, type Verdict,
+  KAST_CLASSES, type KastClass, type Meeting, type Step, type Verdict,
 } from "./types";
 
 type Props = {
@@ -56,7 +56,12 @@ const EXPERTS_MS = 30_000;
  *  write that was in flight during that answer is not missed. */
 const OVERLAP_MS = 15_000;
 
-const KAST_KEYS: Record<string, KastClass> = { 1: "green", 2: "blue", 3: "red", 4: "black" };
+/** As in the validation app: one keyboard row per class, top to bottom green
+ *  to black, and left to right − 0 +. */
+const KAST_KEYS: Record<string, [KastClass, Step]> = Object.fromEntries(
+  (["123", "qwe", "asd", "zxc"] as const).flatMap((row, i) =>
+    [...row].map((key, j) => [key, [KAST_CLASSES[i], (j - 1) as Step]])),
+);
 
 const minus = (ts: string, ms: number) => new Date(Date.parse(ts) - ms).toISOString().replace("Z", "+00:00");
 
@@ -151,7 +156,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
   }, [index, meeting.corridors]);
 
   const verdicts = experts ?? {};
-  const agreed = useCallback((id: number) => (experts ? agreedClass(meeting.experts, experts, id) : null),
+  const agreed = useCallback((id: number) => (experts ? agreedStep(meeting.experts, experts, id) : null),
     [experts, meeting.experts]);
   const view = useCallback((id: number) => viewOf(stored[id], agreed(id)), [stored, agreed]);
   const statusFor = useCallback((id: number) => statusOf(stored[id], agreed(id)), [stored, agreed]);
@@ -162,6 +167,12 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
     if (filters.problematic && !view(c.id).consensus.problematic) return false;
     return true;
   }), [mine, filters, statusFor, view]);
+
+  /** What ← → walk through: the list, less the corridors the experts agreed
+   *  on - nothing to discuss there. They stay in the list and open on a
+   *  click; filtering to "Enige fra start" walks only them. */
+  const walk = useMemo(() => (filters.status === "agreed"
+    ? shown : shown.filter((c) => statusFor(c.id) !== "agreed")), [shown, filters.status, statusFor]);
 
   const counts = useMemo(() => {
     const n = { agreed: 0, settled: 0, todo: 0 };
@@ -180,11 +191,11 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
 
   const current = mine.find((c) => c.id === currentId) ?? null;
   const { consensus, auto } = view(currentId ?? -1);
-  const reasons = currentId === null || !experts ? [] : disagreements(meeting.experts, experts, currentId);
+  const expertsAgree = currentId !== null && !!experts && !disagreements(meeting.experts, experts, currentId).length;
 
   useEffect(() => {
     if (currentId === null) return;
-    for (const n of [stepFrom(shown, currentId, 1), stepFrom(shown, currentId, -1)]) {
+    for (const n of [stepFrom(walk, currentId, 1), stepFrom(walk, currentId, -1)]) {
       if (n !== null) prefetchCorridor(n);
     }
   }, [currentId]);
@@ -210,17 +221,17 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
 
   const step = useCallback((dir: 1 | -1) => {
     if (currentId === null) return;
-    const next = stepFrom(shown, currentId, dir);
-    if (next === null) setToast(dir === 1 ? "Siste korridor i listen" : "Første korridor i listen");
+    const next = stepFrom(walk, currentId, dir);
+    if (next === null) setToast(dir === 1 ? "Siste korridor å gå gjennom" : "Første korridor å gå gjennom");
     go(next);
-  }, [shown, currentId, go]);
+  }, [walk, currentId, go]);
 
   /** A change to the current corridor. On one shown from the experts'
    *  agreement, the class goes along, so the stored row keeps it. */
   const update = useCallback((patch: ConsensusPatch, delayMs = 0) => {
     if (currentId === null) return;
     const { consensus: now, auto: isAuto } = view(currentId);
-    const full = isAuto && !("kast" in patch) ? { kast: now.kast, ...patch } : patch;
+    const full = isAuto && !("kast" in patch) ? { kast: now.kast, sub: now.sub, ...patch } : patch;
     setStored((prev) => ({ ...prev, [currentId]: { ...(prev[currentId] ?? EMPTY_CONSENSUS), ...full } }));
     queue.push(meeting.id, currentId, full, delayMs);
   }, [currentId, view, queue, meeting.id]);
@@ -266,14 +277,15 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
       return;
     }
     if (e.key === "Escape") return setListOpen(false);
-    const kast = KAST_KEYS[e.key];
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const kast = KAST_KEYS[key];
     const actions: Record<string, () => void> = {
       ArrowRight: () => step(1),
       ArrowLeft: () => step(-1),
       " ": () => setMap({ tracks: !mapSettings.tracks }),
     };
-    if (kast) actions[e.key] = () => update({ kast });
-    const action = actions[e.key];
+    if (kast) actions[key] = () => update({ kast: kast[0], sub: kast[1] });
+    const action = actions[key];
     if (action) {
       e.preventDefault();
       action();
@@ -305,7 +317,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
       <MapView code={code} basemap={mapSettings.basemap} steepness={mapSettings.steepness} tracks={mapSettings.tracks}
                opacity={mapSettings.opacity} corridorId={current?.id ?? null} bbox={current?.bbox ?? null} />
       <ExpertsColumn experts={meeting.experts} verdicts={verdicts} corridorId={current?.id ?? null}
-                     reasons={reasons} loading={!experts} />
+                     agreed={expertsAgree} loading={!experts} />
       <aside className="sidebar">
         <header className="head">
           <div className="head-nav">
@@ -348,9 +360,11 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave }: Pr
                         onSteepness={(steepness) => setMap({ steepness })}
                         onTracks={(tracks) => setMap({ tracks })}
                         onOpacity={(opacity) => setMap({ opacity })} />
-            <KastPanel consensus={consensus} auto={auto} onPick={(kast) => update({ kast })}
-                       onClear={() => update({ kast: null })} onShowModel={setModel} />
+            <KastPanel consensus={consensus} auto={auto} onPick={(kast, sub) => update({ kast, sub })}
+                       onClear={() => update({ kast: null, sub: 0 })} onShowModel={setModel} />
             <SizePanel size={consensus.size} onSize={(size) => update({ size })} />
+            <FollowUpPanel consensus={consensus} onSet={(patch) => update(patch)}
+                           onText={(patch) => update(patch, TEXT_DELAY_MS)} onTextDone={() => queue.flush()} />
             <NotesPanel consensus={consensus}
                         onProblematic={(problematic) => update({ problematic })}
                         onChange={(change) => update({ change }, TEXT_DELAY_MS)}

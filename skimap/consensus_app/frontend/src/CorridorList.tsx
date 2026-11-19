@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { NO_FILTERS, isFiltered, type Filters, type Status, type View } from "./agreement";
-import { KAST_COLOUR, KAST_LABEL, type CorridorInfo } from "./types";
+import { KAST_COLOUR, KAST_LABEL, SUB_MARK, type CorridorInfo } from "./types";
 
 type Props = {
   all: CorridorInfo[];
@@ -62,14 +62,17 @@ export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters,
                 <span className="row-top">
                   <span className="row-region">{c.region}</span>
                   {v.kast
-                    ? <span className="pill" style={{ ["--kast" as string]: KAST_COLOUR[v.kast] }}>{KAST_LABEL[v.kast]}</span>
+                    ? <span className="pill" style={{ ["--kast" as string]: KAST_COLOUR[v.kast] }}>{KAST_LABEL[v.kast]}{SUB_MARK[v.sub]}</span>
                     : <span className="pill todo">Gjenstår</span>}
                 </span>
-                {(status === "agreed" || v.problematic || v.size !== 0 || note) && (
+                {(status === "agreed" || v.problematic || v.size !== 0 || v.midpoint || v.endpoint || v.split || note) && (
                   <span className="row-tags">
                     {status === "agreed" && <span className="tag agreed">Enige fra start</span>}
                     {v.problematic && <span className="tag problem">Problematisk</span>}
                     {v.size !== 0 && <span className="tag">{v.size < 0 ? "Mindre korridor" : "Større korridor"}</span>}
+                    {v.midpoint && <span className="tag todo">Nytt mellompunkt</span>}
+                    {v.endpoint && <span className="tag todo">Endre sluttpunkt</span>}
+                    {v.split && <span className="tag todo">To turer</span>}
                     {note && <span className="row-note">{note}</span>}
                   </span>
                 )}

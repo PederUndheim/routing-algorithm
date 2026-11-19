@@ -31,7 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Protocol
 
-from .consensus import complete
+from .consensus import CLASS_FIELDS, complete
 
 
 def _now() -> str:
@@ -153,13 +153,14 @@ class TableStore:
     # Table Storage has no null: an unset class is stored as "".
     @staticmethod
     def _to_entity(patch: dict[str, Any]) -> dict[str, Any]:
-        return {k: ("" if k == "kast" and v is None else v) for k, v in patch.items()}
+        return {k: ("" if k in CLASS_FIELDS and v is None else v) for k, v in patch.items()}
 
     @staticmethod
     def _from_entity(entity: dict[str, Any]) -> dict[str, Any]:
         row = {k: v for k, v in entity.items() if k not in ("PartitionKey", "RowKey")}
-        if row.get("kast") == "":
-            row["kast"] = None
+        for k in CLASS_FIELDS:
+            if row.get(k) == "":
+                row[k] = None
         return complete(row)
 
     def state(self, meeting: str, since: Optional[str] = None) -> dict[int, dict[str, Any]]:

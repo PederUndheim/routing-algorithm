@@ -24,3 +24,13 @@ export const DoubtIcon = () => (
 export const FlagIcon = () => <Svg size={18}><path d="M5 21V4m0 0h11l-2 4 2 4H5" /></Svg>;
 export const MinusIcon = () => <Svg size={18}><path d="M5 12h14" /></Svg>;
 export const PlusIcon = () => <Svg size={18}><path d="M12 5v14M5 12h14" /></Svg>;
+/** A route with a new point on it. */
+export const MidpointIcon = () => (
+  <Svg size={18}><path d="M4 20c3-6 5-8 8-8s5-2 8-8" /><circle cx="12" cy="12" r="2.6" fill="currentColor" /></Svg>
+);
+/** A map pin: where the tour ends. */
+export const EndpointIcon = () => (
+  <Svg size={18}><path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z" /><circle cx="12" cy="10" r="2" /></Svg>
+);
+/** One route forking into two. */
+export const SplitIcon = () => <Svg size={18}><path d="M12 21v-8M12 13L6 4M12 13l6-9" /></Svg>;

@@ -1,6 +1,6 @@
 import {
   EMPTY_CONSENSUS, KAST_LABEL, type Consensus, type CorridorInfo, type Expert,
-  type KastClass, type Verdict,
+  type KastClass, type Step, type Verdict,
 } from "./types";
 
 /** expert id -> corridor id -> verdict */
@@ -32,10 +32,15 @@ export function disagreements(experts: Expert[], verdicts: ExpertVerdicts, id: n
   return reasons;
 }
 
-/** The class all experts agree on, or null if they do not quite. */
-export function agreedClass(experts: Expert[], verdicts: ExpertVerdicts, id: number): KastClass | null {
+export type Agreed = { kast: KastClass; sub: Step };
+
+/** What the experts agree on, or null if they do not quite: their class, and
+ *  as the step within it the middle of theirs (−, 0, + gives 0; 0, +, +
+ *  gives +). The step does not decide agreement; the main class does. */
+export function agreedStep(experts: Expert[], verdicts: ExpertVerdicts, id: number): Agreed | null {
   if (!experts.length || disagreements(experts, verdicts, id).length) return null;
-  return verdicts[experts[0].id][id].kast;
+  const subs = experts.map((e) => verdicts[e.id][id].sub).sort((a, b) => a - b);
+  return { kast: verdicts[experts[0].id][id].kast as KastClass, sub: subs[Math.floor((subs.length - 1) / 2)] };
 }
 
 export type View = {
@@ -47,9 +52,9 @@ export type View = {
 
 /** A corridor's consensus as the meeting sees it. A class the meeting set
  *  wins; else, if the experts agree, theirs. */
-export function viewOf(stored: Consensus | undefined, agreed: KastClass | null): View {
+export function viewOf(stored: Consensus | undefined, agreed: Agreed | null): View {
   if (stored?.kast) return { consensus: stored, auto: false };
-  if (agreed) return { consensus: { ...(stored ?? EMPTY_CONSENSUS), kast: agreed }, auto: true };
+  if (agreed) return { consensus: { ...(stored ?? EMPTY_CONSENSUS), ...agreed }, auto: true };
   return { consensus: stored ?? EMPTY_CONSENSUS, auto: false };
 }
 
@@ -57,7 +62,7 @@ export type Status = "agreed" | "settled" | "todo";
 
 /** Enige fra start / avklart i møtet / gjenstår. A corridor the experts
  *  agreed on stays "agreed" even if the meeting changes it afterwards. */
-export const statusOf = (stored: Consensus | undefined, agreed: KastClass | null): Status =>
+export const statusOf = (stored: Consensus | undefined, agreed: Agreed | null): Status =>
   agreed ? "agreed" : stored?.kast ? "settled" : "todo";
 
 export type Filters = {

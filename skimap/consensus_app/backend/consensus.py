@@ -13,12 +13,20 @@ the meeting has started writing.
 
 ## A consensus
 
-    kast         green | blue | red | black, or None while not settled.
-                 Main class only - no -/0/+ in the meeting
+    kast         green | blue | red | black, or None while not settled
+    sub          -1, 0, +1: the -/0/+ within the class, as in the validation
     size         -1, 0, +1: corridor should be smaller / is OK / bigger
     problematic  "problematisk for publisering"
     change       what should be changed before it can be published
     note         the meeting's common comment
+
+What to do with the corridor later, each a flag with its own text:
+
+    midpoint, midpointWhere   add a new waypoint - and where
+    endpoint, endpointWhere   move the end point - and where to
+    split                     split it into two tours, each with
+    split1Where, split1Kast, split1Sub    where tour 1 goes and its class
+    split2Where, split2Kast, split2Sub    the same for tour 2
 
 There are no users: everyone in the meeting may edit, and the last write to
 a field wins. Writes are patches, so two people changing different fields of
@@ -55,8 +63,17 @@ KAST_CLASSES = ("green", "blue", "red", "black")
 TEXT_MAX = 4000
 
 DEFAULT: dict[str, Any] = {
-    "kast": None, "size": 0, "problematic": False, "change": "", "note": "",
+    "kast": None, "sub": 0, "size": 0, "problematic": False, "change": "", "note": "",
+    "midpoint": False, "midpointWhere": "",
+    "endpoint": False, "endpointWhere": "",
+    "split": False,
+    "split1Where": "", "split1Kast": None, "split1Sub": 0,
+    "split2Where": "", "split2Kast": None, "split2Sub": 0,
 }
+CLASS_FIELDS = ("kast", "split1Kast", "split2Kast")
+STEP_FIELDS = ("sub", "size", "split1Sub", "split2Sub")
+TEXT_FIELDS = ("change", "note", "midpointWhere", "endpointWhere", "split1Where", "split2Where")
+FLAG_FIELDS = ("problematic", "midpoint", "endpoint", "split")
 
 
 def meetings() -> list[dict[str, Any]]:
@@ -72,18 +89,18 @@ def validate_patch(patch: Any) -> dict[str, Any]:
         raise ValueError("patch must be a non-empty object")
     clean: dict[str, Any] = {}
     for key, value in patch.items():
-        if key == "kast":
+        if key in CLASS_FIELDS:
             if value is not None and value not in KAST_CLASSES:
-                raise ValueError(f"kast must be one of {KAST_CLASSES} or null")
-        elif key == "size":
+                raise ValueError(f"{key} must be one of {KAST_CLASSES} or null")
+        elif key in STEP_FIELDS:
             if isinstance(value, bool) or value not in (-1, 0, 1):
-                raise ValueError("size must be -1, 0 or 1")
-        elif key in ("change", "note"):
+                raise ValueError(f"{key} must be -1, 0 or 1")
+        elif key in TEXT_FIELDS:
             if not isinstance(value, str) or len(value) > TEXT_MAX:
                 raise ValueError(f"{key} must be text of at most {TEXT_MAX} characters")
-        elif key == "problematic":
+        elif key in FLAG_FIELDS:
             if not isinstance(value, bool):
-                raise ValueError("problematic must be true or false")
+                raise ValueError(f"{key} must be true or false")
         else:
             raise ValueError(f"unknown field {key!r}")
         clean[key] = value

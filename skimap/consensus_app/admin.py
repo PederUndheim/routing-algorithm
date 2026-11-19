@@ -12,12 +12,13 @@ Each talks to the API: --api (default: CONSENSUS_API, else localhost) with
 One sheet per meeting, one row per corridor, in corridor order: its status
 (enige fra start / avklart i møtet / gjenstår), the consensus as the meeting
 sees it - for a corridor the experts agreed on and the meeting never
-touched, that is their class - then each expert's verdict and why they
-differ. The test meeting is never in it. A last sheet holds every write ever
+touched, that is their class - and what to do with it later (new waypoint,
+new end point, two tours), then each expert's verdict and why they differ. The test meeting is never in it. A last sheet holds every write ever
 made, oldest first.
 
 The agreement rule is the page's (frontend/src/agreement.ts): the same main
-class from every expert, size OK, nobody problematic or usikker.
+class from every expert, size OK, nobody problematic or usikker. An agreed
+corridor's step is the middle of the experts' steps.
 """
 
 from __future__ import annotations
@@ -53,7 +54,14 @@ def _call(args: argparse.Namespace, path: str) -> Any:
         raise SystemExit(f"GET {path}: {e.code} {e.read().decode(errors='replace')}")
 
 
-def agreed_class(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: int) -> str | None:
+def _class(kast: str | None, sub: int) -> str:
+    return CLASS_NO[kast] + SUB_MARK[sub] if kast else ""
+
+
+def agreed_step(experts: list[str], verdicts: dict[str, dict[str, dict]],
+                cid: int) -> tuple[str, int] | None:
+    """(class, step) the experts agree on, or None. The step is the middle
+    of theirs, as on the page."""
     given = [verdicts.get(e, {}).get(str(cid)) for e in experts]
     if any(not v or not v.get("kast") for v in given):
         return None
@@ -61,7 +69,8 @@ def agreed_class(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: 
         return None
     if any(v.get("size") or v.get("problematic") or v.get("doubt") for v in given):
         return None
-    return given[0]["kast"]
+    subs = sorted(v.get("sub", 0) for v in given)
+    return given[0]["kast"], subs[(len(subs) - 1) // 2]
 
 
 def reasons(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: int) -> str:
@@ -98,7 +107,9 @@ def export(args: argparse.Namespace) -> None:
         verdicts = _call(args, f"/api/admin/experts?meeting={m['id']}")["verdicts"]
         sheet = book.create_sheet(m["label"])
         header = ["ID", "Region", "Lengde (m)", "Status", "Konsensus KAST", "Størrelse",
-                  "Problematisk", "Hva bør endres", "Felles kommentar"]
+                  "Problematisk", "Hva bør endres", "Felles kommentar",
+                  "Nytt mellompunkt", "Mellompunkt hvor", "Endre sluttpunkt", "Sluttpunkt hvor",
+                  "To turer", "Tur 1 hvor", "Tur 1 KAST", "Tur 2 hvor", "Tur 2 KAST"]
         for e in experts:
             n = EXPERT_NAMES[e]
             header += [f"{n} KAST", f"{n} størrelse", f"{n} usikker", f"{n} problematisk", f"{n} notat"]
@@ -107,13 +118,19 @@ def export(args: argparse.Namespace) -> None:
         for cid in m["corridors"]:
             c = index.get(cid, {"region": "", "lengthM": ""})
             row = current.get((m["id"], cid), {})
-            agreed = agreed_class(experts, verdicts, cid)
+            agreed = agreed_step(experts, verdicts, cid)
             status = "agreed" if agreed else "settled" if row.get("kast") else "todo"
-            kast = row.get("kast") or agreed
+            kast, sub = (row["kast"], row.get("sub", 0)) if row.get("kast") else agreed or (None, 0)
             line: list[Any] = [
-                cid, c["region"], c["lengthM"], STATUS_NO[status], CLASS_NO.get(kast, ""),
+                cid, c["region"], c["lengthM"], STATUS_NO[status],
+                CLASS_NO[kast] + SUB_MARK[sub] if kast else "",
                 SIZE_NO[row.get("size", 0)], "ja" if row.get("problematic") else "",
                 row.get("change", ""), row.get("note", ""),
+                "ja" if row.get("midpoint") else "", row.get("midpointWhere", ""),
+                "ja" if row.get("endpoint") else "", row.get("endpointWhere", ""),
+                "ja" if row.get("split") else "",
+                row.get("split1Where", ""), _class(row.get("split1Kast"), row.get("split1Sub", 0)),
+                row.get("split2Where", ""), _class(row.get("split2Kast"), row.get("split2Sub", 0)),
             ]
             for e in experts:
                 v = verdicts.get(e, {}).get(str(cid)) or {}
@@ -127,7 +144,7 @@ def export(args: argparse.Namespace) -> None:
         sheet.freeze_panes = "E2"
         sheet.auto_filter.ref = sheet.dimensions
         for i, title in enumerate(header, 1):
-            wide = title.endswith(("notat", "kommentar", "endres", "enige"))
+            wide = title.endswith(("notat", "kommentar", "endres", "enige", "hvor"))
             sheet.column_dimensions[get_column_letter(i)].width = 40 if wide else max(8, min(len(title) + 2, 18))
 
     log = book.create_sheet("Historikk")

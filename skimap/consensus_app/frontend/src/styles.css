@@ -307,8 +307,6 @@ kbd {
 .experts-head { padding: 16px 16px 10px; }
 .experts-head h2 { margin: 0 0 8px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); }
 .agree { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: #dcfce7; color: #166534; font-size: 13px; font-weight: 600; }
-.reasons { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
-.reasons li { padding: 4px 10px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 12.5px; font-weight: 500; }
 .expert-cards { flex: 1; overflow-y: auto; padding: 0 12px 12px; display: grid; gap: 10px; align-content: start; }
 .expert { background: var(--surface); border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow); }
 .expert header { display: flex; align-items: center; gap: 10px; }
@@ -320,25 +318,38 @@ kbd {
 .expert-note { margin: 10px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .expert-note.none { color: var(--faint); font-style: italic; font-size: 12.5px; }
 
-/* --- consensus class: four main-class buttons -------------------------------- */
+/* --- consensus class: the validation app's twelve steps ------------------------- */
 
-.kast-main {
-  height: 52px; border: 0; border-radius: 11px; font-size: 14px; font-weight: 600;
-  background: color-mix(in srgb, var(--kast) 22%, var(--surface));
-  color: color-mix(in srgb, var(--kast) 80%, #000);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kast) 45%, transparent);
-  transition: background 0.1s, color 0.1s;
-}
-.kast-main:hover { background: color-mix(in srgb, var(--kast) 36%, var(--surface)); }
-.kast-main.picked { background: var(--kast); color: #fff; box-shadow: 0 1px 3px color-mix(in srgb, var(--kast) 50%, transparent); }
 /* From the experts' agreement, not yet touched in the meeting: the same
    colour, hatched, so it reads as given rather than decided. */
-.kast-main.picked.auto {
-  background: repeating-linear-gradient(135deg, var(--kast) 0 8px, color-mix(in srgb, var(--kast) 82%, #fff) 8px 16px);
+.kast-seg.picked.auto {
+  background: repeating-linear-gradient(135deg, var(--kast) 0 6px, color-mix(in srgb, var(--kast) 80%, #fff) 6px 12px);
 }
 .auto-note { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; color: #166534; }
 textarea.change { margin-top: 8px; border-color: #fca5a5; }
 textarea.common { margin-top: 10px; }
+
+/* --- videre arbeid: three buttons, each opening its own fields ------------------ */
+
+.todo-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.todo-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  min-height: 62px; padding: 7px 6px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface); color: var(--ink-2); font-size: 12.5px; font-weight: 500; line-height: 1.2;
+  text-align: center; transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.todo-btn svg { color: var(--faint); }
+.todo-btn:hover { background: var(--soft); }
+.todo-btn.on { background: #eff6ff; border-color: var(--accent); color: #1e3a8a; }
+.todo-btn.on svg { color: var(--accent); }
+textarea.todo-text { margin-top: 8px; padding: 8px 11px; font-size: 13.5px; border-color: #93c5fd; }
+.tours { display: grid; gap: 8px; margin-top: 8px; }
+.tour { padding: 8px 10px 10px; border: 1px solid #bfdbfe; border-radius: 10px; background: #f8fbff; }
+.tour-head { font-size: 11.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #1e3a8a; }
+.tour textarea.todo-text { margin-top: 5px; resize: none; }
+.kast-row.small { gap: 5px; margin-top: 7px; }
+.kast-row.small .kast { height: 34px; padding: 2px; border-radius: 8px; }
+.kast-row.small .kast-seg { font-size: 14px; border-radius: 6px; }
 
 /* --- progress in three parts ----------------------------------------------- */
 
@@ -357,6 +368,7 @@ textarea.common { margin-top: 10px; }
 /* --- list ----------------------------------------------------------------- */
 
 .tag.agreed { background: #dcfce7; color: #166534; }
+.tag.todo { background: #dbeafe; color: #1e3a8a; }
 .row.agreed .row-id { color: var(--muted); }
 
 /* --- footer, start page -------------------------------------------------------- */
@@ -386,3 +398,46 @@ textarea.common { margin-top: 10px; }
 @media (max-width: 900px) {
   .experts { width: 100%; height: auto; border-left: 0; }
 }
+
+/* --- experts: Kompakt / Full ------------------------------------------------------- */
+
+.experts-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.experts-title h2 { margin: 0; }
+.mode-switch { display: flex; gap: 2px; padding: 2px; background: var(--soft); border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.mode-switch button { border: 0; padding: 3px 9px; border-radius: 6px; background: transparent; font-size: 12px; color: var(--muted); }
+.mode-switch button.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+
+/* Full: the validation app's panel per expert, scaled down to the column's
+   width so all three fit without scrolling. */
+.experts.full .expert-cards { gap: 8px; }
+.expert-full { padding: 9px 12px 7px; }
+.expert-full header { gap: 8px; }
+.expert-full .expert-name { font-size: 14px; }
+.expert-full .section { padding: 5px 0; }
+.expert-full .section-head { height: 12px; margin-bottom: 5px; }
+.expert-full .section-head h2 { font-size: 10px; line-height: 12px; }
+/* The class boxes need no heading here; the name above them is enough. */
+.expert-full .section:first-of-type .section-head { display: none; }
+.expert-full .section:first-of-type { padding-top: 7px; }
+.expert-full .kast-row { gap: 5px; }
+.expert-full .kast { height: auto; aspect-ratio: 83 / 68; max-height: 46px; padding: 2px; gap: 1px; border-radius: 9px; }
+.expert-full .kast-seg { font-size: 13px; border-radius: 6px; }
+.expert-full .segmented { width: 100%; grid-template-columns: repeat(3, 1fr); padding: 3px; gap: 3px; border-radius: 9px; }
+.expert-full .segmented button { height: 26px; font-size: 10.5px; border-radius: 7px; }
+.expert-full .segmented button svg { width: 11px; height: 11px; }
+.expert-full .note-box {
+  min-height: 40px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--soft); color: var(--ink-2); font-size: 12.5px; line-height: 1.35;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.expert-full .note-box.blank { color: var(--faint); }
+.expert-full .flag { min-height: 0; height: 28px; margin-top: 6px; padding: 0 10px; font-size: 12.5px; gap: 6px; border-radius: 8px; }
+.expert-full .flag svg { width: 14px; height: 14px; }
+.expert-full header .flag { width: auto; height: 24px; margin-top: 0; padding: 0 9px 0 7px; border-radius: 999px; font-size: 12px; }
+.expert-full .flag, .expert-full .kast-seg, .expert-full .segmented button { cursor: default; }
+.expert-full .flag:hover { background: var(--surface); }
+.expert-full .flag.doubt.on:hover { background: #fffbeb; }
+.expert-full .flag.problem.on:hover { background: #fef2f2; }
+.expert-full .kast-seg:hover:not(.picked) { background: transparent; }
+.expert-full .segmented button:hover:not(.picked) { background: transparent; }
+.expert-full.unjudged .section { opacity: 0.45; }

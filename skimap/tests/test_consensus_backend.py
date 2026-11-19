@@ -96,7 +96,7 @@ class ConsensusApiTest(unittest.TestCase):
         status, body = self.patch(5, {"kast": "blue", "note": "enige etter diskusjon"})
         self.assertEqual(status, 200)
         self.assertEqual(body["consensus"]["kast"], "blue")
-        self.assertEqual(body["consensus"]["size"], 0)
+        self.assertEqual((body["consensus"]["sub"], body["consensus"]["size"]), (0, 0))
         # A retry of the same op is not a second write.
         self.patch(5, {"kast": "blue", "note": "enige etter diskusjon"})
         _, dump = self.call("GET", "/api/admin/dump", admin=ADMIN)
@@ -123,10 +123,22 @@ class ConsensusApiTest(unittest.TestCase):
 
     def test_rejects_bad_input(self) -> None:
         self.assertEqual(self.patch(5, {"kast": "purple"})[0], 400)
-        self.assertEqual(self.patch(5, {"sub": 1})[0], 400)       # no −/0/+ in the meeting
+        self.assertEqual(self.patch(5, {"sub": 2})[0], 400)
         self.assertEqual(self.patch(5, {"doubt": True})[0], 400)  # no Usikker either
         self.assertEqual(self.patch(5, {"kast": "red"}, meeting="nope")[0], 400)
         self.assertEqual(self.call("GET", f"/api/state?meeting={MEETING}&since=x")[0], 400)
+
+    def test_follow_up_fields(self) -> None:
+        self.patch(6, {"midpoint": True, "midpointWhere": "via toppen"})
+        self.patch(6, {"split": True, "split1Kast": "red", "split1Sub": -1, "split2Where": "ned nordsida"},
+                   op="op000002")
+        _, state = self.call("GET", f"/api/state?meeting={MEETING}")
+        row = state["consensus"]["6"]
+        self.assertEqual((row["midpoint"], row["midpointWhere"], row["endpoint"]), (True, "via toppen", False))
+        self.assertEqual((row["split1Kast"], row["split1Sub"], row["split2Kast"], row["split2Where"]),
+                         ("red", -1, None, "ned nordsida"))
+        self.assertEqual(self.patch(6, {"split2Kast": "purple"}, op="op000003")[0], 400)
+        self.assertEqual(self.patch(6, {"endpoint": "ja"}, op="op000004")[0], 400)
 
     def test_only_the_test_meeting_resets(self) -> None:
         self.patch(5, {"kast": "red"})
@@ -138,11 +150,12 @@ class ConsensusApiTest(unittest.TestCase):
         self.assertEqual(kept["consensus"]["5"]["kast"], "red")
 
     def test_survives_a_restart(self) -> None:
-        self.patch(7, {"kast": "black", "size": -1})
+        self.patch(7, {"kast": "black", "sub": 1, "size": -1})
         self._stop()
         self._start()
         _, state = self.call("GET", f"/api/state?meeting={MEETING}")
-        self.assertEqual((state["consensus"]["7"]["kast"], state["consensus"]["7"]["size"]), ("black", -1))
+        row = state["consensus"]["7"]
+        self.assertEqual((row["kast"], row["sub"], row["size"]), ("black", 1, -1))
 
     def test_admin_needs_the_key(self) -> None:
         self.assertEqual(self.call("GET", "/api/admin/dump")[0], 401)

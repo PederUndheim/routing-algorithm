@@ -15,19 +15,37 @@ export type Verdict = {
 /** What the meeting decides about one corridor - see backend/consensus.py. */
 export type Consensus = {
   kast: KastClass | null;
+  /** The −/0/+ within the class, as in the validation. */
+  sub: Step;
   size: Step;
   problematic: boolean;
   /** What should be changed before it can be published. */
   change: string;
   /** The meeting's common comment. */
   note: string;
+  /** To do with the corridor later: add a waypoint, and where. */
+  midpoint: boolean;
+  midpointWhere: string;
+  /** Move the end point, and where to. */
+  endpoint: boolean;
+  endpointWhere: string;
+  /** Split it into two tours: where each goes and its class. */
+  split: boolean;
+  split1Where: string;
+  split1Kast: KastClass | null;
+  split1Sub: Step;
+  split2Where: string;
+  split2Kast: KastClass | null;
+  split2Sub: Step;
   updatedAt?: string;
 };
 
 export type ConsensusPatch = Partial<Omit<Consensus, "updatedAt">>;
 
 export const EMPTY_CONSENSUS: Consensus = {
-  kast: null, size: 0, problematic: false, change: "", note: "",
+  kast: null, sub: 0, size: 0, problematic: false, change: "", note: "",
+  midpoint: false, midpointWhere: "", endpoint: false, endpointWhere: "",
+  split: false, split1Where: "", split1Kast: null, split1Sub: 0, split2Where: "", split2Kast: null, split2Sub: 0,
 };
 
 export type Expert = { id: string; name: string };

@@ -2,7 +2,7 @@
 
 The app for the two consensus meetings after the corridor validation. The
 experts and the chair go through each corridor together and settle on one
-main KAST class, the corridor size, whether it is problematic to publish
+KAST class (the same twelve steps as the validation), the corridor size, whether it is problematic to publish
 (and what should change), and a common comment.
 
 It is a separate app from `validation_app`, with its own API, storage and
@@ -32,21 +32,34 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   - *Prøvemøte* is for trying the app. It is the only meeting that can be
     reset and is never exported.
 - **Layout:** map on the left. The middle column shows the three experts'
-  verdicts, one card each (class with −/0/+, size, Usikker, Problematisk,
-  note), headed by why they do not agree. The right column is the
-  validation sidebar with the consensus in place of the verdict.
-- **Consensus fields:** main class only (no −/0/+), corridor size,
-  *Problematisk for publisering* with *Hva bør endres*, and a common
-  comment. No *Usikker*.
+  verdicts, one card each, with a *Kompakt / Full* switch at the top that
+  each browser remembers. *Kompakt*: a label such as "Blå −", tags for
+  size, Usikker and Problematisk, and the note. *Full*: the validation app's
+  own panel as the expert left it (twelve KAST steps, Usikker,
+  Korridorbredde, note, Problematisk), scaled down so all three fit without
+  scrolling. A green *Enige* shows when they agree; there is no list of why
+  they don't (tried and dropped). The right column is the validation
+  sidebar with the consensus in place of the verdict.
+- **Consensus fields:** KAST class on the validation app's twelve-step
+  control (four classes, each − 0 +), corridor size, *Problematisk for
+  publisering* with *Hva bør endres*, and a common comment. No *Usikker*.
+- **Videre arbeid** (between size and comments): three toggles for what to
+  do with the corridor later - *Legg til nytt mellompunkt* and *Endre
+  sluttpunkt*, each with a box for where, and *Til to turer*, with where
+  each tour goes and its class (twelve-step). Shown as tags in the list and
+  as columns in the export.
 - **Agreed from the start:** a corridor counts as agreed when all three
   experts have:
   - set a class, and the same main class
   - left the size at OK
   - not ticked *Problematisk* or *Usikker*
 
-  Notes don't count. An agreed corridor is shown as done with that class
-  (hatched, *Enige fra start*). Changing anything on it stores the class
-  with the change. The progress bar shows three parts: *enige fra start*,
+  Notes and the −/0/+ step don't count. An agreed corridor is shown as done
+  with that class and the middle of the experts' three steps (hatched,
+  *Enige fra start*). Changing anything on it stores the class
+  with the change. ← → skip agreed corridors (unless the list is filtered to
+  *Enige fra start*); they stay in the list and open on a click. The progress
+  bar shows three parts: *enige fra start*,
   *avklart i møtet* and *gjenstår*.
 - **No class colouring:** corridors are violet as in the validation, and the
   routing model's class is not shown anywhere.
@@ -57,8 +70,11 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
 
 | | |
 |---|---|
-| ← → | previous / next (follows the list filter) |
-| 1 2 3 4 | green / blue / red / black |
+| ← → | previous / next (follows the list filter, skips corridors the experts agreed on) |
+| 1 2 3 | green − / 0 / + |
+| Q W E | blue − / 0 / + |
+| A S D | red − / 0 / + |
+| Z X C | black − / 0 / + |
 | Space | show / hide spordata |
 
 ## Kept apart from the validation app
