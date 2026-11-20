@@ -23,15 +23,24 @@ export function majorityNeighbour(classes: KastClass[]): boolean {
   });
 }
 
+/** The class two of three experts chose, when the classes differ; null
+ *  when all chose the same, or no two agree. */
+function majorityClass(classes: KastClass[]): KastClass | null {
+  if (new Set(classes).size <= 1) return null;
+  return classes.find((k) => classes.filter((c) => c === k).length * 2 > classes.length) ?? null;
+}
+
 /** Why the corridor goes to the meeting, one line each; empty when it is
  *  auto-klassifisert (done before the meeting starts). That needs every
  *  expert in the meeting to have set a class, and
  *    - the classes to be majority + neighbour: all the same main class, or
  *      two in one and the third in the class next to it,
  *    - nobody to have ticked Problematisk,
- *    - nobody to have ticked Usikker - unless all gave the same main class.
+ *    - no Usikker that counts: with all in one main class it never does;
+ *      with a split class only from the majority - the lone one being
+ *      unsure of a different class does not stop it (since 2026-11-20).
  *  Corridor size and notes do not count; they are shown, but do not stop it.
- *  The rule is "majority" + "split" in corridor_validation/consensus_rules.py. */
+ *  The rule is "majority" + "lone" in corridor_validation/consensus_rules.py. */
 export function disagreements(experts: Expert[], verdicts: ExpertVerdicts, id: number): string[] {
   const reasons: string[] = [];
   const given = experts.map((e) => ({ e, v: verdicts[e.id]?.[id] }));
@@ -46,7 +55,8 @@ export function disagreements(experts: Expert[], verdicts: ExpertVerdicts, id: n
     given.filter(({ v }) => v?.kast && test(v)).map(({ e }) => e.name).join(", ");
   const problematic = named((v) => v.problematic);
   if (problematic) reasons.push(`Problematisk: ${problematic}`);
-  const doubt = named((v) => v.doubt);
+  const majority = majorityClass(classes);
+  const doubt = named((v) => v.doubt && (majority === null || v.kast === majority));
   if (doubt && !sameClass) reasons.push(`Usikker og ulik klasse: ${doubt}`);
   return reasons;
 }
@@ -117,6 +127,9 @@ export type Doubt = {
   /** Highest minus lowest of the twelve steps. */
   spread: number;
   doubt: boolean;
+  /** Split class and someone unsure - on an auto corridor that can only be
+   *  the lone one: auto-classified by the Usikker rule of 2026-11-20. */
+  lone: boolean;
   size: boolean;
   note: boolean;
 };
@@ -124,10 +137,12 @@ export type Doubt = {
 export function doubtOf(experts: Expert[], verdicts: ExpertVerdicts, id: number): Doubt {
   const vs = experts.map((e) => verdicts[e.id]?.[id]).filter((v): v is Verdict => !!v?.kast);
   const steps = vs.map(stepOf);
+  const split = new Set(vs.map((v) => v.kast)).size > 1;
   return {
-    split: new Set(vs.map((v) => v.kast)).size > 1,
+    split,
     spread: steps.length ? Math.max(...steps) - Math.min(...steps) : 0,
     doubt: vs.some((v) => v.doubt),
+    lone: split && vs.some((v) => v.doubt),
     size: vs.some((v) => v.size !== 0),
     note: vs.some((v) => v.note.trim() !== ""),
   };
@@ -142,10 +157,11 @@ export function byDoubt(a: Doubt, b: Doubt): number {
 
 export type Filters = {
   region: string | null;
-  /** A status, or in the meeting "original": the corridors that came to the
+  /** A status; in the review also "lone": the lone expert unsure (see
+   *  Doubt). Or in the meeting "original": the corridors that came to the
    *  meeting from the start (not auto-classified), settled or not. There
    *  "reopened" is every auto-overstyring, settled or not. */
-  status: "all" | Status | "original";
+  status: "all" | Status | "original" | "lone";
 };
 
 export const NO_FILTERS: Filters = { region: null, status: "all" };

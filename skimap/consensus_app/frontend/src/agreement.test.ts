@@ -40,10 +40,18 @@ describe("auto-klassifisert", () => {
     expect(majorityNeighbour(["green", "blue", "red"])).toBe(false);
   });
 
-  it("sends Problematisk always, Usikker only when the classes differ", () => {
+  it("sends Problematisk always, Usikker only when the classes differ and it is in the majority", () => {
     expect(agreedStep(experts, three({}, {}, { problematic: true }), 7)).toBeNull();
     expect(agreedStep(experts, three({ doubt: true }), 7)).toEqual({ kast: "blue", sub: 0 });
+    // one of the two blue unsure: to the meeting
     expect(agreedStep(experts, three({ doubt: true }, {}, { kast: "red" }), 7)).toBeNull();
+    // only the lone red one unsure: the majority holds, median as usual
+    expect(agreedStep(experts, three({}, { sub: 1 }, { kast: "red", sub: -1, doubt: true }), 7))
+      .toEqual({ kast: "blue", sub: 1 });
+    // the lone one and one of the majority: to the meeting
+    expect(agreedStep(experts, three({ doubt: true }, {}, { kast: "red", doubt: true }), 7)).toBeNull();
+    expect(doubtOf(experts, three({}, {}, { kast: "red", doubt: true }), 7).lone).toBe(true);
+    expect(doubtOf(experts, three({ doubt: true }), 7).lone).toBe(false);
   });
 
   it("waits for every expert", () => {

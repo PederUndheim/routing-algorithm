@@ -56,12 +56,15 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   - the classes are *majority + neighbour*: all the same main class, or two
     in one and the third in the class next to it (any step)
   - nobody ticked *Problematisk*
-  - nobody ticked *Usikker* - unless all gave the same main class
+  - no *Usikker* that counts: with all in the same main class it never
+    does; with a split class only from the two in the majority - the lone
+    one being unsure of a different class does not stop it (since
+    2026-11-20; before, any Usikker with a split class did)
 
   Size and notes don't count. The auto class is the median of the three
   twelve-step verdicts (blå 0, blå +, rød − gives blå +); it always falls in
-  the majority's class. The rule is "majority" + "split" in
-  `corridor_validation/consensus_rules.py`. The corridor is shown as done
+  the majority's class. The rule is in
+  `corridor_validation/consensus_rules.py` ("majority" + "lone"). The corridor is shown as done
   with that class (hatched, *Auto-klassifisert*). Changing anything on it
   stores the class with the change. ← → skip these (unless the list is
   filtered to *Auto-klassifisert*); they stay in the list and open on a
@@ -88,6 +91,10 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   2. then a width asked for
   3. then a wider spread of the twelve steps
   4. then Usikker, then a note
+
+  The list can be filtered to *Usikker i mindretall*: the split corridors
+  where only the lone expert was unsure, auto-classified by the rule of
+  2026-11-20.
 
   The right column shows the auto class as a label, one big button,
   *Ta tilbake til diskusjon*, Korridorbredde (see above) and *Videre

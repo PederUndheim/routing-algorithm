@@ -192,6 +192,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
   const shown = useMemo(() => mine.filter((c) => {
     if (filters.region !== null && c.region !== filters.region) return false;
     const s = statusFor(c.id);
+    if (review && filters.status === "lone") return !!experts && doubtOf(meeting.experts, experts, c.id).lone;
     if (review || filters.status === "all") return filters.status === "all" || s === filters.status;
     switch (filters.status) {
       // Gjenstår holds the overridden too: they are still to be discussed.
@@ -203,7 +204,7 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
       case "reopened": return !!agreed(c.id) && !!stored[c.id]?.reopened;
       default: return s === filters.status;
     }
-  }), [mine, filters, statusFor, review, agreed, stored]);
+  }), [mine, filters, statusFor, review, agreed, stored, experts, meeting.experts]);
 
   /** What ← → walk through: the list, less the auto-classified corridors -
    *  nothing to discuss there. They stay in the list and open on a click;

@@ -23,6 +23,7 @@ const STATUS: [Filters["status"], string][] = [
 ];
 const REVIEW_STATUS: [Filters["status"], string][] = [
   ["all", "Alle"], ["agreed", "Ikke overstyrt"], ["reopened", "Auto-overstyring"],
+  ["lone", "Usikker i mindretall"],
 ];
 
 export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters, onFilters, onPick, hintOf, review = false }: Props) {

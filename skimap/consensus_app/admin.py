@@ -96,7 +96,11 @@ def reasons(experts: list[str], verdicts: dict[str, dict[str, dict]], cid: int) 
     who = [EXPERT_NAMES[e] for e, v in rated.items() if v.get("problematic")]
     if who:
         out.append(f"problematisk: {', '.join(who)}")
-    who = [EXPERT_NAMES[e] for e, v in rated.items() if v.get("doubt")]
+    # Usikker counts with a split class, and then only from the majority: the
+    # lone one being unsure of a different class does not stop it.
+    majority = next((k for k in classes if classes.count(k) * 2 > len(classes)), None)
+    who = [EXPERT_NAMES[e] for e, v in rated.items()
+           if v.get("doubt") and (majority is None or v["kast"] == majority)]
     if who and len(set(classes)) > 1:
         out.append(f"usikker og ulik klasse: {', '.join(who)}")
     return "; ".join(out)
