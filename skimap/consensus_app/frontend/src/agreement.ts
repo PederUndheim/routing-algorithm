@@ -142,7 +142,10 @@ export function byDoubt(a: Doubt, b: Doubt): number {
 
 export type Filters = {
   region: string | null;
-  status: "all" | Status;
+  /** A status, or in the meeting "original": the corridors that came to the
+   *  meeting from the start (not auto-classified), settled or not. There
+   *  "reopened" is every auto-overstyring, settled or not. */
+  status: "all" | Status | "original";
 };
 
 export const NO_FILTERS: Filters = { region: null, status: "all" };

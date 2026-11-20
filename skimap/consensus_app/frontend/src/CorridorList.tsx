@@ -18,8 +18,8 @@ type Props = {
 };
 
 const STATUS: [Filters["status"], string][] = [
-  ["all", "Alle"], ["todo", "Gjenstår"], ["reopened", "Auto-overstyring"], ["settled", "Avklart i møtet"],
-  ["agreed", "Auto-klassifisert"],
+  ["all", "Alle"], ["todo", "Gjenstår"], ["original", "Opprinnelige"], ["reopened", "Auto-overstyring"],
+  ["settled", "Avklart i møtet"], ["agreed", "Auto-klassifisert"],
 ];
 const REVIEW_STATUS: [Filters["status"], string][] = [
   ["all", "Alle"], ["agreed", "Ikke overstyrt"], ["reopened", "Auto-overstyring"],

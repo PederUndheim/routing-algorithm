@@ -191,12 +191,19 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
 
   const shown = useMemo(() => mine.filter((c) => {
     if (filters.region !== null && c.region !== filters.region) return false;
-    // Gjenstår holds the overridden too: they are still to be discussed.
     const s = statusFor(c.id);
-    if (filters.status === "todo" && !review ? s !== "todo" && s !== "reopened"
-      : filters.status !== "all" && s !== filters.status) return false;
-    return true;
-  }), [mine, filters, statusFor, review]);
+    if (review || filters.status === "all") return filters.status === "all" || s === filters.status;
+    switch (filters.status) {
+      // Gjenstår holds the overridden too: they are still to be discussed.
+      case "todo": return s === "todo" || s === "reopened";
+      // The two groups to go through one after the other: the ones that came
+      // to the meeting from the start, and those the review took back - both
+      // whether settled or not, so the list stays put while working through.
+      case "original": return !agreed(c.id);
+      case "reopened": return !!agreed(c.id) && !!stored[c.id]?.reopened;
+      default: return s === filters.status;
+    }
+  }), [mine, filters, statusFor, review, agreed, stored]);
 
   /** What ← → walk through: the list, less the auto-classified corridors -
    *  nothing to discuss there. They stay in the list and open on a click;

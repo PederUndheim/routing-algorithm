@@ -102,7 +102,12 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   them. The export has an *Auto-overstyring* column.
 - **No class colouring:** corridors are violet as in the validation, and the
   routing model's class is not shown anywhere.
-- **Order:** plain corridor order. The list filters by status and region.
+- **Order:** plain corridor order. The list filters by region and by
+  *Gjenstår*, *Opprinnelige*, *Auto-overstyring*, *Avklart i møtet* or
+  *Auto-klassifisert*. *Opprinnelige* (the corridors that came to the
+  meeting from the start) and *Auto-overstyring* (those the review took
+  back) are groups, settled or not, so the meeting can go through the one
+  and then the other with ← →.
 
 ## Keyboard
 
