@@ -140,11 +140,11 @@ class ConsensusApiTest(unittest.TestCase):
         self.assertEqual(self.patch(6, {"split2Kast": "purple"}, op="op000003")[0], 400)
         self.assertEqual(self.patch(6, {"endpoint": "ja"}, op="op000004")[0], 400)
         self.patch(6, {"other": True, "otherWhat": "sjekk parkering", "remove": True, "reopened": True,
-                       "sizeSet": True}, op="op000005")
+                       "sizeSet": True, "sizeReview": True}, op="op000005")
         _, state = self.call("GET", f"/api/state?meeting={MEETING}")
         row = state["consensus"]["6"]
-        self.assertEqual((row["other"], row["otherWhat"], row["remove"], row["reopened"], row["sizeSet"]),
-                         (True, "sjekk parkering", True, True, True))
+        self.assertEqual((row["other"], row["otherWhat"], row["remove"], row["reopened"], row["sizeSet"],
+                          row["sizeReview"]), (True, "sjekk parkering", True, True, True, True))
 
     def test_only_the_test_meeting_resets(self) -> None:
         self.patch(5, {"kast": "red"})

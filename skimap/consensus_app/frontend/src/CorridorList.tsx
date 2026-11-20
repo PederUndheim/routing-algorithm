@@ -76,7 +76,7 @@ export function CorridorList({ all, shown, viewOf, statusOf, currentId, filters,
                     {v.reopened && <span className="tag reopened">Auto-overstyring</span>}
                     {hint && <span className="tag hint">{hintLabel(hint)} korridor (ekspert)</span>}
                     {v.remove && <span className="tag problem">Slett</span>}
-                    {v.size !== 0 && <span className="tag">{v.size < 0 ? "Mindre korridor" : "Større korridor"}</span>}
+                    {v.size !== 0 && <span className="tag">{v.size < 0 ? "Mindre korridor" : "Større korridor"}{v.sizeReview && " (gjennomgang)"}</span>}
                     {v.midpoint && <span className="tag todo">Nytt mellompunkt</span>}
                     {v.endpoint && <span className="tag todo">Endre sluttpunkt</span>}
                     {v.split && <span className="tag todo">To turer</span>}

@@ -21,6 +21,9 @@ export type Consensus = {
   /** The meeting chose the width - so the experts' width on an auto
    *  corridor no longer stands in for it, even when it chose OK. */
   sizeSet: boolean;
+  /** That width was chosen in the review of the auto-classification, not
+   *  in the meeting. */
+  sizeReview: boolean;
   /** The review of the auto-classification took it back to discussion. */
   reopened: boolean;
   /** No longer set in the meeting (the button was removed 2026-11-19). */
@@ -54,7 +57,7 @@ export type Consensus = {
 export type ConsensusPatch = Partial<Omit<Consensus, "updatedAt">>;
 
 export const EMPTY_CONSENSUS: Consensus = {
-  kast: null, sub: 0, size: 0, sizeSet: false, problematic: false, change: "", note: "",
+  kast: null, sub: 0, size: 0, sizeSet: false, sizeReview: false, problematic: false, change: "", note: "",
   midpoint: false, midpointWhere: "", endpoint: false, endpointWhere: "",
   other: false, otherWhat: "", remove: false, reopened: false,
   split: false, split1Where: "", split1Kast: null, split1Sub: 0, split2Where: "", split2Kast: null, split2Sub: 0,

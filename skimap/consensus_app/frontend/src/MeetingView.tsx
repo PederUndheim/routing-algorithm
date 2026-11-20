@@ -282,6 +282,16 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
    *  the meeting; undone, it is auto-classified again. */
   const setReopened = (on: boolean) => write(on ? { reopened: true, kast: null, sub: 0 } : { reopened: false });
 
+  /** The width in the review: stored as it is, without the class, so the
+   *  corridor stays auto-classified. The same button again undoes it, and
+   *  the experts' width (if any) stands in again. */
+  const setReviewSize = (size: Step) => {
+    const now = currentId === null ? undefined : stored[currentId];
+    write(now?.sizeSet && now.size === size
+      ? { size: 0, sizeSet: false, sizeReview: false }
+      : { size, sizeSet: true, sizeReview: true });
+  };
+
   const setMap = (patch: Partial<MapSettings>) => setMapSettings((m) => ({ ...m, ...patch }));
 
   const resetTest = async () => {
@@ -423,8 +433,11 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
                         onTracks={(tracks) => setMap({ tracks })}
                         onOpacity={(opacity) => setMap({ opacity })} />
             {currentAgreed
-              ? <ReviewPanel agreed={currentAgreed} hint={hintFor(currentId ?? -1)} reopened={reopened}
-                             onReopen={setReopened} />
+              ? <>
+                  <ReviewPanel agreed={currentAgreed} reopened={reopened} onReopen={setReopened} />
+                  <SizePanel size={consensus.size} hint={hintFor(currentId ?? -1)} fromReview={consensus.sizeReview}
+                             onSize={setReviewSize} />
+                </>
               : <div className="empty">Ikke lenger auto-klassifisert – en ekspert har endret vurderingen.</div>}
           </div>
         ) : (
@@ -438,8 +451,8 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
             <KastPanel consensus={consensus} auto={auto} onPick={(kast, sub) => update({ kast, sub })}
                        onClear={() => update({ kast: null, sub: 0 })} onShowModel={setModel}
                        reopenedFrom={reopened ? currentAgreed : null} />
-            <SizePanel size={consensus.size} hint={hintFor(currentId ?? -1)}
-                       onSize={(size) => update({ size, sizeSet: true })} />
+            <SizePanel size={consensus.size} hint={hintFor(currentId ?? -1)} fromReview={consensus.sizeReview}
+                       onSize={(size) => update({ size, sizeSet: true, sizeReview: false })} />
             <FollowUpPanel consensus={consensus} onSet={(patch) => update(patch)}
                            onText={(patch) => update(patch, TEXT_DELAY_MS)} onTextDone={() => queue.flush()} />
             <NotesPanel consensus={consensus}

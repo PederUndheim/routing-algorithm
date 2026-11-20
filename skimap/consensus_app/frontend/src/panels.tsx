@@ -142,9 +142,11 @@ type SizeProps = {
    *  the experts asked for, shown hatched and carried into the result as
    *  theirs, not the consensus's. */
   hint?: SizeHint | null;
+  /** The width was chosen in the review of the auto-classification. */
+  fromReview?: boolean;
 };
 
-export function SizePanel({ size, onSize, hint }: SizeProps) {
+export function SizePanel({ size, onSize, hint, fromReview = false }: SizeProps) {
   const hinted = (s: Step) => !!hint && (hintSize(hint) === s || (hintSize(hint) === null && s !== 0));
   const option = (s: Step, label: ReactNode) => {
     const picked = hint ? hinted(s) : size === s;
@@ -162,6 +164,7 @@ export function SizePanel({ size, onSize, hint }: SizeProps) {
         {option(1, <><PlusIcon /> Større</>)}
       </div>
       {hint && <SizeHintNote hint={hint} />}
+      {!hint && fromReview && <p className="size-hint">Satt i gjennomgangen av auto – ikke avklart i konsensus</p>}
     </Section>
   );
 }
@@ -176,14 +179,13 @@ const SizeHintNote = ({ hint }: { hint: SizeHint }) => (
 
 type ReviewProps = {
   agreed: Agreed;
-  hint: SizeHint | null;
   reopened: boolean;
   onReopen: (on: boolean) => void;
 };
 
 /** The auto class as a label, and the one thing to decide here: back to
  *  the meeting or not (also the A key). */
-export function ReviewPanel({ agreed, hint, reopened, onReopen }: ReviewProps) {
+export function ReviewPanel({ agreed, reopened, onReopen }: ReviewProps) {
   return (
     <>
       <Section title="Auto-klassifisering">
@@ -192,7 +194,6 @@ export function ReviewPanel({ agreed, hint, reopened, onReopen }: ReviewProps) {
             {KAST_LABEL[agreed.kast]}{SUB_MARK[agreed.sub]}
           </span>
         </div>
-        {hint && <SizeHintNote hint={hint} />}
       </Section>
       <button className={`reopen-btn ${reopened ? "on" : ""}`} aria-pressed={reopened} onClick={() => onReopen(!reopened)}>
         {reopened

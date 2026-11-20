@@ -74,6 +74,13 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   the export as the size with *Størrelse fra* = "ekspert (…), ikke avklart
   i konsensus". Experts pulling both ways give *Mindre/Større*. Once the
   meeting picks a width (even OK) it is the consensus's (`sizeSet`).
+  The review below can set the width too, e.g. from an expert's note: it
+  is stored without the class, so the corridor stays auto-classified, and
+  marked `sizeReview` - "Satt i gjennomgangen av auto – ikke avklart i
+  konsensus" under Korridorbredde, "(gjennomgang)" in the list, and
+  *Størrelse fra* = "gjennomgang av auto, ikke avklart i konsensus" in the
+  export. The same button again undoes it. A width set in the meeting
+  clears the mark.
 - **Gjennomgang av auto-klassifisering:** its own section on the start
   page, one entry per meeting. The same layout, but only the auto-classified
   corridors, most doubtful first:
@@ -82,8 +89,8 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   3. then a wider spread of the twelve steps
   4. then Usikker, then a note
 
-  The right column shows the auto class as a label and one big button,
-  *Ta tilbake til diskusjon* - or the A key (again to undo; Space still
+  The right column shows the auto class as a label, one big button,
+  *Ta tilbake til diskusjon*, and Korridorbredde (see above) - or the A key (again to undo; Space still
   shows the tracks). A corridor taken back (`reopened`) comes
   up in the meeting as *Auto-overstyring*: ← → stop at it, the class starts
   empty (a line says what the auto class was), and it counts in *gjenstår*

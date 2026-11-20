@@ -18,6 +18,8 @@ the meeting has started writing.
     size         -1, 0, +1: corridor should be smaller / is OK / bigger
     sizeSet      the meeting chose the size; until then, on an
                  auto-classified corridor, the experts' size stands in
+    sizeReview   that size was chosen in the review of the
+                 auto-classification, not in the meeting
     reopened     the review of the auto-classification took it back to
                  discussion
     problematic  "problematisk for publisering" - no longer set from the page
@@ -69,7 +71,7 @@ KAST_CLASSES = ("green", "blue", "red", "black")
 TEXT_MAX = 4000
 
 DEFAULT: dict[str, Any] = {
-    "kast": None, "sub": 0, "size": 0, "sizeSet": False, "reopened": False, "problematic": False, "change": "", "note": "",
+    "kast": None, "sub": 0, "size": 0, "sizeSet": False, "sizeReview": False, "reopened": False, "problematic": False, "change": "", "note": "",
     "midpoint": False, "midpointWhere": "",
     "endpoint": False, "endpointWhere": "",
     "other": False, "otherWhat": "", "remove": False,
@@ -80,7 +82,7 @@ DEFAULT: dict[str, Any] = {
 CLASS_FIELDS = ("kast", "split1Kast", "split2Kast")
 STEP_FIELDS = ("sub", "size", "split1Sub", "split2Sub")
 TEXT_FIELDS = ("change", "note", "midpointWhere", "endpointWhere", "otherWhat", "split1Where", "split2Where")
-FLAG_FIELDS = ("problematic", "sizeSet", "reopened", "midpoint", "endpoint", "other", "remove", "split")
+FLAG_FIELDS = ("problematic", "sizeSet", "sizeReview", "reopened", "midpoint", "endpoint", "other", "remove", "split")
 
 
 def meetings() -> list[dict[str, Any]]:

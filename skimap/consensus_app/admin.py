@@ -163,6 +163,8 @@ def export(args: argparse.Namespace) -> None:
             # The size: the meeting's once it chose one; on an auto corridor it
             # never sized, the experts' - marked as theirs.
             size, size_from = SIZE_NO[row.get("size", 0)], "konsensus" if row.get("sizeSet") or row.get("size") else ""
+            if row.get("sizeReview") and row.get("sizeSet"):
+                size_from = "gjennomgang av auto, ikke avklart i konsensus"
             if status == "agreed" and not size_from:
                 hint, who = size_hint(experts, verdicts, cid)
                 if hint:
