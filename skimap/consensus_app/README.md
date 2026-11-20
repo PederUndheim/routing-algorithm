@@ -90,7 +90,10 @@ These are the user's choices (2026-11-18). Don't revisit them in passing.
   4. then Usikker, then a note
 
   The right column shows the auto class as a label, one big button,
-  *Ta tilbake til diskusjon*, and Korridorbredde (see above) - or the A key (again to undo; Space still
+  *Ta tilbake til diskusjon*, Korridorbredde (see above) and *Videre
+  arbeid* - for what the notes ask for without the corridor being
+  discussed. Both are stored without the class, so the corridor stays
+  auto-classified, and they show in the meeting and the export as usual - or the A key (again to undo; Space still
   shows the tracks). A corridor taken back (`reopened`) comes
   up in the meeting as *Auto-overstyring*: ← → stop at it, the class starts
   empty (a line says what the auto class was), and it counts in *gjenstår*

@@ -437,6 +437,9 @@ export function MeetingView({ code, meeting, index, queue, status, onLeave, revi
                   <ReviewPanel agreed={currentAgreed} reopened={reopened} onReopen={setReopened} />
                   <SizePanel size={consensus.size} hint={hintFor(currentId ?? -1)} fromReview={consensus.sizeReview}
                              onSize={setReviewSize} />
+                  {/* Stored as it is, without the class: the corridor stays auto-classified. */}
+                  <FollowUpPanel consensus={consensus} onSet={(patch) => write(patch)}
+                                 onText={(patch) => write(patch, TEXT_DELAY_MS)} onTextDone={() => queue.flush()} />
                 </>
               : <div className="empty">Ikke lenger auto-klassifisert – en ekspert har endret vurderingen.</div>}
           </div>
